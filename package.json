@@ -4,8 +4,8 @@
   "description": "Exam/Interview assistant: record last N seconds, Whisper -> ChatGPT.",
   "main": "build/main/app.js",
   "type": "commonjs",
-  "author": "",
-  "license": "UNLICENSED",
+  "author": "xexamai",
+  "license": "GPL-3.0",
   "scripts": {
     "dev": "npm run build && cross-env NODE_ENV=development electron .",
     "build": "npm run clean && npm run build:ts && npm run build:css && npm run copy:html",
