@@ -76,6 +76,21 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">LLM Model</h3>
+                    <div class="input-group">
+                        <select id="llmModel" class="input-field">
+                            <option value="gpt-4.1-nano">GPT-4.1 Nano (Default - Fast & Efficient)</option>
+                            <option value="gpt-4o">GPT-4o (Latest - High Quality)</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini (Fast & Cost-effective)</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo (High Performance)</option>
+                            <option value="gpt-4">GPT-4 (Classic High Quality)</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Legacy - Fast)</option>
+                            <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (Extended Context)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Transcription Prompt</h3>
                     <div class="fc gap-2">
                         <textarea 
@@ -292,6 +307,22 @@ export class SettingsPanel {
                     this.showNotification(`Transcription model changed to ${model}`);
                 } catch (error) {
                     this.showNotification('Error saving transcription model', 'error');
+                }
+            });
+        }
+
+        const llmModelSelect = this.container.querySelector('#llmModel') as HTMLSelectElement;
+        if (llmModelSelect) {
+            llmModelSelect.value = this.settings.llmModel || 'gpt-4.1-nano';
+
+            llmModelSelect.addEventListener('change', async () => {
+                const model = llmModelSelect.value;
+                try {
+                    await window.api.settings.setLlmModel(model);
+                    this.settings.llmModel = model;
+                    this.showNotification(`LLM model changed to ${model}`);
+                } catch (error) {
+                    this.showNotification('Error saving LLM model', 'error');
                 }
             });
         }

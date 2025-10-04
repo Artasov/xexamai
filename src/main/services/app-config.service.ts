@@ -10,6 +10,7 @@ export interface AppConfigData {
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
     transcriptionPrompt?: string;
+    llmModel?: string;
 }
 
 export class AppConfigService {
@@ -131,6 +132,15 @@ export class AppConfigService {
 
     public getTranscriptionPrompt(): string | undefined {
         return this.configData.transcriptionPrompt;
+    }
+
+    public setLlmModel(model: string): void {
+        this.configData.llmModel = model;
+        this.saveConfig();
+    }
+
+    public getLlmModel(): string {
+        return this.configData.llmModel || 'gpt-4.1-nano';
     }
 }
 
