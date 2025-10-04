@@ -8,7 +8,7 @@
   <a href="https://github.com/Artasov/xexamai/releases/latest">
     <img src="https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github" alt="Download Latest Release">
   </a>
-</p>
+</div>
 
 ## 🚀 Key Features
 
