@@ -103,8 +103,71 @@ src/
 
 - `npm run dev` - run in development mode
 - `npm run build` - build the project
-- `npm run build:exe` - create executable file
+- `npm run build:win` - create portable Windows executable
+- `npm run build:mac` - create portable macOS executable (только на macOS)
+- `npm run build:linux` - create portable Linux directory
+- `npm run build:all` - create portable executables for Windows and Linux
+- `npm run build:win-linux` - same as build:all
 - `npm run clean` - clean build directory
+
+#### Building for Different Platforms
+
+##### Windows
+```bash
+npm run build:win
+```
+Creates:
+- Portable executable (`xexamai-${version}.exe`)
+
+##### macOS
+```bash
+npm run build:mac
+```
+Creates:
+- ZIP archive for Intel and Apple Silicon (`xexamai-${version}-x64.zip`, `xexamai-${version}-arm64.zip`)
+
+**Note**: For macOS builds, you may need to:
+1. Install Xcode Command Line Tools: `xcode-select --install`
+
+##### Linux
+```bash
+npm run build:linux
+```
+Creates:
+- Portable directory (`linux-unpacked/`)
+- **Автоматически создается архив** (`xexamai-${version}-linux-x64.tar.gz`)
+
+**Note**: 
+- Архив готов для распространения - пользователи могут распаковать и запустить
+- Для сборки AppImage нужны дополнительные инструменты, которые сложно настроить на Windows
+
+##### Cross-platform Building
+
+**⚠️ Ограничения кроссплатформенной сборки:**
+
+- **Windows**: Может собирать только для Windows и Linux (через WSL)
+- **macOS**: Может собирать для всех платформ (Windows, macOS, Linux)
+- **Linux**: Может собирать только для Linux и Windows, но не macOS
+
+**Команды для кроссплатформенной сборки:**
+
+```bash
+# На Windows - только Windows и Linux
+npm run build:all
+
+# На macOS - все платформы
+npm run build:all
+npm run build:win
+npm run build:mac  
+npm run build:linux
+
+# На Linux - только Linux и Windows
+npm run build:all
+```
+
+**Для сборки macOS версии:**
+- Используйте macOS машину
+- Или используйте GitHub Actions (если настроите CI/CD)
 
 #### Technologies
 

@@ -9,8 +9,12 @@
   "scripts": {
     "dev": "npm run build && cross-env NODE_ENV=development electron .",
     "build": "npm run clean && npm run build:ts && npm run build:css && npm run copy:html",
-    "build:exe": "npm run build && electron-builder",
-    "build:exe:portable": "npm run build && electron-builder --win portable",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:linux": "npm run build && electron-builder --linux && npm run create-linux-archive",
+    "create-linux-archive": "node scripts/create-linux-archive.js",
+    "build:all": "npm run build && electron-builder --win --linux && npm run create-linux-archive",
+    "build:win-linux": "npm run build && electron-builder --win --linux && npm run create-linux-archive",
     "start": "electron .",
     "clean": "node scripts/clean.js",
     "build:ts": "npm run build:ts:main && npm run build:ts:renderer",
@@ -41,7 +45,7 @@
   "build": {
     "appId": "com.xexamai.app",
     "productName": "xexamai",
-    "icon": "brand/logo.ico",
+    "icon": "brand/logo.png",
     "directories": {
       "output": "dist"
     },
@@ -60,25 +64,42 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
           "target": "portable",
           "arch": [
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "brand/logo.ico"
     },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "artifactName": "xexamai-${version}-setup.exe"
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "brand/logo.png",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "brand/logo.png",
+      "category": "Office"
     },
     "portable": {
       "artifactName": "xexamai-${version}.exe"
