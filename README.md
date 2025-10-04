@@ -1,7 +1,7 @@
 <div align="center">
   <img src="brand/logo.png" alt="xexamai Logo" width="200" height="200">
   <h1>XEXAMAI</h1>
-  <h2><strong>Your smart assistant for interviews and exams</strong></h2>
+  <h3><strong>Your smart assistant for interviews and exams</strong></h3>
   <h3>⭐ <strong>Star this repository if it helped you!</strong> ⭐</h3>
 </div>
 <div align="center">
