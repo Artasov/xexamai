@@ -4,6 +4,7 @@ export type AppSettings = {
     windowOpacity?: number;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
+    transcriptionModel?: string;
 };
 
 export type AssistantResponse = {
@@ -65,6 +66,7 @@ export type AssistantAPI = {
         setDurations: (durations: number[]) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
+        setTranscriptionModel: (model: string) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };

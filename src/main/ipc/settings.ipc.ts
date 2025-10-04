@@ -11,6 +11,7 @@ export function registerSettingsIpc() {
             windowOpacity: config.windowOpacity || DefaultSettings.windowOpacity,
             audioInputDeviceId: config.audioInputDeviceId,
             audioInputType: config.audioInputType,
+            transcriptionModel: config.transcriptionModel,
         };
     });
 
@@ -37,6 +38,10 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetAudioInputType, async (_, type: 'microphone' | 'system'): Promise<void> => {
         appConfigService.setAudioInputType(type);
+    });
+
+    ipcMain.handle(IPCChannels.SetTranscriptionModel, async (_, model: string): Promise<void> => {
+        appConfigService.setTranscriptionModel(model);
     });
 
     ipcMain.handle(IPCChannels.GetAudioDevices, async (): Promise<{

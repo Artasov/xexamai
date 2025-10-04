@@ -65,6 +65,17 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">Transcription Model</h3>
+                    <div class="input-group">
+                        <select id="transcriptionModel" class="input-field">
+                            <option value="whisper-1">Whisper-1 (Default)</option>
+                            <option value="gpt-4o-transcribe">GPT-4o Transcribe (High Quality)</option>
+                            <option value="gpt-4o-mini-transcribe">GPT-4o Mini Transcribe (Fast)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Audio Input Type</h3>
                     <div class="input-group">
                         <select id="audioInputType" class="input-field">
@@ -255,6 +266,22 @@ export class SettingsPanel {
                 }
             }
         });
+
+        const transcriptionModelSelect = this.container.querySelector('#transcriptionModel') as HTMLSelectElement;
+        if (transcriptionModelSelect) {
+            transcriptionModelSelect.value = this.settings.transcriptionModel || 'whisper-1';
+
+            transcriptionModelSelect.addEventListener('change', async () => {
+                const model = transcriptionModelSelect.value;
+                try {
+                    await window.api.settings.setTranscriptionModel(model);
+                    this.settings.transcriptionModel = model;
+                    this.showNotification(`Transcription model changed to ${model}`);
+                } catch (error) {
+                    this.showNotification('Error saving transcription model', 'error');
+                }
+            });
+        }
 
         const audioInputTypeSelect = this.container.querySelector('#audioInputType') as HTMLSelectElement;
         if (audioInputTypeSelect) {

@@ -20,6 +20,7 @@ export type AppSettings = {
     windowOpacity?: number;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
+    transcriptionModel?: string;
 };
 
 export const DefaultSettings: AppSettings = {
@@ -42,6 +43,7 @@ export const IPCChannels = {
     SetDurations: 'settings:set:durations',
     SetAudioInputDevice: 'settings:set:audio-input-device',
     SetAudioInputType: 'settings:set:audio-input-type',
+    SetTranscriptionModel: 'settings:set:transcription-model',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
 } as const;
@@ -103,6 +105,7 @@ export type AssistantAPI = {
         setDurations: (durations: number[]) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
+        setTranscriptionModel: (model: string) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };

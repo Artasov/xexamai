@@ -8,6 +8,7 @@ export interface AppConfigData {
     durations?: number[];
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
+    transcriptionModel?: string;
 }
 
 export class AppConfigService {
@@ -35,7 +36,8 @@ export class AppConfigService {
                 this.configData = {
                     openaiApiKey: process.env.OPENAI_API_KEY,
                     windowOpacity: 100,
-                    durations: [5, 10, 15, 20, 30, 60]
+                    durations: [5, 10, 15, 20, 30, 60],
+                    transcriptionModel: 'whisper-1'
                 };
                 this.saveConfig();
             }
@@ -43,7 +45,8 @@ export class AppConfigService {
             console.error('Error loading config:', error);
             this.configData = {
                 windowOpacity: 100,
-                durations: [5, 10, 15, 20, 30, 60]
+                durations: [5, 10, 15, 20, 30, 60],
+                transcriptionModel: 'whisper-1'
             };
         }
     }
@@ -107,6 +110,15 @@ export class AppConfigService {
 
     public getAudioInputType(): 'microphone' | 'system' {
         return this.configData.audioInputType || 'microphone';
+    }
+
+    public setTranscriptionModel(model: string): void {
+        this.configData.transcriptionModel = model;
+        this.saveConfig();
+    }
+
+    public getTranscriptionModel(): string {
+        return this.configData.transcriptionModel || 'whisper-1';
     }
 }
 

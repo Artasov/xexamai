@@ -36,7 +36,7 @@ export function getConfig(): AppConfig {
     return {
         openaiApiKey: userConfig.openaiApiKey || process.env.OPENAI_API_KEY,
         openaiBaseUrl: process.env.OPENAI_BASE_URL,
-        transcriptionModel: process.env.OPENAI_TRANSCRIPTION_MODEL || 'whisper-1',
+        transcriptionModel: userConfig.transcriptionModel || process.env.OPENAI_TRANSCRIPTION_MODEL || 'whisper-1',
         chatModel: process.env.OPENAI_CHAT_MODEL || 'gpt-4.1-nano',
         retryConfig,
     };

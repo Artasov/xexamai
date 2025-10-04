@@ -88,6 +88,7 @@ export const api: AssistantAPI = {
         setDurations: (durations: number[]) => ipcRenderer.invoke(IPCChannels.SetDurations, durations),
         setAudioInputDevice: (deviceId: string) => ipcRenderer.invoke(IPCChannels.SetAudioInputDevice, deviceId),
         setAudioInputType: (type: 'microphone' | 'system') => ipcRenderer.invoke(IPCChannels.SetAudioInputType, type),
+        setTranscriptionModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetTranscriptionModel, model),
         getAudioDevices: async () => {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
