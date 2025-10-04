@@ -296,6 +296,26 @@ async function handleTextSend(text: string) {
 }
 
 async function main() {
+    // Load logo
+    const logoElement = document.getElementById('logo') as HTMLImageElement;
+    if (logoElement) {
+        try {
+            // Try to load logo from brand folder
+            logoElement.src = '../../brand/logo.png';
+            logoElement.onerror = () => {
+                // Fallback: try alternative path
+                logoElement.src = 'brand/logo.png';
+                logoElement.onerror = () => {
+                    // Final fallback: hide logo if not found
+                    logoElement.style.display = 'none';
+                };
+            };
+        } catch (error) {
+            console.warn('Could not load logo:', error);
+            logoElement.style.display = 'none';
+        }
+    }
+
     const {durations} = await window.api.settings.get();
     if (Array.isArray(durations) && durations.length) {
         try {

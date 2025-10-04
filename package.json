@@ -52,6 +52,7 @@
     "files": [
       "build/**/*",
       "dist/**/*",
+      "brand/**/*",
       "node_modules/**/*",
       "package.json"
     ],
