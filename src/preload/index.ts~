@@ -1,0 +1,39 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import { IPCChannels, AssistantResponse, AppSettings } from '../main/shared/types';
+
+type ProcessAudioArgs = {
+  arrayBuffer: ArrayBuffer;
+  mime: string;
+  filename?: string;
+};
+
+const api = {
+  assistant: {
+    processAudio: async (args: ProcessAudioArgs): Promise<AssistantResponse> => {
+      try { console.debug('[preload.processAudio] arrayBuffer bytes:', args.arrayBuffer?.byteLength, 'mime:', args.mime, 'filename:', args.filename); } catch {}
+      if (!(args.arrayBuffer instanceof ArrayBuffer) || args.arrayBuffer.byteLength === 0) {
+        try { console.warn('[preload.processAudio] empty arrayBuffer, skip invoke'); } catch {}
+        return { ok: false, error: 'Пустое аудио' } as AssistantResponse;
+      }
+      const buffer = Buffer.from(new Uint8Array(args.arrayBuffer));
+      try { console.debug('[preload.processAudio] buffer length:', buffer.length); } catch {}
+      return ipcRenderer.invoke(IPCChannels.AssistantProcess, {
+        audio: buffer,
+        mime: args.mime,
+        filename: args.filename ?? `lastN.${args.mime === 'audio/ogg' ? 'ogg' : 'webm'}`,
+      });
+    },
+  },
+  settings: {
+    get: async (): Promise<AppSettings> => ipcRenderer.invoke(IPCChannels.GetSettings),
+  },
+};
+
+declare global {
+  interface Window {
+    api: typeof api;
+  }
+}
+
+contextBridge.exposeInMainWorld('api', api);
+

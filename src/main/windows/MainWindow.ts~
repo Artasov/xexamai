@@ -1,0 +1,34 @@
+import {BrowserWindow, shell} from 'electron';
+import path from 'node:path';
+
+export function createMainWindow(): BrowserWindow {
+    const win = new BrowserWindow({
+        width: 430,
+        height: 780,
+        frame: false,
+        titleBarStyle: 'hidden',
+        webPreferences: {
+            preload: path.join(__dirname, '..', '..', 'preload', 'index.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+        },
+        show: false,
+    });
+
+    win.once('ready-to-show', () => {
+        win.webContents.openDevTools({mode: 'detach'});
+        win.show();
+    });
+
+    // Load compiled renderer HTML (copied to build/renderer)
+    win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
+
+    // Open links externally
+    win.webContents.setWindowOpenHandler(({url}) => {
+        shell.openExternal(url);
+        return {action: 'deny'};
+    });
+
+    return win;
+}

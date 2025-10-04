@@ -1,0 +1,87 @@
+{
+  "name": "xexamai",
+  "version": "0.1.0",
+  "description": "Exam/Interview assistant: record last N seconds, Whisper -> ChatGPT.",
+  "main": "build/main/app.js",
+  "type": "commonjs",
+  "author": "",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "npm run build && cross-env NODE_ENV=development electron .",
+    "build": "npm run clean && npm run build:ts && npm run build:css && npm run copy:html",
+    "build:exe": "npm run build && electron-builder",
+    "build:exe:portable": "npm run build && electron-builder --win portable",
+    "start": "electron .",
+    "clean": "node scripts/clean.js",
+    "build:ts": "npm run build:ts:main && npm run build:ts:renderer",
+    "build:ts:main": "tsc -p tsconfig.main.json",
+    "build:ts:renderer": "tsc -p tsconfig.renderer.json",
+    "build:css": "postcss src/renderer/styles.css -o dist/styles.css --config configs/postcss.config.js",
+    "copy:html": "cpx \"src/renderer/index.html\" build/renderer"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "cpx": "^1.5.0",
+    "cross-env": "^10.1.0",
+    "electron": "^31.6.0",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.4.47",
+    "postcss-cli": "^11.0.0",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "electron-audio-loopback": "^1.0.6",
+    "openai": "^4.57.0"
+  },
+  "build": {
+    "appId": "com.xexamai.app",
+    "productName": "xexamai",
+    "icon": "brand/logo.ico",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "build"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "xexamai-${version}-setup.exe"
+    },
+    "portable": {
+      "artifactName": "xexamai-${version}.exe"
+    }
+  }
+}

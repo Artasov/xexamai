@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>xexamai</title>
+    <link rel="stylesheet" href="../../dist/styles.css"/>
+</head>
+<body class="bg-gray-900 text-gray-100">
+<div class="h-screen flex flex-col">
+    <!-- Custom title bar -->
+    <header class="bg-gray-800 border-b border-gray-700 flex items-center justify-between px-3 py-2 drag-region">
+        <div class="flex items-center gap-3">
+            <img src="../../brand/logo.png" alt="xexamai" class="w-6 h-6"/>
+            <h1 class="text-lg font-semibold text-gray-100">xexamai</h1>
+            <div id="status" class="status-badge ready">Ready</div>
+        </div>
+        <div class="window-controls no-drag -mr-1">
+            <button id="minimizeBtn" class="window-control-btn minimize" title="Minimize">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <rect x="2" y="5" width="8" height="1" fill="currentColor"/>
+                </svg>
+            </button>
+            <button id="closeBtn" class="window-control-btn close" title="Close">
+                <svg width="12" height="12" viewBox="0 0 12 12">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-auto px-4 pb-4 pt-1">
+        <!-- Navigation tabs -->
+        <div class="tabs-container">
+            <div class="tabs">
+                <button id="mainTab" class="tab active">Main</button>
+                <button id="settingsTab" class="tab">Settings</button>
+            </div>
+        </div>
+
+        <!-- Main content area -->
+        <div id="mainContent" class="content-area">
+            <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="control-panel card md:col-span-1">
+                    <div id="send-last-container" class="send-last-container">
+                        <div class="label mb-2">Send the last:</div>
+                        <div id="durations" class="flex gap-2 flex-wrap"></div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button id="btnRecord" class="btn" data-state="idle">Start Audio Loop</button>
+                        <div id="waveform-container" class="flex-1"></div>
+                    </div>
+                    <div class="mt-2">
+                        <div class="label mb-2">Direct text input:</div>
+                        <div class="flex gap-2">
+                            <textarea
+                                    id="textInput"
+                                    placeholder="Type your question here..."
+                                    class="input-field flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-gray-100 placeholder-gray-400 resize-none"
+                                    rows="1"
+                            ></textarea>
+                            <button
+                                    id="btnSendText"
+                                    class="btn btn-primary self-start"
+                                    disabled
+                            >Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-panel card md:col-span-2">
+                    <div class="label mb-1">Recognized</div>
+                    <div id="textOut" class="min-h-[1rem]"></div>
+                    <div class="label mt-4 mb-1">Reply</div>
+                    <div id="answerOut" class="whitespace-pre-wrap min-h-[1rem]"></div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Settings content area -->
+        <div id="settingsContent" class="content-area hidden">
+            <div id="settingsPanel" class="settings-panel-container"></div>
+        </div>
+    </main>
+</div>
+
+<script type="module" src="./renderer.js"></script>
+</body>
+</html>
+

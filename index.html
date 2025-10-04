@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>xexamai - Smart assistant for interviews and exams</title>
+    <meta
+            name="description"
+            content="xexamai - smart assistant for interviews and exams. Record the last seconds of conversation and get instant answers from AI. Complete invisibility in Zoom, Google Meet, Microsoft Teams, Skype, Cisco Webex, Discord and other video conferencing platforms."
+    />
+    <meta
+            name="keywords"
+            content="artificial intelligence, interviews, exams, assistant, whisper, chatgpt, openai, zoom, google meet, microsoft teams, skype, cisco webex, whereby, discord, jitsi meet, trueconf, proctorio, respondus, invisibility, audio, speech recognition, screen sharing, video conferencing, online meetings, exam proctoring, interview assistance, ai helper, desktop application, cross-platform, искусственный интеллект, собеседования, экзамены, помощник, ассистент, собесы, интервью, собеседование, собеседования онлайн, помощь на собеседовании, помощник для собеседований, ассистент для собеседований, помощник на экзамене, помощь на экзамене, невидимость, скрытность, зум, гугл мит, майкрософт тимс, скайп, дискорд, видеозвонки, видеоконференции, онлайн встречи, прокторинг, прохождение собеседований, подготовка к собеседованию, помощь при собеседовании"
+    />
+    <meta name="author" content="xexamai"/>
+    <meta name="robots" content="index, follow"/>
+    <meta name="language" content="English"/>
+    <meta name="revisit-after" content="7 days"/>
+    
+    <!-- Additional SEO Meta Tags -->
+    <meta name="theme-color" content="#00d4ff"/>
+    <meta name="msapplication-TileColor" content="#00d4ff"/>
+    <meta name="application-name" content="xexamai"/>
+    <meta name="apple-mobile-web-app-title" content="xexamai"/>
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+    
+    <!-- Geo Tags -->
+    <meta name="geo.region" content="US"/>
+    <meta name="geo.placename" content="United States"/>
+    
+    <!-- Additional Keywords -->
+    <meta name="subject" content="AI Assistant for Interviews and Exams"/>
+    <meta name="classification" content="Software, AI, Education, Productivity"/>
+    <meta name="category" content="Software"/>
+    <meta name="coverage" content="Worldwide"/>
+    <meta name="distribution" content="Global"/>
+    <meta name="rating" content="General"/>
+    <meta name="target" content="students, professionals, job seekers"/>
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website"/>
+    <meta property="og:url" content="https://github.com/yourusername/xexamai"/>
+    <meta property="og:title" content="xexamai - Smart assistant for interviews and exams"/>
+    <meta property="og:description"
+           content="Record the last seconds of conversation and get instant answers from AI. Complete invisibility in Zoom, Google Meet, Microsoft Teams, Skype, Cisco Webex, Discord and other video conferencing platforms."/>
+    <meta property="og:image" content="brand/logo.png"/>
+    <meta property="og:site_name" content="xexamai"/>
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image"/>
+    <meta property="twitter:url" content="https://github.com/yourusername/xexamai"/>
+    <meta property="twitter:title" content="xexamai - Smart assistant for interviews and exams"/>
+    <meta property="twitter:description"
+           content="Record the last seconds of conversation and get instant answers from AI. Complete invisibility in Zoom, Google Meet, Microsoft Teams, Skype, Cisco Webex, Discord and other video conferencing platforms."/>
+    <meta property="twitter:image" content="brand/logo.png"/>
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://github.com/Artasov/xexamai"/>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="brand/logo.ico"/>
+    <link rel="apple-touch-icon" href="brand/logo.ico"/>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "xexamai",
+            "description": "Smart assistant for interviews and exams with AI support",
+            "url": "https://github.com/yourusername/xexamai",
+            "applicationCategory": "ProductivityApplication",
+            "operatingSystem": "Windows, macOS, Linux",
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+            },
+            "author": {
+                "@type": "Person",
+                "name": "xexamai Team"
+            },
+             "keywords": "artificial intelligence, interviews, exams, assistant, whisper, chatgpt, zoom, google meet, microsoft teams, skype, cisco webex, discord, video conferencing, screen sharing, exam proctoring, interview assistance, искусственный интеллект, собеседования, экзамены, помощник, ассистент, собесы, интервью, помощник для собеседований, ассистент для собеседований, помощь на собеседовании, помощник на экзамене, помощь на экзамене, невидимость, скрытность, зум, гугл мит, майкрософт тимс, скайп, дискорд, видеозвонки, видеоконференции, онлайн встречи, прокторинг, прохождение собеседований, подготовка к собеседованию, помощь при собеседовании",
+            "datePublished": "2024-01-01",
+            "inLanguage": "en"
+        }
+    </script>
+
+    <!-- Stylesheets -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./src/renderer/wide-classes.min.css"/>
+
+    <style>
+        body {
+            background: linear-gradient(
+                    135deg,
+                    #1a1a2e 0%,
+                    #16213e 50%,
+                    #0f3460 100%
+            );
+            min-height: 100vh;
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gradient-text {
+            background: linear-gradient(45deg, #00d4ff, #a46aff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card-hover {
+            transition: all 0.4s ease;
+        }
+
+        .card-hover:hover {
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+        }
+
+        .card-hover-features {
+            transition: all 0.4s ease;
+        }
+
+        .card-hover-features:hover {
+            box-shadow: 0 4px 15px rgba(91, 33, 182, 0.25);
+        }
+
+        .card-hover-security {
+            transition: all 0.4s ease;
+        }
+
+        .card-hover-security:hover {
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.25);
+        }
+
+        .card-hover-ai {
+            transition: all 0.4s ease;
+        }
+
+        .card-hover-ai:hover {
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.25);
+        }
+
+        .gradient-button {
+            position: relative;
+            background: linear-gradient(45deg, #00d4ff, #5b21b6);
+            overflow: hidden;
+        }
+
+        .gradient-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, #5b21b6, #00d4ff);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .gradient-button:hover::before {
+            opacity: 1;
+        }
+
+        .gradient-button span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .feature-icon {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+<header class="frcc py-6 glass-effect border-0">
+    <div class="frcc gap-4">
+        <img src="brand/logo.png" alt="xexamai Logo" class="w-16 h-16 rounded-full">
+        <h1 class="frcc m-0 text-4xl font-bold gap-2">
+            <span class="gradient-text leading-[2.2rem] pb-1">
+                xexamai
+            </span>
+        </h1>
+    </div>
+</header>
+<main class="mt-8 mx-auto fcsc gap-8 pb-8 px-3 sm:px-4 disable-tap-select"
+      style="max-width: 900px">
+    <section class="fcsc w-full glass-effect rounded-2xl p-4 sm:p-8 card-hover"
+             aria-labelledby="intro-heading">
+        <h2
+                id="intro-heading"
+                class="text-center font-bold text-3xl gradient-text"
+        >
+            Smart assistant for interviews and exams
+        </h2>
+        <p class="text-center text-gray-300 text-lg leading-relaxed mt-3">
+            Record the last seconds of conversation and get instant answers from AI.<br/>
+            Complete invisibility in Zoom, Google Meet, Teams and other video conferencing platforms.<br/>
+            <span class="text-sm text-gray-400">Умный помощник для собеседований и экзаменов • Ассистент для собесов • Помощь на интервью</span>
+        </p>
+
+        <div class="text-center text-gray-400 text-sm mt-2">
+            <p>Complete invisibility • Adjustable transparency • Advanced AI models • Instant processing</p>
+            <p class="mt-1 text-xs">Полная невидимость • Помощник для собеседований • Ассистент для экзаменов • Скрытность в Zoom</p>
+        </div>
+
+        <a
+                href="https://github.com/yourusername/xexamai/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xl self-center gradient-button text-white font-bold px-6 py-3 mt-4 rounded-full hover:shadow-lg hover:shadow-cyan-400/25 transition-all duration-300 cursor-pointer"
+        >
+            <span>📥 Download App</span>
+        </a>
+    </section>
+
+    <section class="glass-effect rounded-2xl p-3 sm:p-6 card-hover">
+        <div>
+            <div class="fc w-full">
+                <h3 class="font-bold text-2xl mb-4 gradient-text">🚀 Key Features</h3>
+                <p class="ps-0 sm:ps-4 text-gray-300 text-lg">
+                    xexamai provides powerful tools for successful interviews and exams.
+                </p>
+            </div>
+            <div
+                    class="h-px bg-gradient-to-r from-transparent via-cyan-400 to-transparent mb-4 mt-6"
+            ></div>
+            <div>
+                <h4 class="font-bold text-xl mb-4 gradient-text" id="Features">
+                    Main Features
+                </h4>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="glass-effect rounded-lg p-4 card-hover-features">
+                        <div class="text-sm text-gray-300 leading-relaxed">
+                            <div class="frsc gap-2 mb-1">
+                                <span class="feature-icon">🎯</span>
+                                <strong class="gradient-text">Complete invisibility</strong>
+                            </div>
+                            <p>Stays hidden during screen sharing in Zoom, Google Meet, Teams and other video conferencing platforms</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-features">
+                        <div class="text-sm text-gray-300 leading-relaxed">
+                            <div class="frsc gap-2 mb-1">
+                                <span class="feature-icon">🎨</span>
+                                <strong class="gradient-text">Adjustable transparency</strong>
+                            </div>
+                            <p>Customize the interface to your needs for maximum stealth</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-ai">
+                        <div class="text-sm text-gray-300 leading-relaxed">
+                            <div class="frsc gap-2 mb-1">
+                                <span class="feature-icon">🧠</span>
+                                <strong class="gradient-text">Advanced AI models</strong>
+                            </div>
+                            <p>Uses cutting-edge speech recognition and AI generation models</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-ai">
+                        <div class="text-sm text-gray-300 leading-relaxed">
+                            <div class="frsc gap-2 mb-1">
+                                <span class="feature-icon">⚡</span>
+                                <strong class="gradient-text">Instant processing</strong>
+                            </div>
+                            <p>Send the last X seconds of audio with one click and get an answer</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-security">
+                        <div class="text-sm text-gray-300 leading-relaxed">
+                            <div class="frsc gap-2 mb-1">
+                                <span class="feature-icon">🔒</span>
+                                <strong class="gradient-text">Privacy & Security</strong>
+                            </div>
+                            <p>All data processed locally, audio is not stored</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-features">
+                        <div class="text-sm text-gray-300 leading-relaxed">
+                            <div class="frsc gap-2 mb-1">
+                                <span class="feature-icon">💻</span>
+                                <strong class="gradient-text">Cross-platform</strong>
+                            </div>
+                            <p>Works on Windows, macOS and Linux</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                    class="h-px bg-gradient-to-r from-transparent via-cyan-400 to-transparent mb-4 mt-6"
+            ></div>
+
+            <div>
+                <h4 class="font-bold text-xl mb-4 gradient-text" id="Usage">
+                    How to Use
+                </h4>
+                <div class="space-y-4">
+                    <div class="glass-effect rounded-lg p-4 card-hover-features">
+                        <h5 class="font-semibold text-lg mb-2 gradient-text">1. Setup</h5>
+                        <ul class="text-sm text-gray-300 space-y-1">
+                            <li>• Open xexamai application</li>
+                            <li>• Go to "Settings" tab</li>
+                            <li>• Enter your OpenAI API key</li>
+                            <li>• Choose audio input device</li>
+                        </ul>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-ai">
+                        <h5 class="font-semibold text-lg mb-2 gradient-text">2. Usage</h5>
+                        <ul class="text-sm text-gray-300 space-y-1">
+                            <li>• Switch to "Main" tab</li>
+                            <li>• Click "Start Listening"</li>
+                            <li>• When needed, click "Send Last X Seconds"</li>
+                            <li>• Get instant answers from AI</li>
+                        </ul>
+                    </div>
+
+                    <div class="glass-effect rounded-lg p-4 card-hover-security">
+                        <h5 class="font-semibold text-lg mb-2 gradient-text">3. Usage Tips</h5>
+                        <ul class="text-sm text-gray-300 space-y-1">
+                            <li>• <strong>For interviews:</strong> use system audio to record interviewer's questions
+                            </li>
+                            <li>• <strong>For exams:</strong> configure microphone to record your questions</li>
+                            <li>• Adjust transparency for maximum stealth</li>
+                            <li>• Practice before important events</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Technologies Section -->
+    <section class="glass-effect rounded-2xl p-3 sm:p-6 card-hover">
+        <h3 class="font-bold text-xl mb-4 gradient-text">🛠 Technologies</h3>
+        <div class="frs gap-4 flex-wrap text-sm text-gray-300">
+            <div class="flex-1 min-w-[200px]">
+                <h4 class="font-semibold text-cyan-400 mb-2">⚡ Electron</h4>
+                <p>Cross-platform desktop application</p>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <h4 class="font-semibold text-cyan-400 mb-2">🔷 TypeScript</h4>
+                <p>Typed JavaScript for reliability</p>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <h4 class="font-semibold text-cyan-400 mb-2">🎨 Tailwind CSS</h4>
+                <p>Utility-first CSS framework</p>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <h4 class="font-semibold text-cyan-400 mb-2">🤖 OpenAI API</h4>
+                <p>AI integration</p>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Important Notes -->
+    <section class="glass-effect rounded-2xl p-3 sm:p-6 card-hover-security">
+        <h3 class="font-bold text-xl mb-4 gradient-text">⚠️ Important Notes</h3>
+        <div class="text-sm text-gray-300 space-y-2">
+            <p>• This application is intended for educational purposes</p>
+            <p>• Ensure that AI assistance is allowed in your situation</p>
+            <p>• Follow honesty and academic integrity rules</p>
+            <p>• OpenAI API key is stored locally and not shared with third parties</p>
+        </div>
+    </section>
+    
+    <!-- SEO Content for Russian Keywords -->
+    <div style="display: none;" aria-hidden="true">
+        <h1>Помощник для собеседований и экзаменов</h1>
+        <p>Умный ассистент для собесов, интервью и экзаменов. Помощь на собеседовании онлайн. Ассистент для прохождения собеседований. Помощник на экзамене. Скрытность в Zoom, Google Meet, Microsoft Teams, Skype, Discord. Невидимость при видеозвонках. Помощь при собеседовании на работу. Подготовка к собеседованию. Прохождение собеседований с ИИ. Искусственный интеллект для собеседований. ChatGPT помощник для собесов. Whisper распознавание речи. OpenAI интеграция. Десктопное приложение для собеседований. Кроссплатформенный помощник. Помощник для онлайн экзаменов. Прокторинг помощь. Видеоконференции помощник. Онлайн встречи ассистент.</p>
+    </div>
+</main>
+
+<footer class="text-center text-gray-400 text-sm py-3 px-3">
+    <p>© 2025 xexamai - Smart assistant for successful interviews and exams</p>
+    <p class="mt-2">
+        <a href="https://github.com/yourusername/xexamai" target="_blank" rel="noopener noreferrer"
+           class="text-cyan-400 hover:text-cyan-300 transition-colors">
+            View on GitHub
+        </a>
+    </p>
+</footer>
+</body>
+</html>
