@@ -31,13 +31,19 @@ export async function transcribeAudio(
     return withRetry(
         async () => {
             const file = await toFile(buffer, filename, {type: _mime});
-            const res = await getClient().audio.transcriptions.create({
+            const transcriptionParams: any = {
                 file,
                 model: cfg.transcriptionModel,
                 response_format: 'json',
                 temperature: 0.2,
-                prompt: cfg.transcriptionPrompt,
-            } as any);
+            };
+            
+            // Добавляем промт только если он не пустой
+            if (cfg.transcriptionPrompt && cfg.transcriptionPrompt.trim()) {
+                transcriptionParams.prompt = cfg.transcriptionPrompt;
+            }
+            
+            const res = await getClient().audio.transcriptions.create(transcriptionParams);
             return (res as any).text || '';
         },
         cfg.retryConfig,

@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* Simple utility overrides */
 .btn {
@@ -144,7 +142,7 @@ button:focus-visible {
 }
 
 .settings-section {
-    @apply card;
+    @apply border border-gray-700 rounded-lg p-4 bg-gray-800 shadow-lg;
     overflow: hidden; /* Prevent content from overflowing */
 }
 

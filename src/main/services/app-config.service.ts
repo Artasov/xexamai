@@ -129,8 +129,8 @@ export class AppConfigService {
         this.saveConfig();
     }
 
-    public getTranscriptionPrompt(): string {
-        return this.configData.transcriptionPrompt || 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).';
+    public getTranscriptionPrompt(): string | undefined {
+        return this.configData.transcriptionPrompt;
     }
 }
 

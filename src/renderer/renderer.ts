@@ -112,7 +112,7 @@ async function startRecording() {
     });
     media.addEventListener('error', (ev) => {
         try {
-            console.error('[mediaRecorder] error', ev.error);
+            console.error('[mediaRecorder] error', (ev as any).error);
         } catch {
         }
     });

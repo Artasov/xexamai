@@ -24,23 +24,24 @@
     "copy:html": "cpx \"src/renderer/index.html\" build/renderer && cpx \"src/renderer/wide-classes.min.css\" build/renderer"
   },
   "devDependencies": {
-    "@types/node": "22.7.5",
-    "autoprefixer": "10.4.20",
-    "concurrently": "9.0.1",
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "24.6.2",
+    "autoprefixer": "10.4.21",
+    "concurrently": "9.2.1",
     "cpx": "1.5.0",
     "cross-env": "10.1.0",
-    "electron": "31.6.0",
+    "electron": "38.2.1",
     "electron-builder": "26.0.12",
-    "postcss": "8.4.47",
-    "postcss-cli": "11.0.0",
-    "tailwindcss": "3.4.13",
+    "postcss": "8.5.6",
+    "postcss-cli": "11.0.1",
+    "tailwindcss": "4.1.14",
     "typescript": "5.6.3",
-    "wait-on": "7.2.0"
+    "wait-on": "9.0.1"
   },
   "dependencies": {
-    "dotenv": "16.4.5",
+    "dotenv": "17.2.3",
     "electron-audio-loopback": "1.0.6",
-    "openai": "4.57.0"
+    "openai": "6.1.0"
   },
   "build": {
     "appId": "com.xexamai.app",

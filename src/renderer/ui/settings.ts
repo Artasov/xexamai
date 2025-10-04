@@ -81,9 +81,9 @@ export class SettingsPanel {
                         <textarea 
                             id="transcriptionPrompt" 
                             class="input-field prompt-textarea" 
-                            placeholder="Enter transcription prompt..."
+                            placeholder="Enter transcription prompt (leave empty to disable prompt)..."
                             rows="4"
-                        >${this.settings.transcriptionPrompt || 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'}</textarea>
+                        >${this.settings.transcriptionPrompt || ''}</textarea>
                         <button id="saveTranscriptionPrompt" class="btn btn-sm">Save Prompt</button>
                     </div>
                 </div>
@@ -302,14 +302,12 @@ export class SettingsPanel {
         if (saveTranscriptionPromptBtn && transcriptionPromptTextarea) {
             saveTranscriptionPromptBtn.addEventListener('click', async () => {
                 const prompt = transcriptionPromptTextarea.value.trim();
-                if (prompt) {
-                    try {
-                        await window.api.settings.setTranscriptionPrompt(prompt);
-                        this.settings.transcriptionPrompt = prompt;
-                        this.showNotification('Transcription prompt saved successfully');
-                    } catch (error) {
-                        this.showNotification('Error saving transcription prompt', 'error');
-                    }
+                try {
+                    await window.api.settings.setTranscriptionPrompt(prompt);
+                    this.settings.transcriptionPrompt = prompt;
+                    this.showNotification('Transcription prompt saved successfully');
+                } catch (error) {
+                    this.showNotification('Error saving transcription prompt', 'error');
                 }
             });
         }
