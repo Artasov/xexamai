@@ -20,7 +20,7 @@ We take security seriously. If you discover a security vulnerability, please fol
 
 Please report security vulnerabilities by:
 
-- **Email**: Send details to [security@xexamai.com](mailto:security@xexamai.com) (if available)
+- **Email**: Send details to [ivanhvalevskey@gmail.com](mailto:ivanhvalevskey@gmail.com) (if available)
 - **GitHub Security Advisories**: Use GitHub's private vulnerability reporting feature
 - **Direct Message**: Contact maintainers directly through GitHub
 

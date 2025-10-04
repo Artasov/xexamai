@@ -1,10 +1,13 @@
 <div align="center">
   <img src="brand/logo.png" alt="xexamai Logo" width="200" height="200">
-  <h1>xexamai</h1>
-  <p><strong>Your smart assistant for interviews and exams</strong></p>
-  <p>Record the last seconds of conversation, get instant answers from AI</p>
-  <p>⭐ <strong>Star this repository if it helped you!</strong> ⭐</p>
+  <h1>XEXAMAI</h1>
+  <h2><strong>Your smart assistant for interviews and exams</strong></h2>
+  <h3>⭐ <strong>Star this repository if it helped you!</strong> ⭐</h3>
 </div>
+
+## 📥 Download
+
+[![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/Artasov/xexamai/releases/latest)
 
 ## 🚀 Key Features
 
@@ -19,25 +22,21 @@
 - **🎛️ Customizable transcription** - choose from multiple AI models and customize prompts
 - **🌍 Multi-language support** - optimized prompts for different languages and contexts
 
-## 📥 Download
-
-[![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/Artasov/xexamai/releases/latest)
-
 ## 🎯 How to Use
 
 ### 1. Setup
 
-1. Open xexamai application
-2. Go to **"Settings"** tab
-3. Enter your **OpenAI API key** (get it from [platform.openai.com](https://platform.openai.com))
+1. Open `xexamai` application
+2. Go to `Settings` tab
+3. Enter your `OpenAI API key` (get it from [platform.openai.com](https://platform.openai.com))
 4. Choose **audio input device**:
-    - **System Audio** - for recording sound from applications (Zoom, Teams, etc.)
-    - **Microphone** - for recording your voice
+    - `System Audio` - for recording sound from applications (Zoom, Teams, etc.)
+    - `Microphone` - for recording your voice
 5. **Configure transcription settings**:
     - **Transcription Model** - choose from:
-        - **Whisper-1** (Default) - balanced speed and accuracy
-        - **GPT-4o Transcribe** (High Quality) - maximum accuracy for complex audio
-        - **GPT-4o Mini Transcribe** (Fast) - optimized for speed and efficiency
+        - `Whisper-1` (Default) - balanced speed and accuracy
+        - `GPT-4o Transcribe` (High Quality) - maximum accuracy for complex audio
+        - `GPT-4o Mini Transcribe` (Fast) - optimized for speed and efficiency
     - **Transcription Prompt** - customize how AI should process your audio:
         - Default prompt optimized for technical interviews in Russian
         - Preserves English technical terms (Redis, Postgres, API, etc.)
@@ -45,17 +44,17 @@
 
 ### 2. Usage
 
-1. Switch to **"Main"** tab
-2. Click **"Start Listening"** - the app will start recording audio in the background
-3. When needed, click **"Send Last X Seconds"** to get an AI response
+1. Switch to `Main` tab
+2. Click `Start Audio Loop` - the app will start recording audio in the background
+3. When needed, click `Send Last X Seconds` to get an AI response
 4. Get instant answers to help you during interviews or exams
 
 ### 3. Usage Tips
 
-- **For interviews**: use system audio to record interviewer's questions
-- **For exams**: configure microphone to record your questions
-- **Adjust transparency** for maximum stealth
-- **Practice** before important events
+- `For interviews`: use system audio to record interviewer's questions
+- `For exams`: configure microphone to record your questions
+- Adjust transparency for maximum stealth
+- Practice before important events
 
 ## ⚠️ Important Notes
 

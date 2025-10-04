@@ -35,7 +35,7 @@ We welcome feature suggestions! Please:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/xexamai.git
+git clone https://github.com/Artasov/xexamai.git
 cd xexamai
 
 # Install dependencies
