@@ -1,0 +1,259 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'           # v1.0.0, v2.1.3, etc.
+      - 'release-*'    # release-1.0.0, release-hotfix, etc.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        default: ''
+      prerelease:
+        description: 'Mark as prerelease'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}  # Remove 'v' prefix if present
+            VERSION=${VERSION#release-}  # Remove 'release-' prefix if present
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app (ts/css/html)
+        run: npm run build
+
+      - name: Package (electron-builder)
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Compute checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Get-ChildItem "dist" -Filter "*.exe" | ForEach-Object {
+            $h = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($h.Hash)  $($_.Name)" | Out-File -FilePath "dist\\checksums-windows.sha256" -Encoding ascii -Append
+          }
+
+      - name: Upload artifact (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: xexamai-windows
+          path: |
+            dist/*.exe
+            dist/checksums-windows.sha256
+          if-no-files-found: error
+
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}  # Remove 'v' prefix if present
+            VERSION=${VERSION#release-}  # Remove 'release-' prefix if present
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app (ts/css/html)
+        run: npm run build
+
+      - name: Package (electron-builder)
+        run: npx electron-builder --linux --publish never
+
+      - name: Create Linux archive (.tar.gz)
+        run: npm run create-linux-archive
+
+      - name: Compute checksums
+        run: |
+          touch dist/checksums-linux.sha256
+          shopt -s nullglob
+          for f in dist/*.tar.gz dist/*.AppImage; do
+            sha256sum "$f" >> dist/checksums-linux.sha256;
+          done
+
+      - name: Upload artifact (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: xexamai-linux
+          path: |
+            dist/*.tar.gz
+            dist/*.AppImage
+            dist/checksums-linux.sha256
+          if-no-files-found: error
+
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}  # Remove 'v' prefix if present
+            VERSION=${VERSION#release-}  # Remove 'release-' prefix if present
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app (ts/css/html)
+        run: npm run build
+
+      - name: Package (electron-builder)
+        run: npx electron-builder --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Для подписи кода на macOS нужен сертификат разработчика
+          # Если нет сертификата, приложение будет работать, но с предупреждением
+
+      - name: Compute checksums
+        run: |
+          : > dist/checksums-macos.sha256
+          for f in dist/*.zip; do
+            shasum -a 256 "$f" >> dist/checksums-macos.sha256;
+          done
+
+      - name: Upload artifact (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: xexamai-macos
+          path: |
+            dist/*.zip
+            dist/checksums-macos.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows
+      - build-linux
+      - build-macos
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download artifacts (Windows)
+        uses: actions/download-artifact@v4
+        with:
+          name: xexamai-windows
+          path: release/windows
+
+      - name: Download artifacts (Linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: xexamai-linux
+          path: release/linux
+
+      - name: Download artifacts (macOS)
+        uses: actions/download-artifact@v4
+        with:
+          name: xexamai-macos
+          path: release/macos
+
+      - name: List release files
+        run: |
+          ls -R release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/**/*
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' || contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          body: |
+            ## 🚀 Release ${{ github.ref_name }}
+            
+            ### 📦 Downloads
+            - **Windows**: Portable executable (.exe)
+            - **macOS**: Universal binary (.zip) - Intel & Apple Silicon
+            - **Linux**: AppImage (.AppImage) + Archive (.tar.gz)
+            
+            ### 🔐 Verification
+            Use the checksum files to verify download integrity:
+            - `checksums-windows.sha256` - Windows files
+            - `checksums-macos.sha256` - macOS files  
+            - `checksums-linux.sha256` - Linux files
+            
+            ### 🛠️ Installation
+            - **Windows**: Download and run the .exe file
+            - **macOS**: Extract the .zip and move to Applications
+            - **Linux**: Make AppImage executable: `chmod +x xexamai-*.AppImage`
+
