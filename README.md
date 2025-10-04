@@ -4,10 +4,11 @@
   <h2><strong>Your smart assistant for interviews and exams</strong></h2>
   <h3>⭐ <strong>Star this repository if it helped you!</strong> ⭐</h3>
 </div>
-
-## 📥 Download
-
-[![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/Artasov/xexamai/releases/latest)
+<div align="center">
+  <a href="https://github.com/Artasov/xexamai/releases/latest">
+    <img src="https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github" alt="Download Latest Release">
+  </a>
+</p>
 
 ## 🚀 Key Features
 
@@ -123,61 +124,73 @@ src/
 #### Building for Different Platforms
 
 ##### Windows
+
 ```bash
 npm run build:win
 ```
+
 Creates:
+
 - Portable executable (`xexamai-${version}.exe`)
 
 ##### macOS
+
 ```bash
 npm run build:mac
 ```
+
 Creates:
+
 - ZIP archive for Intel and Apple Silicon (`xexamai-${version}-x64.zip`, `xexamai-${version}-arm64.zip`)
 
 **Note**: For macOS builds, you may need to:
+
 1. Install Xcode Command Line Tools: `xcode-select --install`
 
 ##### Linux
+
 ```bash
 npm run build:linux
 ```
-Creates:
-- Portable directory (`linux-unpacked/`)
-- **Автоматически создается архив** (`xexamai-${version}-linux-x64.tar.gz`)
 
-**Note**: 
-- Архив готов для распространения - пользователи могут распаковать и запустить
-- Для сборки AppImage нужны дополнительные инструменты, которые сложно настроить на Windows
+Creates:
+
+- Portable directory (`linux-unpacked/`)
+- **Archive is automatically created** (`xexamai-${version}-linux-x64.tar.gz`)
+
+**Note**:
+
+- Archive is ready for distribution - users can extract and run
+- Building AppImage requires additional tools that are difficult to configure on Windows
 
 ##### Cross-platform Building
 
-**⚠️ Ограничения кроссплатформенной сборки:**
+**⚠️ Cross-platform build limitations:**
 
-- **Windows**: Может собирать только для Windows и Linux (через WSL)
-- **macOS**: Может собирать для всех платформ (Windows, macOS, Linux)
-- **Linux**: Может собирать только для Linux и Windows, но не macOS
+- **Windows**: Can only build for Windows and Linux (via WSL)
+- **macOS**: Can build for all platforms (Windows, macOS, Linux)
+- **Linux**: Can only build for Linux and Windows, but not macOS
 
-**Команды для кроссплатформенной сборки:**
+**Cross-platform build commands:**
 
 ```bash
-# На Windows - только Windows и Linux
+# On Windows - only Windows and Linux
 npm run build:all
 
-# На macOS - все платформы
+# On macOS - all platforms
 npm run build:all
 npm run build:win
 npm run build:mac  
 npm run build:linux
 
-# На Linux - только Linux и Windows
+# On Linux - only Linux and Windows
 npm run build:all
 ```
 
-**Для сборки macOS версии:**
-- Используйте macOS машину
-- Или используйте GitHub Actions (если настроите CI/CD)
+**To build macOS version:**
+
+- Use a macOS machine
+- Or use GitHub Actions (if you set up CI/CD)
 
 #### Technologies
 
