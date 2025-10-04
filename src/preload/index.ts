@@ -1,5 +1,5 @@
 import {contextBridge, ipcRenderer} from 'electron';
-import {AssistantAPI, AssistantResponse, IPCChannels} from '../main/shared/types';
+import {AssistantAPI, AssistantResponse, IPCChannels, LogEntry} from '../main/shared/types';
 
 export const api: AssistantAPI = {
     assistant: {
@@ -116,6 +116,7 @@ export const api: AssistantAPI = {
         enable: () => ipcRenderer.invoke('enable-loopback-audio'),
         disable: () => ipcRenderer.invoke('disable-loopback-audio'),
     },
+    log: (entry: LogEntry) => ipcRenderer.invoke(IPCChannels.Log, entry),
 };
 
 declare global {

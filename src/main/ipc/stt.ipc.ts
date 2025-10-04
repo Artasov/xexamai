@@ -12,9 +12,16 @@ import {
     processAudioToAnswerStream,
     transcribeAudioOnly
 } from '../services/assistant.service';
+import {logger} from '../services/logger.service';
 
 export function registerSttIpc() {
     ipcMain.handle(IPCChannels.AssistantProcess, async (_event, payload: SttProcessRequest): Promise<AssistantResponse> => {
+        logger.info('stt', 'Processing audio request', { 
+            hasAudio: !!(payload as any)?.audio, 
+            mime: payload?.mime,
+            filename: payload?.filename 
+        });
+        
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
                 throw new Error('Некорректный пакет аудио');
@@ -62,15 +69,35 @@ export function registerSttIpc() {
                 throw new Error('Аудио слишком большое (>25MB)');
             }
             const filename = payload.filename || 'lastN.webm';
+            logger.info('stt', 'Starting audio processing', { 
+                audioSize: audio.length, 
+                filename, 
+                mime: payload.mime 
+            });
+            
             const res = await processAudioToAnswer(audio, filename, payload.mime);
+            
+            logger.info('stt', 'Audio processing completed', { 
+                textLength: res.text?.length || 0,
+                answerLength: res.answer?.length || 0 
+            });
+            
             return {ok: true, text: res.text, answer: res.answer};
         } catch (err: any) {
             const message = err?.message || String(err);
+            logger.error('stt', 'Audio processing failed', { error: message });
             return {ok: false, error: message};
         }
     });
 
     ipcMain.handle(IPCChannels.AssistantProcessStream, async (event, payload: SttProcessRequest): Promise<AssistantResponse> => {
+        logger.info('stt', 'Processing audio stream request', { 
+            hasAudio: !!(payload as any)?.audio, 
+            mime: payload?.mime,
+            filename: payload?.filename,
+            requestId: payload?.requestId 
+        });
+        
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
                 throw new Error('Некорректный пакет аудио');
@@ -104,6 +131,13 @@ export function registerSttIpc() {
             const filename = payload.filename || 'lastN.webm';
             const requestId = payload.requestId || 'default';
 
+            logger.info('stt', 'Starting audio stream processing', { 
+                audioSize: audio.length, 
+                filename, 
+                mime: payload.mime,
+                requestId 
+            });
+
             event.sender.send(IPCChannels.AssistantStreamTranscript, {requestId, delta: ''});
             let accumulated = '';
             const {text} = await processAudioToAnswerStream(
@@ -118,9 +152,20 @@ export function registerSttIpc() {
                     event.sender.send(IPCChannels.AssistantStreamDone, {requestId, full: accumulated});
                 }
             );
+            
+            logger.info('stt', 'Audio stream processing completed', { 
+                textLength: text?.length || 0,
+                accumulatedLength: accumulated.length,
+                requestId 
+            });
+            
             return {ok: true, text, answer: ''};
         } catch (err: any) {
             const message = err?.message || String(err);
+            logger.error('stt', 'Audio stream processing failed', { 
+                error: message,
+                requestId: (payload as any)?.requestId 
+            });
             event.sender.send(IPCChannels.AssistantStreamError, {
                 error: message,
                 requestId: (payload as any)?.requestId
@@ -133,6 +178,13 @@ export function registerSttIpc() {
         ok: true;
         text: string
     } | { ok: false; error: string }> => {
+        logger.info('stt', 'Transcribe only request', { 
+            hasAudio: !!(payload as any)?.audio, 
+            mime: payload?.mime,
+            filename: payload?.filename,
+            audioSeconds: payload?.audioSeconds 
+        });
+        
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
                 throw new Error('Некорректный пакет аудио');
@@ -165,20 +217,43 @@ export function registerSttIpc() {
             if (audio.length > MAX_BYTES) throw new Error('Аудио слишком большое (>25MB)');
             const filename = payload.filename || 'lastN.webm';
 
+            logger.info('stt', 'Starting transcription', { 
+                audioSize: audio.length, 
+                filename, 
+                mime: payload.mime,
+                audioSeconds: payload.audioSeconds 
+            });
+
             const {text} = await transcribeAudioOnly(audio, filename, payload.mime, payload.audioSeconds);
+            
+            logger.info('stt', 'Transcription completed', { 
+                textLength: text?.length || 0 
+            });
+            
             return {ok: true, text};
         } catch (err: any) {
             const message = err?.message || String(err);
+            logger.error('stt', 'Transcription failed', { error: message });
             return {ok: false, error: message};
         }
     });
 
     ipcMain.handle(IPCChannels.AssistantAskChat, async (event, payload: AskChatRequest): Promise<void> => {
+        logger.info('chat', 'Chat request received', { 
+            textLength: payload?.text?.length || 0,
+            requestId: payload?.requestId 
+        });
+        
         try {
             if (!payload || !payload.text) {
                 throw new Error('Пустой текст для отправки');
             }
             const requestId = payload.requestId || 'default';
+
+            logger.info('chat', 'Starting chat processing', { 
+                textLength: payload.text.length,
+                requestId 
+            });
 
             event.sender.send(IPCChannels.AssistantStreamTranscript, {requestId, delta: ''});
             let accumulated = '';
@@ -192,8 +267,17 @@ export function registerSttIpc() {
                     event.sender.send(IPCChannels.AssistantStreamDone, {requestId, full: accumulated});
                 }
             );
+            
+            logger.info('chat', 'Chat processing completed', { 
+                responseLength: accumulated.length,
+                requestId 
+            });
         } catch (err: any) {
             const message = err?.message || String(err);
+            logger.error('chat', 'Chat processing failed', { 
+                error: message,
+                requestId: (payload as any)?.requestId 
+            });
             event.sender.send(IPCChannels.AssistantStreamError, {
                 error: message,
                 requestId: (payload as any)?.requestId

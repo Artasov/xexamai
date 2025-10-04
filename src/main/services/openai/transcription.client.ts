@@ -3,6 +3,7 @@ import {toFile} from 'openai/uploads';
 import {getConfig} from '../config.service';
 import {withRetry} from '../retry.service';
 import {calculateWhisperTimeout, DefaultTimeoutConfig} from '../timeout.config';
+import {logger} from '../logger.service';
 
 let client: OpenAI | null = null;
 
@@ -26,6 +27,18 @@ export async function transcribeAudio(
     const cfg = getConfig();
     if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
+    logger.info('transcription', 'Starting OpenAI transcription', { 
+        bufferSize: buffer.length, 
+        filename, 
+        mime: _mime, 
+        model: cfg.transcriptionModel,
+        audioSeconds,
+        hasPrompt: !!cfg.transcriptionPrompt,
+        prompt: cfg.transcriptionPrompt || null,
+        apiKey: cfg.openaiApiKey ? `${cfg.openaiApiKey.substring(0, 8)}...` : null,
+        baseUrl: cfg.openaiBaseUrl || 'https://api.openai.com'
+    });
+
     const timeoutMs = audioSeconds ? calculateWhisperTimeout(audioSeconds) : DefaultTimeoutConfig.whisperTimeoutMs;
 
     return withRetry(
@@ -43,8 +56,27 @@ export async function transcribeAudio(
                 transcriptionParams.prompt = cfg.transcriptionPrompt;
             }
             
+            logger.info('transcription', 'Sending HTTP request to OpenAI', {
+                url: `${cfg.openaiBaseUrl || 'https://api.openai.com'}/v1/audio/transcriptions`,
+                method: 'POST',
+                model: cfg.transcriptionModel,
+                hasPrompt: !!cfg.transcriptionPrompt,
+                prompt: cfg.transcriptionPrompt || null,
+                temperature: 0.2,
+                responseFormat: 'json'
+            });
+
             const res = await getClient().audio.transcriptions.create(transcriptionParams);
-            return (res as any).text || '';
+            const text = (res as any).text || '';
+            
+            logger.info('transcription', 'OpenAI transcription completed', { 
+                textLength: text.length,
+                model: cfg.transcriptionModel,
+                transcribedText: text,
+                responseTime: Date.now()
+            });
+            
+            return text;
         },
         cfg.retryConfig,
         'Audio transcription',

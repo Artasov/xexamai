@@ -50,6 +50,7 @@ export const IPCChannels = {
     SetLlmModel: 'settings:set:llm-model',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
+    Log: 'log:entry',
 } as const;
 
 export type ProcessAudioArgs = {
@@ -82,6 +83,14 @@ export type AudioDevice = {
     deviceId: string;
     label: string;
     kind: 'audioinput' | 'audiooutput';
+};
+
+export type LogEntry = {
+    timestamp: string;
+    level: 'info' | 'warn' | 'error' | 'debug';
+    category: string;
+    message: string;
+    data?: any;
 };
 
 export type AssistantAPI = {
@@ -123,6 +132,7 @@ export type AssistantAPI = {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
     };
+    log: (entry: LogEntry) => Promise<void>;
 };
 
 

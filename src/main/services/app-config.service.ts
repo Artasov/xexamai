@@ -1,6 +1,7 @@
 import {app} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import {logger} from './logger.service';
 
 export interface AppConfigData {
     openaiApiKey?: string;
@@ -68,18 +69,34 @@ export class AppConfigService {
     }
 
     public setOpenaiApiKey(key: string): void {
+        const oldKey = this.configData.openaiApiKey;
         this.configData.openaiApiKey = key;
         this.saveConfig();
+        logger.info('settings', 'API key updated', { 
+            hasOldKey: !!oldKey, 
+            hasNewKey: !!key,
+            keyLength: key?.length 
+        });
     }
 
     public setWindowOpacity(opacity: number): void {
+        const oldOpacity = this.configData.windowOpacity;
         this.configData.windowOpacity = Math.max(5, Math.min(100, opacity));
         this.saveConfig();
+        logger.info('settings', 'Window opacity changed', { 
+            oldOpacity, 
+            newOpacity: this.configData.windowOpacity 
+        });
     }
 
     public setDurations(durations: number[]): void {
+        const oldDurations = this.configData.durations;
         this.configData.durations = durations;
         this.saveConfig();
+        logger.info('settings', 'Recording durations updated', { 
+            oldDurations, 
+            newDurations: durations 
+        });
     }
 
     public getConfigDirectory(): string {
@@ -99,8 +116,13 @@ export class AppConfigService {
     }
 
     public setAudioInputDevice(deviceId: string): void {
+        const oldDevice = this.configData.audioInputDeviceId;
         this.configData.audioInputDeviceId = deviceId;
         this.saveConfig();
+        logger.info('settings', 'Audio input device changed', { 
+            oldDevice, 
+            newDevice: deviceId 
+        });
     }
 
     public getAudioInputDevice(): string | undefined {
@@ -108,8 +130,13 @@ export class AppConfigService {
     }
 
     public setAudioInputType(type: 'microphone' | 'system'): void {
+        const oldType = this.configData.audioInputType;
         this.configData.audioInputType = type;
         this.saveConfig();
+        logger.info('settings', 'Audio input type changed', { 
+            oldType, 
+            newType: type 
+        });
     }
 
     public getAudioInputType(): 'microphone' | 'system' {
@@ -117,8 +144,13 @@ export class AppConfigService {
     }
 
     public setTranscriptionModel(model: string): void {
+        const oldModel = this.configData.transcriptionModel;
         this.configData.transcriptionModel = model;
         this.saveConfig();
+        logger.info('settings', 'Transcription model changed', { 
+            oldModel, 
+            newModel: model 
+        });
     }
 
     public getTranscriptionModel(): string {
@@ -126,8 +158,13 @@ export class AppConfigService {
     }
 
     public setTranscriptionPrompt(prompt: string): void {
+        const oldPrompt = this.configData.transcriptionPrompt;
         this.configData.transcriptionPrompt = prompt;
         this.saveConfig();
+        logger.info('settings', 'Transcription prompt changed', { 
+            oldPromptLength: oldPrompt?.length, 
+            newPromptLength: prompt.length 
+        });
     }
 
     public getTranscriptionPrompt(): string | undefined {
@@ -135,8 +172,13 @@ export class AppConfigService {
     }
 
     public setLlmModel(model: string): void {
+        const oldModel = this.configData.llmModel;
         this.configData.llmModel = model;
         this.saveConfig();
+        logger.info('settings', 'LLM model changed', { 
+            oldModel, 
+            newModel: model 
+        });
     }
 
     public getLlmModel(): string {

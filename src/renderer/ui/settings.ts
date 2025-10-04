@@ -1,4 +1,5 @@
 import type {AppSettings} from '../types.js';
+import {logger} from '../utils/logger.js';
 
 export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;
@@ -225,6 +226,7 @@ export class SettingsPanel {
             saveApiKeyBtn.addEventListener('click', async () => {
                 const key = apiKeyInput.value.trim();
                 if (key) {
+                    logger.info('settings', 'API key save button clicked');
                     try {
                         await window.api.settings.setOpenaiApiKey(key);
                         this.settings.openaiApiKey = key;
@@ -244,6 +246,7 @@ export class SettingsPanel {
                 const target = e.target as HTMLInputElement;
                 const value = parseInt(target.value);
                 opacityValue.textContent = `${value}%`;
+                logger.info('settings', 'Window opacity changed', { opacity: value });
 
                 try {
                     await window.api.settings.setWindowOpacity(value);
@@ -261,6 +264,7 @@ export class SettingsPanel {
             addDurationBtn.addEventListener('click', async () => {
                 const duration = parseInt(newDurationInput.value);
                 if (duration && duration > 0 && duration <= 300) {
+                    logger.info('settings', 'Duration add button clicked', { duration });
                     const newDurations = [...(this.settings.durations || []), duration].sort((a, b) => a - b);
                     try {
                         await window.api.settings.setDurations(newDurations);
@@ -281,6 +285,7 @@ export class SettingsPanel {
             if (target.closest('.remove-duration')) {
                 const button = target.closest('.remove-duration') as HTMLElement;
                 const duration = parseInt(button.dataset.duration || '0');
+                logger.info('settings', 'Duration remove button clicked', { duration });
                 const newDurations = (this.settings.durations || []).filter((d: number) => d !== duration);
 
                 try {
@@ -301,6 +306,7 @@ export class SettingsPanel {
 
             transcriptionModelSelect.addEventListener('change', async () => {
                 const model = transcriptionModelSelect.value;
+                logger.info('settings', 'Transcription model changed', { model });
                 try {
                     await window.api.settings.setTranscriptionModel(model);
                     this.settings.transcriptionModel = model;
@@ -317,6 +323,7 @@ export class SettingsPanel {
 
             llmModelSelect.addEventListener('change', async () => {
                 const model = llmModelSelect.value;
+                logger.info('settings', 'LLM model changed', { model });
                 try {
                     await window.api.settings.setLlmModel(model);
                     this.settings.llmModel = model;
@@ -333,6 +340,7 @@ export class SettingsPanel {
         if (saveTranscriptionPromptBtn && transcriptionPromptTextarea) {
             saveTranscriptionPromptBtn.addEventListener('click', async () => {
                 const prompt = transcriptionPromptTextarea.value.trim();
+                logger.info('settings', 'Transcription prompt save button clicked', { promptLength: prompt.length });
                 try {
                     await window.api.settings.setTranscriptionPrompt(prompt);
                     this.settings.transcriptionPrompt = prompt;
@@ -349,6 +357,7 @@ export class SettingsPanel {
 
             audioInputTypeSelect.addEventListener('change', async () => {
                 const audioType = audioInputTypeSelect.value as 'microphone' | 'system';
+                logger.info('settings', 'Audio input type changed', { audioType });
                 try {
                     await window.api.settings.setAudioInputType(audioType);
                     this.settings.audioInputType = audioType;
@@ -364,6 +373,7 @@ export class SettingsPanel {
         if (audioInputDeviceSelect) {
             audioInputDeviceSelect.addEventListener('change', async () => {
                 const deviceId = audioInputDeviceSelect.value;
+                logger.info('settings', 'Audio input device changed', { deviceId });
                 try {
                     await window.api.settings.setAudioInputDevice(deviceId);
                     this.settings.audioInputDeviceId = deviceId;
@@ -377,6 +387,7 @@ export class SettingsPanel {
         const refreshDevicesBtn = this.container.querySelector('#refreshDevices');
         if (refreshDevicesBtn) {
             refreshDevicesBtn.addEventListener('click', async () => {
+                logger.info('settings', 'Audio devices refresh button clicked');
                 await this.loadAudioDevices();
                 this.showNotification('Audio devices refreshed');
             });
@@ -385,6 +396,7 @@ export class SettingsPanel {
         const openConfigFolderBtn = this.container.querySelector('#openConfigFolder');
         if (openConfigFolderBtn) {
             openConfigFolderBtn.addEventListener('click', async () => {
+                logger.info('settings', 'Open config folder button clicked');
                 try {
                     await window.api.settings.openConfigFolder();
                 } catch (error) {

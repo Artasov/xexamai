@@ -8,6 +8,7 @@ import {ensureWave, hideWave, showWave} from './ui/waveform.js';
 import {floatsToWav} from './audio/encoder.js';
 import {PcmRingBuffer} from './audio/pcmRingBuffer.js';
 import {SettingsPanel} from './ui/settings.js';
+import {logger} from './utils/logger.js';
 
 import type {AssistantAPI} from './types.js';
 
@@ -69,11 +70,13 @@ async function getSystemAudioStream(): Promise<MediaStream> {
 }
 
 async function startRecording() {
+    logger.info('recording', 'Starting recording');
     const stream = await getSystemAudioStream();
     const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
         : (MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : '');
     if (!mime) throw new Error('Unsupported: no suitable audio mime');
     mimeSelected = mime;
+    logger.info('recording', 'Recording started', { mime });
 
     ring = new AudioRingBuffer(state.durationSec);
     media = new MediaRecorder(stream, {mimeType: mimeSelected});
@@ -120,6 +123,7 @@ async function startRecording() {
 }
 
 async function stopRecording() {
+    logger.info('recording', 'Stopping recording');
     media?.stop();
     media?.stream.getTracks().forEach((t) => t.stop());
     media = null;
@@ -151,6 +155,7 @@ async function stopRecording() {
 }
 
 async function handleAskWindow(seconds: number) {
+    logger.info('ui', 'Handle ask window', { seconds });
     if (!pcmRing) {
         setStatus('No audio', 'error');
         return;
@@ -237,6 +242,10 @@ async function handleAskWindow(seconds: number) {
 }
 
 async function handleTextSend(text: string) {
+    logger.info('ui', 'Handle text send', { 
+        textLength: text.length,
+        inputText: text 
+    });
     setProcessing(true);
     updateButtonsState();
 

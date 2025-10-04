@@ -1,9 +1,11 @@
 import {BrowserWindow, ipcMain, shell} from 'electron';
 import {AppSettings, DefaultSettings, IPCChannels} from '../shared/types';
 import {appConfigService} from '../services/app-config.service';
+import {logger} from '../services/logger.service';
 
 export function registerSettingsIpc() {
     ipcMain.handle(IPCChannels.GetSettings, async (): Promise<AppSettings> => {
+        logger.info('settings', 'Settings requested');
         const config = appConfigService.getConfig();
         return {
             durations: config.durations || DefaultSettings.durations,
@@ -63,6 +65,7 @@ export function registerSettingsIpc() {
     });
 
     ipcMain.handle(IPCChannels.OpenConfigFolder, async (): Promise<void> => {
+        logger.info('settings', 'Opening config folder');
         const configDir = appConfigService.getConfigDirectory();
         shell.openPath(configDir);
     });

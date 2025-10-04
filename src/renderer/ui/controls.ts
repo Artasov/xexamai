@@ -1,5 +1,6 @@
 ﻿import {setRecording, state} from '../state/appState.js';
 import {setStatus} from './status.js';
+import {logger} from '../utils/logger.js';
 
 type ControlsInitArgs = {
     onRecordToggle: (shouldRecord: boolean) => Promise<void> | void;
@@ -67,6 +68,7 @@ export function updateDurations(durations: number[], onDurationChange?: (sec: nu
                 if (state.isProcessing) {
                     return;
                 }
+                logger.info('ui', 'Duration button clicked', { duration: sec });
                 setStatus(`Sending last ${sec}s...`, 'sending');
                 onDurationChange?.(sec);
             });
@@ -107,6 +109,7 @@ function initTextInput(onTextSend?: (text: string) => Promise<void> | void) {
         const text = textInput.value.trim();
         if (!text) return;
 
+        logger.info('ui', 'Send text button clicked', { textLength: text.length });
         await onTextSend(text);
     });
 
@@ -132,6 +135,7 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
         }
 
         const shouldStart = !state.isRecording;
+        logger.info('ui', 'Record button clicked', { shouldStart });
         setRecording(shouldStart);
         btnRecord.disabled = true;
         try {

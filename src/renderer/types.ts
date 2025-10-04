@@ -43,6 +43,14 @@ export type AudioDevice = {
     kind: 'audioinput' | 'audiooutput';
 };
 
+export type LogEntry = {
+    timestamp: string;
+    level: 'info' | 'warn' | 'error' | 'debug';
+    category: string;
+    message: string;
+    data?: any;
+};
+
 export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
@@ -82,4 +90,5 @@ export type AssistantAPI = {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
     };
+    log: (entry: LogEntry) => Promise<void>;
 };
