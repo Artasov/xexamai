@@ -39,6 +39,7 @@
     "wait-on": "9.0.1"
   },
   "dependencies": {
+    "@xenova/transformers": "^2.17.2",
     "dotenv": "17.2.3",
     "electron-audio-loopback": "1.0.6",
     "openai": "6.1.0"

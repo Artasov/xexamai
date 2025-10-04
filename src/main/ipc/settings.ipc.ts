@@ -1,5 +1,5 @@
 import {BrowserWindow, ipcMain, shell} from 'electron';
-import {AppSettings, DefaultSettings, IPCChannels} from '../shared/types';
+import {AppSettings, DefaultSettings, IPCChannels, TranscriptionMode, WhisperModel} from '../shared/types';
 import {appConfigService} from '../services/app-config.service';
 import {logger} from '../services/logger.service';
 
@@ -16,6 +16,8 @@ export function registerSettingsIpc() {
             transcriptionModel: config.transcriptionModel,
             transcriptionPrompt: config.transcriptionPrompt !== undefined ? config.transcriptionPrompt : 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
             llmModel: config.llmModel,
+            transcriptionMode: config.transcriptionMode || DefaultSettings.transcriptionMode,
+            localWhisperModel: config.localWhisperModel || DefaultSettings.localWhisperModel,
         };
     });
 
@@ -62,6 +64,14 @@ export function registerSettingsIpc() {
         kind: 'audioinput' | 'audiooutput'
     }[]> => {
         return [];
+    });
+
+    ipcMain.handle(IPCChannels.SetTranscriptionMode, async (_, mode: TranscriptionMode): Promise<void> => {
+        appConfigService.setTranscriptionMode(mode);
+    });
+
+    ipcMain.handle(IPCChannels.SetLocalWhisperModel, async (_, model: WhisperModel): Promise<void> => {
+        appConfigService.setLocalWhisperModel(model);
     });
 
     ipcMain.handle(IPCChannels.OpenConfigFolder, async (): Promise<void> => {

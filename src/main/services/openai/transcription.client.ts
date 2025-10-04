@@ -4,6 +4,7 @@ import {getConfig} from '../config.service';
 import {withRetry} from '../retry.service';
 import {calculateWhisperTimeout, DefaultTimeoutConfig} from '../timeout.config';
 import {logger} from '../logger.service';
+import {whisperLocalService} from '../whisper-local.service';
 
 let client: OpenAI | null = null;
 
@@ -19,6 +20,70 @@ function getClient(): OpenAI {
 }
 
 export async function transcribeAudio(
+    buffer: Buffer,
+    filename = 'audio.webm',
+    _mime: string = 'audio/webm',
+    audioSeconds?: number
+): Promise<string> {
+    const cfg = getConfig();
+
+    // Проверяем режим транскрипции
+    if (cfg.transcriptionMode === 'local') {
+        return await transcribeAudioLocal(buffer, filename, _mime, audioSeconds);
+    } else {
+        return await transcribeAudioApi(buffer, filename, _mime, audioSeconds);
+    }
+}
+
+async function transcribeAudioLocal(
+    buffer: Buffer,
+    filename = 'audio.webm',
+    _mime: string = 'audio/webm',
+    audioSeconds?: number
+): Promise<string> {
+    const cfg = getConfig();
+    
+    logger.info('transcription', 'Starting local Whisper transcription', { 
+        bufferSize: buffer.length, 
+        filename, 
+        mime: _mime, 
+        model: cfg.localWhisperModel,
+        audioSeconds
+    });
+
+    try {
+        // Инициализируем модель если она еще не загружена
+        if (!(await whisperLocalService.isModelLoaded(cfg.localWhisperModel))) {
+            await whisperLocalService.initialize(cfg.localWhisperModel);
+        }
+
+        const text = await whisperLocalService.transcribe(buffer, {
+            language: 'ru', // Русский язык по умолчанию
+            task: 'transcribe',
+            chunk_length_s: audioSeconds ? Math.max(audioSeconds, 10) : 30,
+            stride_length_s: 5,
+        });
+
+        logger.info('transcription', 'Local Whisper transcription completed', { 
+            textLength: text.length,
+            model: cfg.localWhisperModel,
+            transcribedText: text
+        });
+
+        return text;
+    } catch (error) {
+        logger.error('transcription', 'Local Whisper transcription failed', { 
+            error: error instanceof Error ? error.message : String(error),
+            model: cfg.localWhisperModel
+        });
+        
+        // Fallback на API если локальное распознавание не удалось
+        logger.info('transcription', 'Falling back to API transcription');
+        return await transcribeAudioApi(buffer, filename, _mime, audioSeconds);
+    }
+}
+
+async function transcribeAudioApi(
     buffer: Buffer,
     filename = 'audio.webm',
     _mime: string = 'audio/webm',

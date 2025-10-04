@@ -2,6 +2,7 @@ import {app} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {logger} from './logger.service';
+import {WhisperModel, TranscriptionMode} from '../shared/types';
 
 export interface AppConfigData {
     openaiApiKey?: string;
@@ -12,6 +13,8 @@ export interface AppConfigData {
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
+    transcriptionMode?: TranscriptionMode;
+    localWhisperModel?: WhisperModel;
 }
 
 export class AppConfigService {
@@ -41,7 +44,9 @@ export class AppConfigService {
                     windowOpacity: 100,
                     durations: [5, 10, 15, 20, 30, 60],
                     transcriptionModel: 'gpt-4o-mini-transcribe',
-                    transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'
+                    transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
+                    transcriptionMode: 'api',
+                    localWhisperModel: 'base'
                 };
                 this.saveConfig();
             }
@@ -51,7 +56,9 @@ export class AppConfigService {
                 windowOpacity: 100,
                 durations: [5, 10, 15, 20, 30, 60],
                 transcriptionModel: 'gpt-4o-mini-transcribe',
-                transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'
+                transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
+                transcriptionMode: 'api',
+                localWhisperModel: 'base'
             };
         }
     }
@@ -183,6 +190,34 @@ export class AppConfigService {
 
     public getLlmModel(): string {
         return this.configData.llmModel || 'gpt-4.1-nano';
+    }
+
+    public setTranscriptionMode(mode: TranscriptionMode): void {
+        const oldMode = this.configData.transcriptionMode;
+        this.configData.transcriptionMode = mode;
+        this.saveConfig();
+        logger.info('settings', 'Transcription mode changed', { 
+            oldMode, 
+            newMode: mode 
+        });
+    }
+
+    public getTranscriptionMode(): TranscriptionMode {
+        return this.configData.transcriptionMode || 'api';
+    }
+
+    public setLocalWhisperModel(model: WhisperModel): void {
+        const oldModel = this.configData.localWhisperModel;
+        this.configData.localWhisperModel = model;
+        this.saveConfig();
+        logger.info('settings', 'Local Whisper model changed', { 
+            oldModel, 
+            newModel: model 
+        });
+    }
+
+    public getLocalWhisperModel(): WhisperModel {
+        return this.configData.localWhisperModel || 'base';
     }
 }
 

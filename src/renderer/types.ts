@@ -1,3 +1,7 @@
+export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'large-v2' | 'large-v3';
+
+export type TranscriptionMode = 'api' | 'local';
+
 export type AppSettings = {
     durations: number[]; // seconds
     openaiApiKey?: string;
@@ -7,6 +11,8 @@ export type AppSettings = {
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
+    transcriptionMode?: TranscriptionMode;
+    localWhisperModel?: WhisperModel;
 };
 
 export type AssistantResponse = {
@@ -79,6 +85,8 @@ export type AssistantAPI = {
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
         setLlmModel: (model: string) => Promise<void>;
+        setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
+        setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };

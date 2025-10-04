@@ -31,6 +31,7 @@ export class SettingsPanel {
         this.attachEventListeners();
         await this.loadAudioDevices();
         this.updateAudioTypeVisibility();
+        this.updateTranscriptionModeVisibility();
     }
 
     private render() {
@@ -66,12 +67,37 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
-                    <h3 class="settings-title">Transcription Model</h3>
+                    <h3 class="settings-title">Transcription Mode</h3>
+                    <div class="input-group">
+                        <select id="transcriptionMode" class="input-field">
+                            <option value="api">API</option>
+                            <option value="local">Local</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="apiTranscriptionSection">
+                    <h3 class="settings-title">API Transcription Model</h3>
                     <div class="input-group">
                         <select id="transcriptionModel" class="input-field">
                             <option value="gpt-4o-mini-transcribe">GPT-4o Mini Transcribe (Default)</option>
                             <option value="whisper-1">Whisper-1 (Balanced)</option>
                             <option value="gpt-4o-transcribe">GPT-4o Transcribe (High Quality)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="localTranscriptionSection" style="display: none;">
+                    <h3 class="settings-title">Local Whisper Model</h3>
+                    <div class="input-group">
+                        <select id="localWhisperModel" class="input-field">
+                            <option value="tiny">Tiny (~39 MB) - Быстрая, но менее точная</option>
+                            <option value="base">Base (~74 MB) - Баланс скорости и точности</option>
+                            <option value="small">Small (~244 MB) - Хорошая точность</option>
+                            <option value="medium">Medium (~769 MB) - Высокая точность</option>
+                            <option value="large">Large (~1550 MB) - Очень высокая точность</option>
+                            <option value="large-v2">Large V2 (~1550 MB) - Улучшенная версия Large</option>
+                            <option value="large-v3">Large V3 (~1550 MB) - Последняя версия Large</option>
                         </select>
                     </div>
                 </div>
@@ -165,6 +191,18 @@ export class SettingsPanel {
         if (audioInputType && microphoneSection) {
             const isMicrophone = audioInputType.value === 'microphone';
             microphoneSection.style.display = isMicrophone ? 'block' : 'none';
+        }
+    }
+
+    private updateTranscriptionModeVisibility() {
+        const transcriptionMode = this.container.querySelector('#transcriptionMode') as HTMLSelectElement;
+        const apiSection = this.container.querySelector('#apiTranscriptionSection') as HTMLElement;
+        const localSection = this.container.querySelector('#localTranscriptionSection') as HTMLElement;
+
+        if (transcriptionMode && apiSection && localSection) {
+            const isLocal = transcriptionMode.value === 'local';
+            apiSection.style.display = isLocal ? 'none' : 'block';
+            localSection.style.display = isLocal ? 'block' : 'none';
         }
     }
 
@@ -300,6 +338,24 @@ export class SettingsPanel {
             }
         });
 
+        const transcriptionModeSelect = this.container.querySelector('#transcriptionMode') as HTMLSelectElement;
+        if (transcriptionModeSelect) {
+            transcriptionModeSelect.value = this.settings.transcriptionMode || 'api';
+
+            transcriptionModeSelect.addEventListener('change', async () => {
+                const mode = transcriptionModeSelect.value as 'api' | 'local';
+                logger.info('settings', 'Transcription mode changed', { mode });
+                try {
+                    await window.api.settings.setTranscriptionMode(mode);
+                    this.settings.transcriptionMode = mode;
+                    this.updateTranscriptionModeVisibility();
+                    this.showNotification(`Transcription mode changed to ${mode === 'api' ? 'API' : 'Local'}`);
+                } catch (error) {
+                    this.showNotification('Error saving transcription mode', 'error');
+                }
+            });
+        }
+
         const transcriptionModelSelect = this.container.querySelector('#transcriptionModel') as HTMLSelectElement;
         if (transcriptionModelSelect) {
             transcriptionModelSelect.value = this.settings.transcriptionModel || 'gpt-4o-mini-transcribe';
@@ -313,6 +369,23 @@ export class SettingsPanel {
                     this.showNotification(`Transcription model changed to ${model}`);
                 } catch (error) {
                     this.showNotification('Error saving transcription model', 'error');
+                }
+            });
+        }
+
+        const localWhisperModelSelect = this.container.querySelector('#localWhisperModel') as HTMLSelectElement;
+        if (localWhisperModelSelect) {
+            localWhisperModelSelect.value = this.settings.localWhisperModel || 'base';
+
+            localWhisperModelSelect.addEventListener('change', async () => {
+                const model = localWhisperModelSelect.value as 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'large-v2' | 'large-v3';
+                logger.info('settings', 'Local Whisper model changed', { model });
+                try {
+                    await window.api.settings.setLocalWhisperModel(model);
+                    this.settings.localWhisperModel = model;
+                    this.showNotification(`Local Whisper model changed to ${model}`);
+                } catch (error) {
+                    this.showNotification('Error saving local Whisper model', 'error');
                 }
             });
         }
