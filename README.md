@@ -19,7 +19,7 @@
 
 ## 📥 Download
 
-[![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/yourusername/xexamai/releases/latest)
+[![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/Artasov/xexamai/releases/latest)
 
 ## 🎯 How to Use
 
@@ -76,7 +76,7 @@ We welcome contributions to the project! If you want to contribute:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/xexamai.git
+git clone https://github.com/Artasov/xexamai.git
 cd xexamai
 
 # Install dependencies
