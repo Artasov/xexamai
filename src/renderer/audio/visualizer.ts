@@ -128,7 +128,7 @@ export class AudioVisualizer {
         ctx.fillStyle = '#60a5fa';
         const totalBarWidth = n * (barW + gap) - gap;
         const startX = Math.max(0, (width - totalBarWidth) / 2);
-        
+
         for (let i = 0; i < n; i++) {
             const amp = bars[i];
             const x = startX + i * (barW + gap);

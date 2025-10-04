@@ -1,7 +1,7 @@
 ﻿import {initControls, updateButtonsState, updateDurations} from './ui/controls.js';
 import {setStatus} from './ui/status.js';
 import {showAnswer, showText} from './ui/outputs.js';
-import {state, setProcessing} from './state/appState.js';
+import {setProcessing, state} from './state/appState.js';
 import {AudioRingBuffer} from './audio/ringBuffer.js';
 import {AudioVisualizer} from './audio/visualizer.js';
 import {ensureWave, hideWave, showWave} from './ui/waveform.js';
@@ -9,10 +9,12 @@ import {floatsToWav} from './audio/encoder.js';
 import {PcmRingBuffer} from './audio/pcmRingBuffer.js';
 import {SettingsPanel} from './ui/settings.js';
 
-import type { AssistantAPI } from './types.js';
+import type {AssistantAPI} from './types.js';
 
 declare global {
-    interface Window { api: AssistantAPI; }
+    interface Window {
+        api: AssistantAPI;
+    }
 }
 
 let media: MediaRecorder | null = null;
@@ -31,17 +33,17 @@ async function getSystemAudioStream(): Promise<MediaStream> {
     try {
         const settings = await window.api.settings.get();
         const audioInputType = settings.audioInputType || 'microphone';
-        
+
         if (audioInputType === 'system') {
             try {
                 await window.api.loopback.enable();
-                
+
                 const disp = await navigator.mediaDevices.getDisplayMedia({audio: true, video: true});
                 const audioTracks = disp.getAudioTracks();
                 const stream = new MediaStream(audioTracks);
-                
+
                 disp.getVideoTracks().forEach((t) => t.stop());
-                
+
                 return stream;
             } catch (error) {
                 console.error('Error getting system audio:', error);
@@ -49,11 +51,11 @@ async function getSystemAudioStream(): Promise<MediaStream> {
             }
         } else {
             const deviceId = settings.audioInputDeviceId;
-            
+
             if (deviceId) {
                 return navigator.mediaDevices.getUserMedia({
                     audio: {
-                        deviceId: { exact: deviceId }
+                        deviceId: {exact: deviceId}
                     }
                 });
             } else {
@@ -74,13 +76,15 @@ async function startRecording() {
     mimeSelected = mime;
 
     ring = new AudioRingBuffer(state.durationSec);
-    media = new MediaRecorder(stream, { mimeType: mimeSelected });
+    media = new MediaRecorder(stream, {mimeType: mimeSelected});
     currentStream = stream;
 
     const wave = ensureWave();
-    waveWrap = wave.wrap; waveCanvas = wave.canvas; showWave(waveWrap);
+    waveWrap = wave.wrap;
+    waveCanvas = wave.canvas;
+    showWave(waveWrap);
     if (!visualizer) visualizer = new AudioVisualizer();
-    visualizer.start(stream, waveCanvas, { bars: 72, smoothing: 0.75 });
+    visualizer.start(stream, waveCanvas, {bars: 72, smoothing: 0.75});
 
     try {
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -98,29 +102,47 @@ async function startRecording() {
         };
         srcNode.connect(scriptNode);
         scriptNode.connect(audioCtx.destination);
-    } catch {}
+    } catch {
+    }
 
     const timeslice = 1000;
     media.addEventListener('dataavailable', (ev) => {
         if (!ev.data || ev.data.size === 0 || !ring) return;
-        ring.push({ t: Date.now(), blob: ev.data, ms: timeslice } as any);
+        ring.push({t: Date.now(), blob: ev.data, ms: timeslice} as any);
     });
-    media.addEventListener('error', (ev) => { try { console.error('[mediaRecorder] error', ev.error); } catch {} });
+    media.addEventListener('error', (ev) => {
+        try {
+            console.error('[mediaRecorder] error', ev.error);
+        } catch {
+        }
+    });
     media.start(timeslice);
 }
 
 async function stopRecording() {
     media?.stop();
     media?.stream.getTracks().forEach((t) => t.stop());
-    media = null; currentStream = null;
-    try { scriptNode?.disconnect(); } catch {}
-    try { srcNode?.disconnect(); } catch {}
-    scriptNode = null; srcNode = null;
-    try { audioCtx?.close(); } catch {}
-    audioCtx = null; pcmRing = null;
+    media = null;
+    currentStream = null;
+    try {
+        scriptNode?.disconnect();
+    } catch {
+    }
+    try {
+        srcNode?.disconnect();
+    } catch {
+    }
+    scriptNode = null;
+    srcNode = null;
+    try {
+        audioCtx?.close();
+    } catch {
+    }
+    audioCtx = null;
+    pcmRing = null;
     if (visualizer) visualizer.stop();
     if (waveWrap) hideWave(waveWrap);
-    
+
     try {
         await window.api.loopback.disable();
     } catch (error) {
@@ -129,13 +151,17 @@ async function stopRecording() {
 }
 
 async function handleAskWindow(seconds: number) {
-    if (!pcmRing) { setStatus('No audio', 'error'); return; }
-    
+    if (!pcmRing) {
+        setStatus('No audio', 'error');
+        return;
+    }
+
     setProcessing(true);
     updateButtonsState();
-    
+
     setStatus('Recognizing...', 'processing');
-    showText(''); showAnswer('');
+    showText('');
+    showAnswer('');
 
     const pcm = pcmRing.getLastSecondsFloats(seconds);
     if (!pcm || pcm.channels[0].length === 0) {
@@ -165,16 +191,17 @@ async function handleAskWindow(seconds: number) {
         }
 
         showText(transcribeRes.text);
-        
+
         setStatus('Sending to ChatGPT...', 'sending');
-        
+
         try {
             (window.api.assistant as any).offStreamTranscript?.();
             (window.api.assistant as any).offStreamDelta?.();
             (window.api.assistant as any).offStreamDone?.();
             (window.api.assistant as any).offStreamError?.();
-        } catch {}
-        
+        } catch {
+        }
+
         let acc = '';
         window.api.assistant.onStreamDelta((_e: unknown, p: { requestId?: string; delta: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
@@ -200,7 +227,7 @@ async function handleAskWindow(seconds: number) {
             text: transcribeRes.text,
             requestId,
         });
-        
+
     } catch (error) {
         setStatus('Error', 'error');
         showAnswer('Error: ' + (error as any)?.message || String(error));
@@ -212,27 +239,28 @@ async function handleAskWindow(seconds: number) {
 async function handleTextSend(text: string) {
     setProcessing(true);
     updateButtonsState();
-    
+
     showText(text);
     showAnswer('');
-    
+
     const textInput = document.getElementById('textInput') as HTMLTextAreaElement | null;
     if (textInput) {
         textInput.value = '';
     }
-    
+
     const requestId = `text-send-${Date.now()}`;
-    
+
     try {
         setStatus('Sending to ChatGPT...', 'sending');
-        
+
         try {
             (window.api.assistant as any).offStreamTranscript?.();
             (window.api.assistant as any).offStreamDelta?.();
             (window.api.assistant as any).offStreamDone?.();
             (window.api.assistant as any).offStreamError?.();
-        } catch {}
-        
+        } catch {
+        }
+
         let acc = '';
         window.api.assistant.onStreamDelta((_e: unknown, p: { requestId?: string; delta: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
@@ -258,7 +286,7 @@ async function handleTextSend(text: string) {
             text,
             requestId,
         });
-        
+
     } catch (error) {
         setStatus('Error', 'error');
         showAnswer('Error: ' + (error as any)?.message || String(error));
@@ -270,30 +298,44 @@ async function handleTextSend(text: string) {
 async function main() {
     const {durations} = await window.api.settings.get();
     if (Array.isArray(durations) && durations.length) {
-        try { (state as any).durationSec = Math.max(...durations); } catch {}
+        try {
+            (state as any).durationSec = Math.max(...durations);
+        } catch {
+        }
     }
     initControls({
         durations,
-        onRecordToggle: async (shouldRecord) => { if (shouldRecord) await startRecording(); else await stopRecording(); },
-        onDurationChange: (sec) => { handleAskWindow(sec); },
-        onTextSend: (text) => { handleTextSend(text); },
+        onRecordToggle: async (shouldRecord) => {
+            if (shouldRecord) await startRecording(); else await stopRecording();
+        },
+        onDurationChange: (sec) => {
+            handleAskWindow(sec);
+        },
+        onTextSend: (text) => {
+            handleTextSend(text);
+        },
     });
-    
+
     const settingsPanelContainer = document.getElementById('settingsPanel');
     if (settingsPanelContainer) {
         new SettingsPanel(settingsPanelContainer, {
             onDurationsChange: (newDurations) => {
-                updateDurations(newDurations, (sec) => { handleAskWindow(sec); });
-                try { (state as any).durationSec = Math.max(...newDurations); } catch {}
+                updateDurations(newDurations, (sec) => {
+                    handleAskWindow(sec);
+                });
+                try {
+                    (state as any).durationSec = Math.max(...newDurations);
+                } catch {
+                }
             }
         });
     }
-    
+
     const mainTab = document.getElementById('mainTab');
     const settingsTab = document.getElementById('settingsTab');
     const mainContent = document.getElementById('mainContent');
     const settingsContent = document.getElementById('settingsContent');
-    
+
     if (mainTab && settingsTab && mainContent && settingsContent) {
         mainTab.addEventListener('click', () => {
             mainTab.classList.add('active');
@@ -301,7 +343,7 @@ async function main() {
             mainContent.classList.remove('hidden');
             settingsContent.classList.add('hidden');
         });
-        
+
         settingsTab.addEventListener('click', () => {
             settingsTab.classList.add('active');
             mainTab.classList.remove('active');
@@ -309,16 +351,16 @@ async function main() {
             mainContent.classList.add('hidden');
         });
     }
-    
+
     const minimizeBtn = document.getElementById('minimizeBtn');
     const closeBtn = document.getElementById('closeBtn');
-    
+
     if (minimizeBtn) {
         minimizeBtn.addEventListener('click', () => {
             window.api.window.minimize();
         });
     }
-    
+
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             window.api.window.close();
@@ -326,14 +368,21 @@ async function main() {
     }
 }
 
-main().catch((e) => { console.error(e); setStatus('Initialization error', 'error'); });
+main().catch((e) => {
+    console.error(e);
+    setStatus('Initialization error', 'error');
+});
 
 async function recordFromStream(stream: MediaStream, seconds: number, mime: string): Promise<Blob> {
     return new Promise<Blob>((resolve) => {
-        const rec = new MediaRecorder(stream, { mimeType: mime });
+        const rec = new MediaRecorder(stream, {mimeType: mime});
         const chunks: Blob[] = [];
-        rec.addEventListener('dataavailable', (ev) => { if (ev.data && ev.data.size > 0) chunks.push(ev.data); });
-        rec.addEventListener('stop', () => { resolve(new Blob(chunks, { type: mime })); });
+        rec.addEventListener('dataavailable', (ev) => {
+            if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+        });
+        rec.addEventListener('stop', () => {
+            resolve(new Blob(chunks, {type: mime}));
+        });
         rec.start();
         setTimeout(() => rec.stop(), Math.max(250, seconds * 1000));
     });

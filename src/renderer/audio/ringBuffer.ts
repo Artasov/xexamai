@@ -145,7 +145,8 @@ export class AudioRingBuffer {
     async getLastSecondsWavBlob(seconds: number): Promise<Blob | null> {
         try {
             console.debug('[ringBuffer.getLastSecondsWavBlob] start - chunks:', this.chunks.length, 'totalMs:', this.totalMs(), 'needSeconds:', seconds);
-        } catch {}
+        } catch {
+        }
         if (!this.chunks.length) return null;
         const needMs = Math.max(0, seconds * 1000);
         let acc = 0;
@@ -161,7 +162,10 @@ export class AudioRingBuffer {
         parts.reverse();
         const mod = await import('./encoder.js');
         const wav = await (mod as any).blobsToWav(parts);
-        try { console.debug('[ringBuffer.getLastSecondsWavBlob] parts:', parts.length, 'wav size:', wav.size); } catch {}
+        try {
+            console.debug('[ringBuffer.getLastSecondsWavBlob] parts:', parts.length, 'wav size:', wav.size);
+        } catch {
+        }
         return wav;
     }
 }

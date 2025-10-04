@@ -24,20 +24,23 @@
 ## 🎯 How to Use
 
 ### 1. Setup
+
 1. Open xexamai application
 2. Go to **"Settings"** tab
 3. Enter your **OpenAI API key** (get it from [platform.openai.com](https://platform.openai.com))
 4. Choose **audio input device**:
-   - **System Audio** - for recording sound from applications (Zoom, Teams, etc.)
-   - **Microphone** - for recording your voice
+    - **System Audio** - for recording sound from applications (Zoom, Teams, etc.)
+    - **Microphone** - for recording your voice
 
 ### 2. Usage
+
 1. Switch to **"Main"** tab
 2. Click **"Start Listening"** - the app will start recording audio in the background
 3. When needed, click **"Send Last X Seconds"** to get an AI response
 4. Get instant answers to help you during interviews or exams
 
 ### 3. Usage Tips
+
 - **For interviews**: use system audio to record interviewer's questions
 - **For exams**: configure microphone to record your questions
 - **Adjust transparency** for maximum stealth
@@ -65,10 +68,12 @@ We welcome contributions to the project! If you want to contribute:
 ### Local Development
 
 #### Requirements
+
 - Node.js 20+
 - npm or yarn
 
 #### Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/xexamai.git
@@ -85,6 +90,7 @@ npm run dev
 ```
 
 #### Project Structure
+
 ```
 src/
 ├── main/           # Electron main process
@@ -94,12 +100,14 @@ src/
 ```
 
 #### Available Commands
+
 - `npm run dev` - run in development mode
 - `npm run build` - build the project
 - `npm run build:exe` - create executable file
 - `npm run clean` - clean build directory
 
 #### Technologies
+
 - **Electron** - cross-platform desktop application
 - **TypeScript** - typed JavaScript
 - **Tailwind CSS** - utility-first CSS framework

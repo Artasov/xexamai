@@ -28,7 +28,7 @@ function registerWindowIpc() {
             mainWindow.minimize();
         }
     });
-    
+
     ipcMain.handle('window:close', () => {
         if (mainWindow) {
             mainWindow.close();

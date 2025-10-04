@@ -4,7 +4,7 @@ import {appConfigService} from '../services/app-config.service';
 
 export function createMainWindow(): BrowserWindow {
     const opacity = appConfigService.getWindowOpacity();
-    
+
     const win = new BrowserWindow({
         width: 420,
         height: 780,
@@ -47,16 +47,16 @@ export function createMainWindow(): BrowserWindow {
     win.setSkipTaskbar(true);
 
     win.once('ready-to-show', () => {
-        const shouldOpenDevTools = process.env.NODE_ENV === 'development' || 
-                                  process.env.OPEN_DEVTOOLS === 'true';
-        
+        const shouldOpenDevTools = process.env.NODE_ENV === 'development' ||
+            process.env.OPEN_DEVTOOLS === 'true';
+
         if (shouldOpenDevTools) {
             win.webContents.openDevTools({mode: 'detach'});
         }
-        
+
         win.setContentProtection(true);
         win.setSkipTaskbar(true);
-        
+
         win.show();
     });
 

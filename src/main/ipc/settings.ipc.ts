@@ -1,4 +1,4 @@
-import {ipcMain, shell, BrowserWindow} from 'electron';
+import {BrowserWindow, ipcMain, shell} from 'electron';
 import {AppSettings, DefaultSettings, IPCChannels} from '../shared/types';
 import {appConfigService} from '../services/app-config.service';
 
@@ -20,7 +20,7 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetWindowOpacity, async (_, opacity: number): Promise<void> => {
         appConfigService.setWindowOpacity(opacity);
-        
+
         const mainWindow = BrowserWindow.getAllWindows()[0];
         if (mainWindow) {
             mainWindow.setOpacity(opacity / 100);
@@ -39,7 +39,11 @@ export function registerSettingsIpc() {
         appConfigService.setAudioInputType(type);
     });
 
-    ipcMain.handle(IPCChannels.GetAudioDevices, async (): Promise<{deviceId: string; label: string; kind: 'audioinput' | 'audiooutput'}[]> => {
+    ipcMain.handle(IPCChannels.GetAudioDevices, async (): Promise<{
+        deviceId: string;
+        label: string;
+        kind: 'audioinput' | 'audiooutput'
+    }[]> => {
         return [];
     });
 

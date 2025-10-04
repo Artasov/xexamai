@@ -1,6 +1,17 @@
 import {ipcMain} from 'electron';
-import {AssistantResponse, IPCChannels, SttProcessRequest, TranscribeOnlyRequest, AskChatRequest} from '../shared/types';
-import {processAudioToAnswer, processAudioToAnswerStream, transcribeAudioOnly, askChatWithText} from '../services/assistant.service';
+import {
+    AskChatRequest,
+    AssistantResponse,
+    IPCChannels,
+    SttProcessRequest,
+    TranscribeOnlyRequest
+} from '../shared/types';
+import {
+    askChatWithText,
+    processAudioToAnswer,
+    processAudioToAnswerStream,
+    transcribeAudioOnly
+} from '../services/assistant.service';
 
 export function registerSttIpc() {
     ipcMain.handle(IPCChannels.AssistantProcess, async (_event, payload: SttProcessRequest): Promise<AssistantResponse> => {
@@ -82,7 +93,10 @@ export function registerSttIpc() {
                     }
                 }
             } catch (convErr) {
-                try { console.error('[main.assistant:stream] audio convert error:', convErr); } catch {}
+                try {
+                    console.error('[main.assistant:stream] audio convert error:', convErr);
+                } catch {
+                }
             }
             if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Пустое аудио');
             const MAX_BYTES = 25 * 1024 * 1024;
@@ -90,29 +104,35 @@ export function registerSttIpc() {
             const filename = payload.filename || 'lastN.webm';
             const requestId = payload.requestId || 'default';
 
-            event.sender.send(IPCChannels.AssistantStreamTranscript, { requestId, delta: '' });
+            event.sender.send(IPCChannels.AssistantStreamTranscript, {requestId, delta: ''});
             let accumulated = '';
-            const { text } = await processAudioToAnswerStream(
+            const {text} = await processAudioToAnswerStream(
                 audio,
                 filename,
                 payload.mime,
                 (delta) => {
                     accumulated += delta;
-                    event.sender.send(IPCChannels.AssistantStreamDelta, { requestId, delta });
+                    event.sender.send(IPCChannels.AssistantStreamDelta, {requestId, delta});
                 },
                 () => {
-                    event.sender.send(IPCChannels.AssistantStreamDone, { requestId, full: accumulated });
+                    event.sender.send(IPCChannels.AssistantStreamDone, {requestId, full: accumulated});
                 }
             );
-            return { ok: true, text, answer: '' };
+            return {ok: true, text, answer: ''};
         } catch (err: any) {
             const message = err?.message || String(err);
-            event.sender.send(IPCChannels.AssistantStreamError, { error: message, requestId: (payload as any)?.requestId });
-            return { ok: false, error: message };
+            event.sender.send(IPCChannels.AssistantStreamError, {
+                error: message,
+                requestId: (payload as any)?.requestId
+            });
+            return {ok: false, error: message};
         }
     });
 
-    ipcMain.handle(IPCChannels.AssistantTranscribeOnly, async (_event, payload: TranscribeOnlyRequest): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
+    ipcMain.handle(IPCChannels.AssistantTranscribeOnly, async (_event, payload: TranscribeOnlyRequest): Promise<{
+        ok: true;
+        text: string
+    } | { ok: false; error: string }> => {
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
                 throw new Error('Некорректный пакет аудио');
@@ -135,18 +155,21 @@ export function registerSttIpc() {
                     }
                 }
             } catch (convErr) {
-                try { console.error('[main.assistant:transcribe] audio convert error:', convErr); } catch {}
+                try {
+                    console.error('[main.assistant:transcribe] audio convert error:', convErr);
+                } catch {
+                }
             }
             if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Пустое аудио');
             const MAX_BYTES = 25 * 1024 * 1024;
             if (audio.length > MAX_BYTES) throw new Error('Аудио слишком большое (>25MB)');
             const filename = payload.filename || 'lastN.webm';
-            
-            const { text } = await transcribeAudioOnly(audio, filename, payload.mime, payload.audioSeconds);
-            return { ok: true, text };
+
+            const {text} = await transcribeAudioOnly(audio, filename, payload.mime, payload.audioSeconds);
+            return {ok: true, text};
         } catch (err: any) {
             const message = err?.message || String(err);
-            return { ok: false, error: message };
+            return {ok: false, error: message};
         }
     });
 
@@ -156,22 +179,25 @@ export function registerSttIpc() {
                 throw new Error('Пустой текст для отправки');
             }
             const requestId = payload.requestId || 'default';
-            
-            event.sender.send(IPCChannels.AssistantStreamTranscript, { requestId, delta: '' });
+
+            event.sender.send(IPCChannels.AssistantStreamTranscript, {requestId, delta: ''});
             let accumulated = '';
             await askChatWithText(
                 payload.text,
                 (delta) => {
                     accumulated += delta;
-                    event.sender.send(IPCChannels.AssistantStreamDelta, { requestId, delta });
+                    event.sender.send(IPCChannels.AssistantStreamDelta, {requestId, delta});
                 },
                 () => {
-                    event.sender.send(IPCChannels.AssistantStreamDone, { requestId, full: accumulated });
+                    event.sender.send(IPCChannels.AssistantStreamDone, {requestId, full: accumulated});
                 }
             );
         } catch (err: any) {
             const message = err?.message || String(err);
-            event.sender.send(IPCChannels.AssistantStreamError, { error: message, requestId: (payload as any)?.requestId });
+            event.sender.send(IPCChannels.AssistantStreamError, {
+                error: message,
+                requestId: (payload as any)?.requestId
+            });
         }
     });
 }

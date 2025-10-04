@@ -121,7 +121,7 @@ export class SettingsPanel {
     private updateAudioTypeVisibility() {
         const audioInputType = this.container.querySelector('#audioInputType') as HTMLSelectElement;
         const microphoneSection = this.container.querySelector('#microphoneSection') as HTMLElement;
-        
+
         if (audioInputType && microphoneSection) {
             const isMicrophone = audioInputType.value === 'microphone';
             microphoneSection.style.display = isMicrophone ? 'block' : 'none';
@@ -135,7 +135,7 @@ export class SettingsPanel {
         try {
             const devices = await window.api.settings.getAudioDevices();
             deviceSelect.innerHTML = '';
-            
+
             const defaultOption = document.createElement('option');
             defaultOption.value = '';
             defaultOption.textContent = 'Default (System Default)';
@@ -145,8 +145,8 @@ export class SettingsPanel {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
                 const maxLength = 50;
-                const displayLabel = device.label.length > maxLength 
-                    ? device.label.substring(0, maxLength) + '...' 
+                const displayLabel = device.label.length > maxLength
+                    ? device.label.substring(0, maxLength) + '...'
                     : device.label;
                 option.textContent = displayLabel;
                 option.title = device.label;
@@ -259,7 +259,7 @@ export class SettingsPanel {
         const audioInputTypeSelect = this.container.querySelector('#audioInputType') as HTMLSelectElement;
         if (audioInputTypeSelect) {
             audioInputTypeSelect.value = this.settings.audioInputType || 'microphone';
-            
+
             audioInputTypeSelect.addEventListener('change', async () => {
                 const audioType = audioInputTypeSelect.value as 'microphone' | 'system';
                 try {

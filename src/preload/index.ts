@@ -1,5 +1,5 @@
 import {contextBridge, ipcRenderer} from 'electron';
-import {AssistantAPI, AssistantResponse, IPCChannels, ProcessAudioArgs, TranscribeOnlyArgs, AskChatRequest} from '../main/shared/types';
+import {AssistantAPI, AssistantResponse, IPCChannels} from '../main/shared/types';
 
 export const api: AssistantAPI = {
     assistant: {
@@ -56,14 +56,30 @@ export const api: AssistantAPI = {
                 requestId: args.requestId,
             });
         },
-        onStreamTranscript: (cb) => { ipcRenderer.on(IPCChannels.AssistantStreamTranscript, cb as any); },
-        onStreamDelta: (cb) => { ipcRenderer.on(IPCChannels.AssistantStreamDelta, cb as any); },
-        onStreamDone: (cb) => { ipcRenderer.on(IPCChannels.AssistantStreamDone, cb as any); },
-        onStreamError: (cb) => { ipcRenderer.on(IPCChannels.AssistantStreamError, cb as any); },
-        offStreamTranscript: () => { ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamTranscript); },
-        offStreamDelta: () => { ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamDelta); },
-        offStreamDone: () => { ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamDone); },
-        offStreamError: () => { ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamError); },
+        onStreamTranscript: (cb) => {
+            ipcRenderer.on(IPCChannels.AssistantStreamTranscript, cb as any);
+        },
+        onStreamDelta: (cb) => {
+            ipcRenderer.on(IPCChannels.AssistantStreamDelta, cb as any);
+        },
+        onStreamDone: (cb) => {
+            ipcRenderer.on(IPCChannels.AssistantStreamDone, cb as any);
+        },
+        onStreamError: (cb) => {
+            ipcRenderer.on(IPCChannels.AssistantStreamError, cb as any);
+        },
+        offStreamTranscript: () => {
+            ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamTranscript);
+        },
+        offStreamDelta: () => {
+            ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamDelta);
+        },
+        offStreamDone: () => {
+            ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamDone);
+        },
+        offStreamError: () => {
+            ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamError);
+        },
     },
     settings: {
         get: async () => ipcRenderer.invoke(IPCChannels.GetSettings),

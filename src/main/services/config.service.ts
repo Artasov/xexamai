@@ -1,8 +1,8 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import dotenv from 'dotenv';
-import { RetryConfig, DefaultRetryConfig } from './retry.service';
-import { appConfigService } from './app-config.service';
+import {RetryConfig} from './retry.service';
+import {appConfigService} from './app-config.service';
 
 export type AppConfig = {
     openaiApiKey: string | undefined;
@@ -30,9 +30,9 @@ export function getConfig(): AppConfig {
         backoffMultiplier: parseFloat(process.env.RETRY_BACKOFF_MULTIPLIER || '2'),
         jitter: process.env.RETRY_JITTER !== 'false',
     };
-    
+
     const userConfig = appConfigService.getConfig();
-    
+
     return {
         openaiApiKey: userConfig.openaiApiKey || process.env.OPENAI_API_KEY,
         openaiBaseUrl: process.env.OPENAI_BASE_URL,

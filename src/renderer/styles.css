@@ -178,7 +178,7 @@ button:focus-visible {
 }
 
 /* Select specific styles for device selection */
-.input-field[type="select"], 
+.input-field[type="select"],
 .input-field:is(select) {
     max-width: 100%;
     overflow: hidden;

@@ -16,7 +16,7 @@ export const DefaultTimeoutConfig: TimeoutConfig = {
 
 export function calculateWhisperTimeout(audioSeconds: number, config: TimeoutConfig = DefaultTimeoutConfig): number {
     const calculatedTimeout = audioSeconds * config.whisperTimeoutMultiplier;
-    
+
     return Math.max(
         config.whisperMinTimeoutMs,
         Math.min(calculatedTimeout, config.whisperMaxTimeoutMs)

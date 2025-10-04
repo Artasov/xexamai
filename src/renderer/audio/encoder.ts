@@ -1,9 +1,13 @@
 let sharedAudioCtx: AudioContext | null = null;
+
 function getAudioCtx(): AudioContext {
     if (!sharedAudioCtx || (sharedAudioCtx as any).state === 'closed') {
         sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-    try { (sharedAudioCtx as any).resume?.(); } catch {}
+    try {
+        (sharedAudioCtx as any).resume?.();
+    } catch {
+    }
     return sharedAudioCtx;
 }
 
@@ -61,7 +65,7 @@ export async function blobToWav(input: Blob): Promise<Blob> {
 }
 
 export async function blobsToWav(inputs: Blob[]): Promise<Blob> {
-    if (!inputs.length) return new Blob([], { type: 'audio/wav' });
+    if (!inputs.length) return new Blob([], {type: 'audio/wav'});
     const audioCtx = getAudioCtx();
 
     const decoded: AudioBuffer[] = [];
@@ -71,7 +75,7 @@ export async function blobsToWav(inputs: Blob[]): Promise<Blob> {
         const buf = await audioCtx.decodeAudioData(ab.slice(0));
         decoded.push(buf);
     }
-    if (!decoded.length) return new Blob([], { type: 'audio/wav' });
+    if (!decoded.length) return new Blob([], {type: 'audio/wav'});
 
     const numChannels = decoded[0].numberOfChannels;
     const sampleRate = decoded[0].sampleRate;
@@ -128,7 +132,7 @@ export async function blobsToWav(inputs: Blob[]): Promise<Blob> {
         }
     }
 
-    return new Blob([wavBuffer], { type: 'audio/wav' });
+    return new Blob([wavBuffer], {type: 'audio/wav'});
 }
 
 export function floatsToWav(channels: Float32Array[], sampleRate: number): Blob {
@@ -167,7 +171,7 @@ export function floatsToWav(channels: Float32Array[], sampleRate: number): Blob 
             offset += 2;
         }
     }
-    return new Blob([wavBuffer], { type: 'audio/wav' });
+    return new Blob([wavBuffer], {type: 'audio/wav'});
 }
 
 function writeString(view: DataView, offset: number, str: string) {

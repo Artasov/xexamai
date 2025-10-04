@@ -25,7 +25,7 @@ export class PcmRingBuffer {
         if (!Array.isArray(channelData) || channelData.length === 0 || frames <= 0) return;
         const now = Date.now();
         const copied = channelData.map((arr) => new Float32Array(arr));
-        this.chunks.push({ t: now, frames, data: copied });
+        this.chunks.push({t: now, frames, data: copied});
         this.compact();
     }
 
@@ -71,7 +71,7 @@ export class PcmRingBuffer {
             writeOffset += toCopy;
             if (writeOffset >= totalFrames) break;
         }
-        return { channels: out, sampleRate: this.sampleRate };
+        return {channels: out, sampleRate: this.sampleRate};
     }
 }
 

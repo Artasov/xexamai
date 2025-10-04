@@ -24,8 +24,7 @@ export async function processAudioToAnswerStream(
     onDelta: (delta: string) => void,
     onDone?: () => void,
     audioSeconds?: number
-): Promise<{ text: string }>
-{
+): Promise<{ text: string }> {
     const text = await transcribeAudio(audio, filename, mime, audioSeconds);
     if (!text) {
         if (onDone) onDone();

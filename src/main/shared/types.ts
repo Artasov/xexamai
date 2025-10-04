@@ -82,7 +82,10 @@ export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
         processAudioStream: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
-        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
+        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | {
+            ok: false;
+            error: string
+        }>;
         askChat: (args: AskChatRequest) => Promise<void>;
         onStreamTranscript: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
         onStreamDelta: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
@@ -93,7 +96,7 @@ export type AssistantAPI = {
         offStreamDone: () => void;
         offStreamError: () => void;
     };
-    settings: { 
+    settings: {
         get: () => Promise<AppSettings>;
         setOpenaiApiKey: (key: string) => Promise<void>;
         setWindowOpacity: (opacity: number) => Promise<void>;

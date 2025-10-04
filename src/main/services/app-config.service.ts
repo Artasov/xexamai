@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import {app} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -17,11 +17,11 @@ export class AppConfigService {
     constructor() {
         const userDataPath = app.getPath('userData');
         const configDir = path.join(userDataPath, 'xexamai');
-        
+
         if (!fs.existsSync(configDir)) {
-            fs.mkdirSync(configDir, { recursive: true });
+            fs.mkdirSync(configDir, {recursive: true});
         }
-        
+
         this.configPath = path.join(configDir, 'config.json');
         this.loadConfig();
     }
@@ -57,7 +57,7 @@ export class AppConfigService {
     }
 
     public getConfig(): AppConfigData {
-        return { ...this.configData };
+        return {...this.configData};
     }
 
     public setOpenaiApiKey(key: string): void {
