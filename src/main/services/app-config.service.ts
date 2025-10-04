@@ -9,6 +9,7 @@ export interface AppConfigData {
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
+    transcriptionPrompt?: string;
 }
 
 export class AppConfigService {
@@ -37,7 +38,8 @@ export class AppConfigService {
                     openaiApiKey: process.env.OPENAI_API_KEY,
                     windowOpacity: 100,
                     durations: [5, 10, 15, 20, 30, 60],
-                    transcriptionModel: 'whisper-1'
+                    transcriptionModel: 'whisper-1',
+                    transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'
                 };
                 this.saveConfig();
             }
@@ -46,7 +48,8 @@ export class AppConfigService {
             this.configData = {
                 windowOpacity: 100,
                 durations: [5, 10, 15, 20, 30, 60],
-                transcriptionModel: 'whisper-1'
+                transcriptionModel: 'whisper-1',
+                transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'
             };
         }
     }
@@ -119,6 +122,15 @@ export class AppConfigService {
 
     public getTranscriptionModel(): string {
         return this.configData.transcriptionModel || 'whisper-1';
+    }
+
+    public setTranscriptionPrompt(prompt: string): void {
+        this.configData.transcriptionPrompt = prompt;
+        this.saveConfig();
+    }
+
+    public getTranscriptionPrompt(): string {
+        return this.configData.transcriptionPrompt || 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).';
     }
 }
 

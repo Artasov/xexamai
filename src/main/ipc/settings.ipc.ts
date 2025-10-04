@@ -12,6 +12,7 @@ export function registerSettingsIpc() {
             audioInputDeviceId: config.audioInputDeviceId,
             audioInputType: config.audioInputType,
             transcriptionModel: config.transcriptionModel,
+            transcriptionPrompt: config.transcriptionPrompt,
         };
     });
 
@@ -42,6 +43,10 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetTranscriptionModel, async (_, model: string): Promise<void> => {
         appConfigService.setTranscriptionModel(model);
+    });
+
+    ipcMain.handle(IPCChannels.SetTranscriptionPrompt, async (_, prompt: string): Promise<void> => {
+        appConfigService.setTranscriptionPrompt(prompt);
     });
 
     ipcMain.handle(IPCChannels.GetAudioDevices, async (): Promise<{

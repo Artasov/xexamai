@@ -21,7 +21,7 @@
     "build:ts:main": "tsc -p tsconfig.main.json",
     "build:ts:renderer": "tsc -p tsconfig.renderer.json",
     "build:css": "postcss src/renderer/styles.css -o dist/styles.css --config configs/postcss.config.js",
-    "copy:html": "cpx \"src/renderer/index.html\" build/renderer"
+    "copy:html": "cpx \"src/renderer/index.html\" build/renderer && cpx \"src/renderer/wide-classes.min.css\" build/renderer"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

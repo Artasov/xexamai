@@ -76,6 +76,19 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">Transcription Prompt</h3>
+                    <div class="fc gap-2">
+                        <textarea 
+                            id="transcriptionPrompt" 
+                            class="input-field prompt-textarea" 
+                            placeholder="Enter transcription prompt..."
+                            rows="4"
+                        >${this.settings.transcriptionPrompt || 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'}</textarea>
+                        <button id="saveTranscriptionPrompt" class="btn btn-sm">Save Prompt</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Audio Input Type</h3>
                     <div class="input-group">
                         <select id="audioInputType" class="input-field">
@@ -279,6 +292,24 @@ export class SettingsPanel {
                     this.showNotification(`Transcription model changed to ${model}`);
                 } catch (error) {
                     this.showNotification('Error saving transcription model', 'error');
+                }
+            });
+        }
+
+        const saveTranscriptionPromptBtn = this.container.querySelector('#saveTranscriptionPrompt');
+        const transcriptionPromptTextarea = this.container.querySelector('#transcriptionPrompt') as HTMLTextAreaElement;
+
+        if (saveTranscriptionPromptBtn && transcriptionPromptTextarea) {
+            saveTranscriptionPromptBtn.addEventListener('click', async () => {
+                const prompt = transcriptionPromptTextarea.value.trim();
+                if (prompt) {
+                    try {
+                        await window.api.settings.setTranscriptionPrompt(prompt);
+                        this.settings.transcriptionPrompt = prompt;
+                        this.showNotification('Transcription prompt saved successfully');
+                    } catch (error) {
+                        this.showNotification('Error saving transcription prompt', 'error');
+                    }
                 }
             });
         }

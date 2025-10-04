@@ -8,6 +8,7 @@ export type AppConfig = {
     openaiApiKey: string | undefined;
     openaiBaseUrl?: string;
     transcriptionModel: string;
+    transcriptionPrompt: string;
     chatModel: string;
     retryConfig: RetryConfig;
 };
@@ -37,6 +38,7 @@ export function getConfig(): AppConfig {
         openaiApiKey: userConfig.openaiApiKey || process.env.OPENAI_API_KEY,
         openaiBaseUrl: process.env.OPENAI_BASE_URL,
         transcriptionModel: userConfig.transcriptionModel || process.env.OPENAI_TRANSCRIPTION_MODEL || 'whisper-1',
+        transcriptionPrompt: userConfig.transcriptionPrompt || process.env.OPENAI_TRANSCRIPTION_PROMPT || 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
         chatModel: process.env.OPENAI_CHAT_MODEL || 'gpt-4.1-nano',
         retryConfig,
     };

@@ -36,6 +36,7 @@ export async function transcribeAudio(
                 model: cfg.transcriptionModel,
                 response_format: 'json',
                 temperature: 0.2,
+                prompt: cfg.transcriptionPrompt,
             } as any);
             return (res as any).text || '';
         },

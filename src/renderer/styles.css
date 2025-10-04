@@ -177,6 +177,10 @@ button:focus-visible {
     @apply flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
 }
 
+.prompt-textarea {
+    @apply resize-y min-h-[100px] font-mono text-sm;
+}
+
 /* Select specific styles for device selection */
 .input-field[type="select"],
 .input-field:is(select) {
