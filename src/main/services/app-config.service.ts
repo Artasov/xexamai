@@ -38,7 +38,7 @@ export class AppConfigService {
                     openaiApiKey: process.env.OPENAI_API_KEY,
                     windowOpacity: 100,
                     durations: [5, 10, 15, 20, 30, 60],
-                    transcriptionModel: 'whisper-1',
+                    transcriptionModel: 'gpt-4o-mini-transcribe',
                     transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'
                 };
                 this.saveConfig();
@@ -48,7 +48,7 @@ export class AppConfigService {
             this.configData = {
                 windowOpacity: 100,
                 durations: [5, 10, 15, 20, 30, 60],
-                transcriptionModel: 'whisper-1',
+                transcriptionModel: 'gpt-4o-mini-transcribe',
                 transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).'
             };
         }
@@ -121,7 +121,7 @@ export class AppConfigService {
     }
 
     public getTranscriptionModel(): string {
-        return this.configData.transcriptionModel || 'whisper-1';
+        return this.configData.transcriptionModel || 'gpt-4o-mini-transcribe';
     }
 
     public setTranscriptionPrompt(prompt: string): void {
