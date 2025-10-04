@@ -16,6 +16,8 @@
 - **💻 Cross-platform** - works on Windows, macOS and Linux
 - **🎧 Flexible audio settings** - choose between system sound and microphone
 - **📱 Simple interface** - intuitive and easy to use
+- **🎛️ Customizable transcription** - choose from multiple AI models and customize prompts
+- **🌍 Multi-language support** - optimized prompts for different languages and contexts
 
 ## 📥 Download
 
@@ -31,6 +33,15 @@
 4. Choose **audio input device**:
     - **System Audio** - for recording sound from applications (Zoom, Teams, etc.)
     - **Microphone** - for recording your voice
+5. **Configure transcription settings**:
+    - **Transcription Model** - choose from:
+        - **Whisper-1** (Default) - balanced speed and accuracy
+        - **GPT-4o Transcribe** (High Quality) - maximum accuracy for complex audio
+        - **GPT-4o Mini Transcribe** (Fast) - optimized for speed and efficiency
+    - **Transcription Prompt** - customize how AI should process your audio:
+        - Default prompt optimized for technical interviews in Russian
+        - Preserves English technical terms (Redis, Postgres, API, etc.)
+        - Can be customized for different languages and contexts
 
 ### 2. Usage
 
