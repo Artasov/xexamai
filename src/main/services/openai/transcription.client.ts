@@ -41,7 +41,7 @@ export async function transcribeAudio(
             return text;
         },
         cfg.retryConfig,
-        'Whisper transcription',
+        'Audio transcription',
         timeoutMs
     );
 }
