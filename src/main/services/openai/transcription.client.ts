@@ -37,8 +37,7 @@ export async function transcribeAudio(
                 response_format: 'json',
                 temperature: 0.2,
             } as any);
-            const text = (res as any).text || '';
-            return text;
+            return (res as any).text || '';
         },
         cfg.retryConfig,
         'Audio transcription',
