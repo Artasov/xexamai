@@ -1,4 +1,4 @@
-import {transcribeAudio} from './openai/whisper.client';
+import {transcribeAudio} from './openai/transcription.client';
 import {askChat, askChatStream} from './openai/chatgpt.client';
 
 export type AssistantResult = {
