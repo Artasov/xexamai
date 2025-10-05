@@ -23,6 +23,8 @@
 - **🎛️ Customizable transcription** - choose from multiple AI models and customize prompts
 - **🌍 Multi-language support** - optimized prompts for different languages and contexts
 
+### Если у вас есть проблемы с использованием открывайте [issue](https://github.com/Artasov/xexamai/issues)
+
 ## 🎯 How to Use
 
 ### 1. Setup
@@ -70,6 +72,7 @@
 1. 
    * Выберите в настройках `Transcription Mode` = `Local`
    * Выберите в настройках `Local Whisper Model` одну из доступных моделей
+     * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b` 
    * Выберите в настройках `Local Device`: `GPU`(Видеокарта/NVIDIA) или `CPU`(Процессор)
 
 2. #### Скачать Ollama
@@ -80,8 +83,11 @@
      `Remove-Item -Recurse -Force "C:\Users\xl\.ollama\models"`
    * Затем создаёшь ссылку
      `New-Item -ItemType Junction -Path "C:\Users\xl\.ollama\models" -Target "F:\ollama_models\models"`
-
-4. #### Запуск Ollama на
+4. #### Скачивание модели которую мы выбрали ранее
+   ```shell
+   ollama pull qwen3:8b
+   ```
+5. #### Запуск Ollama на
    ```sh 
    ollama serve
    ```
