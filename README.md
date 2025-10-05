@@ -10,6 +10,32 @@
   </a>
 </div>
 
+## Table of Contents
+
+- [Key Features](#key-features)
+- [How to Use](#how-to-use)
+  - [Setup](#1-setup)
+  - [Usage](#2-usage)
+  - [Usage Tips](#3-usage-tips)
+- [How to Use Locally](#how-to-use-locally)
+  - [Local LLM Processing](#local-llm-processing)
+  - [Local Speech Recognition](#local-speech-recognition)
+- [Important Notes](#important-notes)
+- [For Developers](#for-developers)
+  - [Contributing](#contributing)
+  - [Local Development](#local-development)
+    - [Requirements](#requirements)
+    - [Installation](#installation)
+    - [Project Structure](#project-structure)
+    - [Available Commands](#available-commands)
+    - [Building for Different Platforms](#building-for-different-platforms)
+      - [Windows](#windows)
+      - [macOS](#macos)
+      - [Linux](#linux)
+      - [Cross-platform Building](#cross-platform-building)
+      - [To build macOS version](#to-build-macos-version)
+    - [Technologies](#technologies)
+
 ## 🚀 Key Features
 
 - **🎯 Complete invisibility** - stays hidden during screen sharing in Zoom, Google Meet, Teams and other platforms
@@ -23,7 +49,7 @@
 - **🎛️ Customizable transcription** - choose from multiple AI models and customize prompts
 - **🌍 Multi-language support** - optimized prompts for different languages and contexts
 
-### Если у вас есть проблемы с использованием открывайте [issue](https://github.com/Artasov/xexamai/issues)
+### If you have any issues using the app, please open an [issue](https://github.com/Artasov/xexamai/issues)
 
 ## 🎯 How to Use
 
@@ -60,64 +86,64 @@
 - Practice before important events
 
 ## How to Use Locally
-Примеры ниже реализованы и протестированы для `Windows 11` для других систем процесс может отличаться.
+The examples below are implemented and tested on `Windows 11`. Steps may differ on other systems.
 
-Работа ассистента происходит в два этапа
-1. Распознавание звука
-2. Получение ответа от LLM
+The assistant works in two stages:
+1. Audio transcription
+2. Getting an answer from the LLM
 
-Каждый этап можно перевести на локальное использование. 
+Each stage can be run locally.
 
-### Локальная LLM обработка
+### Local LLM Processing
 
-Минимально рекомендуемая конфигурация:
-- CPU - 4 ядра 8 потоков 
-- GPU - 6 VRAM
+Minimum recommended configuration:
+- CPU - 4 cores / 8 threads
+- GPU - 6 GB VRAM
 - RAM - 16 GB
 
 1. 
-   * Выберите в настройках `Transcription Mode` = `Local`
-   * Выберите в настройках `Local Whisper Model` одну из доступных моделей
-     * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b` 
-       > Выберите слабую если у вас слабый пк
-   * Выберите в настройках `Local Device`: `GPU`(Видеокарта/NVIDIA) или `CPU`(Процессор)
+   * In Settings choose `Transcription Mode` = `Local`
+   * In Settings choose a `Local Whisper Model` from the available models:
+     * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
+       > Choose a smaller model if your PC is low-spec
+   * In Settings choose `Local Device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
 
-2. #### Скачать Ollama
+2. #### Install Ollama
    https://ollama.com/
 
-3. #### Можно поменять дефолт расположение моделей (не обязательно)
-   * Удалить оригинальный каталог models
-     `Remove-Item -Recurse -Force "C:\Users\xl\.ollama\models"`
-   * Затем создаёшь ссылку
-     `New-Item -ItemType Junction -Path "C:\Users\xl\.ollama\models" -Target "F:\ollama_models\models"`
-4. #### Скачивание модели которую мы выбрали ранее
+3. #### (Optional) Change the default models location
+   * Remove the original models directory
+     `Remove-Item -Recurse -Force "C:\\Users\\xl\\.ollama\\models"`
+   * Then create a junction
+     `New-Item -ItemType Junction -Path "C:\\Users\\xl\\.ollama\\models" -Target "F:\\ollama_models\\models"`
+4. #### Download the model chosen earlier
    ```shell
    ollama pull qwen3:8b
    ```
-5. #### Запуск Ollama на
+5. #### Start Ollama
    ```sh 
    ollama serve
    ```
 
 
-### Локальное распознавание звука
-1. Выберите в `xexamai` в настройках `LLM Model` одну из моделей.
+### Local Speech Recognition
+1. In `xexamai` Settings select an `LLM Model`.
 
-2. ### Установить Cuda
+2. ### Install CUDA
    https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
 
 3. ### cuDNN 9.13.1
    https://developer.nvidia.com/cudnn-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
 
-4. ### В переменную path окружения windows вставить
-   `C:\Program Files\NVIDIA\CUDNN\v9.13\bin\12.9` 
+4. ### Add to Windows PATH environment variable
+   `C:\\Program Files\\NVIDIA\\CUDNN\\v9.13\\bin\\12.9`
 
-5. ### Установить [Python 3.12.5](https://www.python.org/downloads/release/python-3125/)
+5. ### Install [Python 3.12.5](https://www.python.org/downloads/release/python-3125/)
  
-6. ### Перезапуск пк
+6. ### Restart the PC
 
-7. ### Установить и запустить [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
-   Само оно при запуске системы запускаться не будет, поэтому его нужно включать руками чтобы сервер локального распознавания звука работал
+7. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
+   It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is running
 
 
 ## ⚠️ Important Notes
@@ -178,7 +204,7 @@ src/
 - `npm run dev` - run in development mode
 - `npm run build` - build the project
 - `npm run build:win` - create portable Windows executable
-- `npm run build:mac` - create portable macOS executable (только на macOS)
+- `npm run build:mac` - create portable macOS executable (macOS only)
 - `npm run build:linux` - create portable Linux directory
 - `npm run build:all` - create portable executables for Windows and Linux
 - `npm run build:win-linux` - same as build:all

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="./wide-classes.min.css"/>
 </head>
 <body class="bg-gray-900 text-gray-100">
-<div class="h-screen flex flex-col">
+<div class="h-screen flex flex-col min-w-[330px]">
     <!-- Custom title bar -->
     <header class="bg-gray-800 border-b border-gray-700 flex items-center justify-between px-3 py-2 drag-region">
         <div class="flex items-center gap-3">
@@ -32,7 +32,7 @@
     </header>
 
     <!-- Main content -->
-    <main class="flex-1 overflow-auto px-4 pb-4 pt-1">
+    <main class="fc overflow-auto px-4 pb-4 pt-1">
         <!-- Navigation tabs -->
         <div class="tabs-container">
             <div class="tabs">
@@ -42,9 +42,9 @@
         </div>
 
         <!-- Main content area -->
-        <div id="mainContent" class="content-area">
-            <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="control-panel card md:col-span-1">
+        <div id="mainContent" class="content-area fc overflow-auto">
+            <section class="overflow-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="control-panel min-w-[280px] card md:col-span-1">
                     <div id="send-last-container" class="send-last-container">
                         <div class="label mb-2">Send the last:</div>
                         <div id="durations" class="flex gap-2 flex-wrap"></div>
@@ -56,37 +56,38 @@
                     <div class="mt-2">
                         <div class="label mb-2">Direct text input:</div>
                         <div class="flex gap-2">
-                            <textarea
+                            <input
                                     id="textInput"
                                     placeholder="Type your question here..."
                                     class="input-field flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-gray-100 placeholder-gray-400 resize-none"
-                                    rows="1"
-                            ></textarea>
+
+                            />
                             <button
                                     id="btnSendText"
                                     class="btn btn-primary self-start"
                                     disabled
-                            >Send
+                            >
+                                Send
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <div class="result-panel card md:col-span-2">
+                <div class="result-panel fc overflow-y-auto card md:col-span-2">
                     <div class="label mb-1">Recognized</div>
                     <div id="textOut" class="min-h-[1rem]"></div>
                     <div class="frbc mt-4 mb-1">
                         <div class="label">Reply</div>
                         <button id="btnStopStream" class="btn btn-secondary px-2 py-1 text-sm hidden">Stop</button>
                     </div>
-                    <div id="answerOut" class="min-h-[1rem]"></div>
+                    <div id="answerOut" class="overflow-auto min-h-[1rem]"></div>
                 </div>
             </section>
         </div>
 
         <!-- Settings content area -->
-        <div id="settingsContent" class="content-area hidden">
-            <div id="settingsPanel" class="settings-panel-container"></div>
+        <div id="settingsContent" class="content-area hidden fc overflow-auto">
+            <div id="settingsPanel" class="settings-panel-container overflow-auto pr-1"></div>
         </div>
     </main>
 </div>

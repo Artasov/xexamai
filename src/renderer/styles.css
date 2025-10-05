@@ -4,6 +4,11 @@
     cursor: default !important;
 }
 
+/* Fallback for hidden utility in case Tailwind styles are unavailable */
+.hidden {
+    display: none !important;
+}
+
 /* Simple utility overrides */
 .btn {
     @apply px-3 py-2 rounded-md font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed;
@@ -52,35 +57,35 @@ button:focus-visible {
 }
 
 /* Custom scrollbar styles */
-.flex-1.overflow-auto {
+.overflow-auto {
     scrollbar-width: thin;
     scrollbar-color: #4b5563 #1f2937;
 }
 
-.flex-1.overflow-auto::-webkit-scrollbar {
+.overflow-auto::-webkit-scrollbar {
     width: 8px;
 }
 
-.flex-1.overflow-auto::-webkit-scrollbar-track {
+.overflow-auto::-webkit-scrollbar-track {
     background: #1f2937;
     border-radius: 4px;
 }
 
-.flex-1.overflow-auto::-webkit-scrollbar-thumb {
+.overflow-auto::-webkit-scrollbar-thumb {
     background: #4b5563;
     border-radius: 4px;
     border: 1px solid #374151;
 }
 
-.flex-1.overflow-auto::-webkit-scrollbar-thumb:hover {
+.overflow-auto::-webkit-scrollbar-thumb:hover {
     background: #6b7280;
 }
 
-.flex-1.overflow-auto::-webkit-scrollbar-thumb:active {
+.overflow-auto::-webkit-scrollbar-thumb:active {
     background: #9ca3af;
 }
 
-.flex-1.overflow-auto::-webkit-scrollbar-corner {
+.overflow-auto::-webkit-scrollbar-corner {
     background: #1f2937;
 }
 
@@ -109,26 +114,33 @@ button:focus-visible {
 #answerOut {
     line-height: 1.35;
 }
+
 #answerOut p {
     margin: 0.25rem 0;
 }
+
 #answerOut h1, #answerOut h2, #answerOut h3, #answerOut h4, #answerOut h5, #answerOut h6 {
     margin: 0.5rem 0 0.35rem 0;
     line-height: 1.25;
 }
+
 #answerOut ul, #answerOut ol {
     margin: 0.25rem 0 0.25rem 1.25rem;
 }
+
 #answerOut li {
     margin: 0.15rem 0;
 }
+
 #answerOut pre {
     margin: 0.35rem 0;
     padding: 0.5rem;
 }
+
 #answerOut code {
     padding: 0.1rem 0.25rem;
 }
+
 #answerOut blockquote {
     margin: 0.35rem 0;
     padding-left: 0.75rem;
@@ -167,7 +179,6 @@ button:focus-visible {
 .settings-panel-container {
     @apply max-w-2xl;
     width: 100%;
-    overflow: hidden;
 }
 
 .settings-panel {

@@ -14,6 +14,7 @@ export function updateButtonsState() {
     const btnRecord = document.getElementById('btnRecord') as HTMLButtonElement | null;
     const btnSendText = document.getElementById('btnSendText') as HTMLButtonElement | null;
     const sendLastContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
+    const btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
 
     if (sendLastContainer) {
         if (state.isRecording) sendLastContainer.classList.add('expanded', 'mb-2');
@@ -51,6 +52,13 @@ export function updateButtonsState() {
             btnSendText.disabled = false;
             btnSendText.classList.remove('opacity-50', 'cursor-not-allowed');
         }
+    }
+
+    // Ensure Stop button is hidden whenever processing ends.
+    // We do NOT force-show it here to avoid showing during non-streaming phases
+    // like transcription or sending; showing is controlled explicitly in renderer.
+    if (btnStop && !state.isProcessing) {
+        btnStop.classList.add('hidden');
     }
 }
 
