@@ -105,6 +105,35 @@ button:focus-visible {
     @apply bg-yellow-900 text-yellow-300 border border-yellow-700;
 }
 
+/* Compact markdown inside answerOut */
+#answerOut {
+    line-height: 1.35;
+}
+#answerOut p {
+    margin: 0.25rem 0;
+}
+#answerOut h1, #answerOut h2, #answerOut h3, #answerOut h4, #answerOut h5, #answerOut h6 {
+    margin: 0.5rem 0 0.35rem 0;
+    line-height: 1.25;
+}
+#answerOut ul, #answerOut ol {
+    margin: 0.25rem 0 0.25rem 1.25rem;
+}
+#answerOut li {
+    margin: 0.15rem 0;
+}
+#answerOut pre {
+    margin: 0.35rem 0;
+    padding: 0.5rem;
+}
+#answerOut code {
+    padding: 0.1rem 0.25rem;
+}
+#answerOut blockquote {
+    margin: 0.35rem 0;
+    padding-left: 0.75rem;
+}
+
 .status-badge.error {
     @apply bg-red-900 text-red-300 border border-red-700;
 }
