@@ -14,7 +14,7 @@
 
 - [Key Features](#-key-features)
 - [How to Use](#-how-to-use)
-- [How to Use Locally](#how-to-use-locally)
+- [How to Use Locally FREE](#how-to-use-locally)
   - [Local LLM Processing](#local-llm-processing)
   - [Local Speech Recognition](#local-speech-recognition)
 - [Important Notes](#-important-notes)
