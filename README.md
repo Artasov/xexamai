@@ -114,7 +114,7 @@ Minimum recommended configuration:
      `New-Item -ItemType Junction -Path "C:\\Users\\xl\\.ollama\\models" -Target "F:\\ollama_models\\models"`
 4. #### Download the model chosen earlier
    ```shell
-   ollama pull qwen3:8b
+   ollama pull qwen3:4b
    ```
 5. #### Start Ollama
    ```sh 
