@@ -9,6 +9,8 @@ export type AppSettings = {
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
+    windowWidth?: number;
+    windowHeight?: number;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -90,6 +92,7 @@ export type AssistantAPI = {
         setOpenaiApiKey: (key: string) => Promise<void>;
         setWindowOpacity: (opacity: number) => Promise<void>;
         setAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>;
+        setWindowSize: (size: { width: number; height: number }) => Promise<void>;
         setDurations: (durations: number[]) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;

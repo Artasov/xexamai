@@ -175,12 +175,6 @@ button:focus-visible {
     display: none;
 }
 
-/* Settings panel */
-.settings-panel-container {
-    @apply max-w-2xl;
-    width: 100%;
-}
-
 .settings-panel {
     @apply space-y-4;
 }

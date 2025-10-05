@@ -5,10 +5,12 @@ import {appConfigService} from '../services/app-config.service';
 export function createMainWindow(): BrowserWindow {
     const opacity = appConfigService.getWindowOpacity();
     const alwaysOnTop = appConfigService.getAlwaysOnTop();
+    const initialWidth = appConfigService.getWindowWidth();
+    const initialHeight = appConfigService.getWindowHeight();
 
     const win = new BrowserWindow({
-        width: 420,
-        height: 780,
+        width: initialWidth,
+        height: initialHeight,
         frame: false,
         titleBarStyle: 'hidden',
         transparent: true,

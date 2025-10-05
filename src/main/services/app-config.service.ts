@@ -18,6 +18,9 @@ export interface AppConfigData {
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
+    // window size
+    windowWidth?: number;
+    windowHeight?: number;
 }
 
 export class AppConfigService {
@@ -52,7 +55,9 @@ export class AppConfigService {
                     llmPrompt: DEFAULT_LLM_PROMPT,
                     transcriptionMode: 'api',
                     localWhisperModel: 'base',
-                    localDevice: 'cpu'
+                    localDevice: 'cpu',
+                    windowWidth: 420,
+                    windowHeight: 780,
                 };
                 this.saveConfig();
             }
@@ -67,7 +72,9 @@ export class AppConfigService {
                 llmPrompt: DEFAULT_LLM_PROMPT,
                 transcriptionMode: 'api',
                 localWhisperModel: 'base',
-                localDevice: 'cpu'
+                localDevice: 'cpu',
+                windowWidth: 420,
+                windowHeight: 780,
             };
         }
     }
@@ -269,6 +276,32 @@ export class AppConfigService {
 
     public getLlmPrompt(): string | undefined {
         return this.configData.llmPrompt;
+    }
+
+    public setWindowSize(width: number, height: number): void {
+        const oldWidth = this.configData.windowWidth;
+        const oldHeight = this.configData.windowHeight;
+        const validWidth = Math.max(400, Math.floor(width || 0));
+        const validHeight = Math.max(700, Math.floor(height || 0));
+        this.configData.windowWidth = validWidth;
+        this.configData.windowHeight = validHeight;
+        this.saveConfig();
+        logger.info('settings', 'Window size changed', {
+            oldWidth,
+            oldHeight,
+            newWidth: validWidth,
+            newHeight: validHeight,
+        });
+    }
+
+    public getWindowWidth(): number {
+        const w = this.configData.windowWidth || 420;
+        return Math.max(400, w);
+    }
+
+    public getWindowHeight(): number {
+        const h = this.configData.windowHeight || 780;
+        return Math.max(700, h);
     }
 }
 

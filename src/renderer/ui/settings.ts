@@ -82,6 +82,33 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">Window Size on Startup</h3>
+                    <div class="fc gap-2">
+                        <div class="fc gap-1">
+                            <label for="windowWidth" class="text-xs text-gray-400">Width (min 400)</label>
+                            <input 
+                                type="number" 
+                                id="windowWidth" 
+                                class="input-field" 
+                                min="400" 
+                                value="${Math.max(400, this.settings.windowWidth || 420)}"
+                            />
+                        </div>
+                        <div class="fc gap-1">
+                            <label for="windowHeight" class="text-xs text-gray-400">Height (min 700)</label>
+                            <input 
+                                type="number" 
+                                id="windowHeight" 
+                                class="input-field" 
+                                min="700" 
+                                value="${Math.max(700, this.settings.windowHeight || 780)}"
+                            />
+                        </div>
+                        <button id="saveWindowSize" class="btn btn-sm">Save</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Transcription Mode</h3>
                     <div class="input-group">
                         <select id="transcriptionMode" class="input-field">
@@ -574,6 +601,25 @@ export class SettingsPanel {
                     await window.api.settings.openConfigFolder();
                 } catch (error) {
                     this.showNotification('Error opening config folder', 'error');
+                }
+            });
+        }
+
+        const saveWindowSizeBtn = this.container.querySelector('#saveWindowSize');
+        const windowWidthInput = this.container.querySelector('#windowWidth') as HTMLInputElement;
+        const windowHeightInput = this.container.querySelector('#windowHeight') as HTMLInputElement;
+        if (saveWindowSizeBtn && windowWidthInput && windowHeightInput) {
+            saveWindowSizeBtn.addEventListener('click', async () => {
+                const width = Math.max(400, Math.floor(parseInt(windowWidthInput.value || '0')));
+                const height = Math.max(700, Math.floor(parseInt(windowHeightInput.value || '0')));
+                logger.info('settings', 'Save window size clicked', { width, height });
+                try {
+                    await window.api.settings.setWindowSize({ width, height });
+                    this.settings.windowWidth = width;
+                    this.settings.windowHeight = height;
+                    this.showNotification('Window size saved');
+                } catch (error) {
+                    this.showNotification('Error saving window size', 'error');
                 }
             });
         }
