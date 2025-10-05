@@ -11,6 +11,7 @@ export function registerSettingsIpc() {
             durations: config.durations || DefaultSettings.durations,
             openaiApiKey: config.openaiApiKey,
             windowOpacity: config.windowOpacity || DefaultSettings.windowOpacity,
+            alwaysOnTop: config.alwaysOnTop !== undefined ? config.alwaysOnTop : DefaultSettings.alwaysOnTop,
             audioInputDeviceId: config.audioInputDeviceId,
             audioInputType: config.audioInputType,
             transcriptionModel: config.transcriptionModel,
@@ -31,6 +32,15 @@ export function registerSettingsIpc() {
         const mainWindow = BrowserWindow.getAllWindows()[0];
         if (mainWindow) {
             mainWindow.setOpacity(opacity / 100);
+        }
+    });
+
+    ipcMain.handle(IPCChannels.SetAlwaysOnTop, async (_, alwaysOnTop: boolean): Promise<void> => {
+        appConfigService.setAlwaysOnTop(alwaysOnTop);
+
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow) {
+            mainWindow.setAlwaysOnTop(alwaysOnTop);
         }
     });
 

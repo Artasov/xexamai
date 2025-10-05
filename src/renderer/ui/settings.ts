@@ -67,6 +67,21 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">Window Behavior</h3>
+                    <div class="checkbox-control">
+                        <label class="checkbox-label">
+                            <input 
+                                type="checkbox" 
+                                id="alwaysOnTop" 
+                                class="checkbox-input"
+                                ${this.settings.alwaysOnTop ? 'checked' : ''}
+                            />
+                            <span class="checkbox-text">Always on top</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Transcription Mode</h3>
                     <div class="input-group">
                         <select id="transcriptionMode" class="input-field">
@@ -463,6 +478,21 @@ export class SettingsPanel {
                 logger.info('settings', 'Audio devices refresh button clicked');
                 await this.loadAudioDevices();
                 this.showNotification('Audio devices refreshed');
+            });
+        }
+
+        const alwaysOnTopCheckbox = this.container.querySelector('#alwaysOnTop') as HTMLInputElement;
+        if (alwaysOnTopCheckbox) {
+            alwaysOnTopCheckbox.addEventListener('change', async () => {
+                const alwaysOnTop = alwaysOnTopCheckbox.checked;
+                logger.info('settings', 'Always on top changed', { alwaysOnTop });
+                try {
+                    await window.api.settings.setAlwaysOnTop(alwaysOnTop);
+                    this.settings.alwaysOnTop = alwaysOnTop;
+                    this.showNotification(`Always on top ${alwaysOnTop ? 'enabled' : 'disabled'}`);
+                } catch (error) {
+                    this.showNotification('Error saving always on top setting', 'error');
+                }
             });
         }
 

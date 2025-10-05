@@ -7,6 +7,7 @@ import {WhisperModel, TranscriptionMode} from '../shared/types';
 export interface AppConfigData {
     openaiApiKey?: string;
     windowOpacity?: number;
+    alwaysOnTop?: boolean;
     durations?: number[];
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
@@ -42,6 +43,7 @@ export class AppConfigService {
                 this.configData = {
                     openaiApiKey: process.env.OPENAI_API_KEY,
                     windowOpacity: 100,
+                    alwaysOnTop: false,
                     durations: [5, 10, 15, 20, 30, 60],
                     transcriptionModel: 'gpt-4o-mini-transcribe',
                     transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
@@ -54,6 +56,7 @@ export class AppConfigService {
             console.error('Error loading config:', error);
             this.configData = {
                 windowOpacity: 100,
+                alwaysOnTop: false,
                 durations: [5, 10, 15, 20, 30, 60],
                 transcriptionModel: 'gpt-4o-mini-transcribe',
                 transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
@@ -218,6 +221,20 @@ export class AppConfigService {
 
     public getLocalWhisperModel(): WhisperModel {
         return this.configData.localWhisperModel || 'base';
+    }
+
+    public setAlwaysOnTop(alwaysOnTop: boolean): void {
+        const oldValue = this.configData.alwaysOnTop;
+        this.configData.alwaysOnTop = alwaysOnTop;
+        this.saveConfig();
+        logger.info('settings', 'Always on top changed', { 
+            oldValue, 
+            newValue: alwaysOnTop 
+        });
+    }
+
+    public getAlwaysOnTop(): boolean {
+        return this.configData.alwaysOnTop || false;
     }
 }
 

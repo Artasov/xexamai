@@ -4,6 +4,7 @@ import {appConfigService} from '../services/app-config.service';
 
 export function createMainWindow(): BrowserWindow {
     const opacity = appConfigService.getWindowOpacity();
+    const alwaysOnTop = appConfigService.getAlwaysOnTop();
 
     const win = new BrowserWindow({
         width: 420,
@@ -12,6 +13,7 @@ export function createMainWindow(): BrowserWindow {
         titleBarStyle: 'hidden',
         transparent: true,
         opacity: opacity / 100,
+        alwaysOnTop: alwaysOnTop,
         icon: path.join(__dirname, '..', '..', '..', 'brand', 'logo.ico'),
         skipTaskbar: true,
         webPreferences: {

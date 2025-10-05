@@ -22,6 +22,7 @@ export type AppSettings = {
     durations: number[]; // seconds
     openaiApiKey?: string;
     windowOpacity?: number;
+    alwaysOnTop?: boolean;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -34,6 +35,7 @@ export type AppSettings = {
 export const DefaultSettings: AppSettings = {
     durations: [5, 10, 15, 20, 30, 60],
     windowOpacity: 100,
+    alwaysOnTop: false,
     transcriptionMode: 'api',
     localWhisperModel: 'base',
 };
@@ -50,6 +52,7 @@ export const IPCChannels = {
     GetSettings: 'settings:get',
     SetOpenaiApiKey: 'settings:set:openai-api-key',
     SetWindowOpacity: 'settings:set:window-opacity',
+    SetAlwaysOnTop: 'settings:set:always-on-top',
     SetDurations: 'settings:set:durations',
     SetAudioInputDevice: 'settings:set:audio-input-device',
     SetAudioInputType: 'settings:set:audio-input-type',
@@ -125,6 +128,7 @@ export type AssistantAPI = {
         get: () => Promise<AppSettings>;
         setOpenaiApiKey: (key: string) => Promise<void>;
         setWindowOpacity: (opacity: number) => Promise<void>;
+        setAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>;
         setDurations: (durations: number[]) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
