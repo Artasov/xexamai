@@ -31,6 +31,7 @@ let scriptNode: ScriptProcessorNode | null = null;
 let pcmRing: PcmRingBuffer | null = null;
 let currentRequestId: string | null = null;
 let btnStop: HTMLButtonElement | null = null;
+let activeOpId: number = 0;
 
 async function getSystemAudioStream(): Promise<MediaStream> {
     try {
@@ -163,6 +164,16 @@ async function handleAskWindow(seconds: number) {
         return;
     }
 
+    // Cancel any ongoing stream before starting a new one
+    if (currentRequestId) {
+        try { await window.api.assistant.stopStream({ requestId: currentRequestId }); } catch {}
+        currentRequestId = null;
+        if (btnStop) btnStop.classList.add('hidden');
+    }
+
+    // Operation guard to ignore stale results from previous requests
+    const opId = ++activeOpId;
+
     setProcessing(true);
     updateButtonsState();
 
@@ -189,6 +200,10 @@ async function handleAskWindow(seconds: number) {
             filename: `last_${seconds}s.wav`,
             audioSeconds: seconds,
         });
+        // If a newer operation started while transcribing, ignore this result
+        if (opId !== activeOpId) {
+            return;
+        }
         if (!transcribeRes.ok) {
             setStatus('Error', 'error');
             showAnswer('Error: ' + transcribeRes.error);

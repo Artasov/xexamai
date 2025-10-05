@@ -24,13 +24,9 @@ export function updateButtonsState() {
     if (durationsEl) {
         const buttons = durationsEl.querySelectorAll('button');
         buttons.forEach(btn => {
-            if (state.isProcessing) {
-                btn.disabled = true;
-                btn.classList.add('opacity-50', 'cursor-not-allowed');
-            } else {
-                btn.disabled = false;
-                btn.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
+            // Duration buttons stay enabled even during processing to allow restart
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
         });
     }
 
@@ -73,9 +69,6 @@ export function updateDurations(durations: number[], onDurationChange?: (sec: nu
             b.textContent = `${sec}s`;
             b.dataset['sec'] = String(sec);
             b.addEventListener('click', () => {
-                if (state.isProcessing) {
-                    return;
-                }
                 logger.info('ui', 'Duration button clicked', { duration: sec });
                 setStatus(`Sending last ${sec}s...`, 'sending');
                 onDurationChange?.(sec);
