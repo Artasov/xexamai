@@ -12,16 +12,16 @@
 
 ## Table of Contents
 
-- [Key Features](#key-features)
-- [How to Use](#how-to-use)
+- [Key Features](#-key-features)
+- [How to Use](#-how-to-use)
   - [Setup](#1-setup)
   - [Usage](#2-usage)
   - [Usage Tips](#3-usage-tips)
 - [How to Use Locally](#how-to-use-locally)
   - [Local LLM Processing](#local-llm-processing)
   - [Local Speech Recognition](#local-speech-recognition)
-- [Important Notes](#important-notes)
-- [For Developers](#for-developers)
+- [Important Notes](#-important-notes)
+- [For Developers](#-for-developers)
   - [Contributing](#contributing)
   - [Local Development](#local-development)
     - [Requirements](#requirements)
@@ -29,11 +29,6 @@
     - [Project Structure](#project-structure)
     - [Available Commands](#available-commands)
     - [Building for Different Platforms](#building-for-different-platforms)
-      - [Windows](#windows)
-      - [macOS](#macos)
-      - [Linux](#linux)
-      - [Cross-platform Building](#cross-platform-building)
-      - [To build macOS version](#to-build-macos-version)
     - [Technologies](#technologies)
 
 ## 🚀 Key Features
