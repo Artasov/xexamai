@@ -12,19 +12,7 @@ We provide security updates for the following versions:
 
 We take security seriously. If you discover a security vulnerability, please follow these steps:
 
-### 1. Do NOT create a public issue
-
-**Do not** create a public GitHub issue for security vulnerabilities. This could put users at risk.
-
-### 2. Report privately
-
-Please report security vulnerabilities by:
-
-- **Email**: Send details to [ivanhvalevskey@gmail.com](mailto:ivanhvalevskey@gmail.com) (if available)
-- **GitHub Security Advisories**: Use GitHub's private vulnerability reporting feature
-- **Direct Message**: Contact maintainers directly through GitHub
-
-### 3. Include the following information
+### 1. Include the following information
 
 When reporting a vulnerability, please include:
 
@@ -34,7 +22,7 @@ When reporting a vulnerability, please include:
 - Suggested fix (if you have one)
 - Your contact information
 
-### 4. Response timeline
+### 2. Response timeline
 
 - **Initial response**: Within 48 hours
 - **Status update**: Within 7 days
