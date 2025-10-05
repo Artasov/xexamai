@@ -389,7 +389,7 @@ async function main() {
                     if (old) old.remove();
                     const label = document.createElement('span');
                     label.className = 'hk text-xs text-gray-400';
-                    label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
+                    label.textContent = `Ctrl-${String(key).toUpperCase()}`;
                     btn.appendChild(label);
                 }
             });
@@ -441,7 +441,7 @@ async function main() {
                             if (key) {
                                 const label = document.createElement('span');
                                 label.className = 'hk text-xs text-gray-400';
-                                label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
+                                label.textContent = `Ctrl-${String(key).toUpperCase()}`;
                                 btn.appendChild(label);
                             }
                         });
@@ -460,7 +460,7 @@ async function main() {
                     if (key) {
                         const label = document.createElement('span');
                         label.className = 'hk text-xs text-gray-400';
-                        label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
+                        label.textContent = `Ctrl-${String(key).toUpperCase()}`;
                         btn.appendChild(label);
                     }
                 });
