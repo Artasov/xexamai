@@ -57,6 +57,49 @@
 - Adjust transparency for maximum stealth
 - Practice before important events
 
+## How to Use Locally
+Примеры ниже реализованы и протестированы для `Windows 11` для других систем процесс может отличаться.
+
+Работа ассистента происходит в два этапа
+1. Распознавание звука
+2. Получение ответа от LLM
+
+Каждый этап можно перевести на локальное использование. 
+
+### Локальная LLM обработка
+1. 
+   * Выберите в настройках `Transcription Mode` = `Local`
+   * Выберите в настройках `Local Whisper Model` одну из доступных моделей
+   * Выберите в настройках `Local Device`: `GPU`(Видеокарта/NVIDIA) или `CPU`(Процессор)
+
+2. #### Скачать Ollama
+   https://ollama.com/
+
+3. #### Можно поменять дефолт расположение моделей (не обязательно)
+   * Удалить оригинальный каталог models
+     `Remove-Item -Recurse -Force "C:\Users\xl\.ollama\models"`
+   * Затем создаёшь ссылку
+     `New-Item -ItemType Junction -Path "C:\Users\xl\.ollama\models" -Target "F:\ollama_models\models"`
+
+4. #### Запуск Ollama на
+   `ollama serve`
+
+
+### Локальное распознавание звука
+1. Выберите в настройках `LLM Model` одну из моделей `gpt-oss` 
+
+2. ### Установить Cuda
+   https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
+
+3. ### cuDNN 9.13.1
+   https://developer.nvidia.com/cudnn-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
+
+4. ### В переменную path окружения windows вставить
+   `C:\Program Files\NVIDIA\CUDNN\v9.13\bin\12.9` 
+
+5. ### Перезапуск пк
+
+
 ## ⚠️ Important Notes
 
 - This application is intended for educational purposes
