@@ -277,3 +277,160 @@ body {
     border: 2px solid rgb(31, 41, 55);
     border-bottom-width: 3px;
 }
+
+/* Markdown styles for LLM responses */
+#answerOut {
+    @apply text-gray-200 leading-relaxed;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Headers */
+#answerOut h1 {
+    @apply text-xl font-bold text-gray-100 mt-6 mb-3 pb-2 border-b border-gray-600;
+}
+
+#answerOut h2 {
+    @apply text-lg font-semibold text-gray-100 mt-5 mb-2 pb-1 border-b border-gray-700;
+}
+
+#answerOut h3 {
+    @apply text-base font-semibold text-gray-100 mt-4 mb-2;
+}
+
+#answerOut h4 {
+    @apply text-sm font-semibold text-gray-100 mt-3 mb-2;
+}
+
+#answerOut h5,
+#answerOut h6 {
+    @apply text-sm font-medium text-gray-100 mt-3 mb-2;
+}
+
+/* Paragraphs */
+#answerOut p {
+    @apply text-gray-200;
+}
+
+/* Lists */
+#answerOut ul,
+#answerOut ol {
+    @apply mb-3 ml-4;
+    display: flex;
+    flex-direction: column;
+}
+
+#answerOut li {
+    @apply mb-1 text-gray-200;
+    display: flex;
+    flex-direction: column;
+}
+
+#answerOut ul li {
+    @apply list-disc list-inside;
+    display: flex;
+    flex-direction: column;
+}
+
+#answerOut ol li {
+    @apply list-decimal list-inside;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Nested lists */
+#answerOut ul ul,
+#answerOut ol ol,
+#answerOut ul ol,
+#answerOut ol ul {
+    @apply mt-1 mb-0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Code */
+#answerOut code {
+    @apply bg-gray-800 text-gray-100 px-1.5 py-0.5 rounded text-sm font-mono border border-gray-700;
+    font-size: 13px;
+}
+
+#answerOut pre {
+    @apply bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4 overflow-x-auto;
+    font-size: 13px;
+}
+
+#answerOut pre code {
+    @apply bg-transparent p-0 border-0 text-gray-100;
+    font-size: 13px;
+}
+
+/* Blockquotes */
+#answerOut blockquote {
+    @apply border-l-4 border-blue-500 pl-4 py-2 mb-4 bg-gray-800 rounded-r-lg;
+    font-style: italic;
+    color: #d1d5db;
+}
+
+#answerOut blockquote p {
+    @apply mb-0;
+}
+
+/* Tables */
+#answerOut table {
+    @apply w-full border-collapse border border-gray-600 mb-4 rounded-lg overflow-hidden;
+}
+
+#answerOut th,
+#answerOut td {
+    @apply border border-gray-600 px-3 py-2 text-left;
+}
+
+#answerOut th {
+    @apply bg-gray-700 font-semibold text-gray-100;
+}
+
+#answerOut tr:nth-child(even) {
+    @apply bg-gray-800;
+}
+
+#answerOut tr:hover {
+    @apply bg-gray-700;
+}
+
+/* Links */
+#answerOut a {
+    @apply text-blue-400 hover:text-blue-300 underline decoration-blue-400 hover:decoration-blue-300;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+/* Text formatting */
+#answerOut strong {
+    @apply font-semibold text-gray-100;
+}
+
+#answerOut em {
+    @apply italic text-gray-200;
+}
+
+/* Horizontal rules */
+#answerOut hr {
+    @apply border-gray-600 my-6;
+    border-top: 1px solid;
+}
+
+/* Images */
+#answerOut img {
+    @apply max-w-full h-auto rounded-lg shadow-sm;
+}
+
+/* Remove extra margins from first/last elements */
+#answerOut > *:first-child {
+    @apply mt-0;
+}
+
+#answerOut > *:last-child {
+    @apply mb-0;
+}

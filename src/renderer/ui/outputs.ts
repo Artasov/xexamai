@@ -6,6 +6,14 @@ export function showText(text: string) {
 }
 
 export function showAnswer(text: string) {
-    if (answerOut) answerOut.textContent = text || '';
+    if (answerOut) {
+        if (text) {
+            // Рендерим Markdown через глобальный marked
+            const html = (window as any).marked.parse(text);
+            answerOut.innerHTML = html;
+        } else {
+            answerOut.innerHTML = '';
+        }
+    }
 }
 

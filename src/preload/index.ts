@@ -1,4 +1,5 @@
 import {contextBridge, ipcRenderer} from 'electron';
+import {marked} from 'marked';
 import {AssistantAPI, AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, WhisperModel, LocalDevice} from '../main/shared/types';
 
 export const api: AssistantAPI = {
@@ -127,8 +128,20 @@ export const api: AssistantAPI = {
 declare global {
     interface Window {
         api: typeof api;
+        marked: {
+            parse: (text: string) => string;
+        };
     }
 }
 
+// Настройка marked
+marked.setOptions({
+    breaks: true,
+    gfm: true,
+});
+
 contextBridge.exposeInMainWorld('api', api);
+contextBridge.exposeInMainWorld('marked', {
+    parse: (text: string) => marked.parse(text) as string
+});
 
