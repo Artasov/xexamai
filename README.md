@@ -19,14 +19,6 @@
   - [Local Speech Recognition](#local-speech-recognition)
 - [Important Notes](#-important-notes)
 - [For Developers](#-for-developers)
-  - [Contributing](#contributing)
-  - [Local Development](#local-development)
-    - [Requirements](#requirements)
-    - [Installation](#installation)
-    - [Project Structure](#project-structure)
-    - [Available Commands](#available-commands)
-    - [Building for Different Platforms](#building-for-different-platforms)
-    - [Technologies](#technologies)
 
 ## 🚀 Key Features
 
