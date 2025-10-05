@@ -57,6 +57,11 @@ export const api: AssistantAPI = {
                 requestId: args.requestId,
             });
         },
+        stopStream: async (args): Promise<void> => {
+            return ipcRenderer.invoke(IPCChannels.AssistantStopStream, {
+                requestId: args.requestId,
+            });
+        },
         onStreamTranscript: (cb) => {
             ipcRenderer.on(IPCChannels.AssistantStreamTranscript, cb as any);
         },

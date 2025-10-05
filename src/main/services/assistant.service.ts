@@ -43,7 +43,8 @@ export async function processAudioToAnswerStream(
     mime: string,
     onDelta: (delta: string) => void,
     onDone?: () => void,
-    audioSeconds?: number
+    audioSeconds?: number,
+    options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
 ): Promise<{ text: string }> {
     logger.info('assistant', 'Starting audio to answer stream processing', { 
         audioSize: audio.length, 
@@ -62,7 +63,7 @@ export async function processAudioToAnswerStream(
         if (onDone) onDone();
         return {text: ''};
     }
-    await askChatStream(text, onDelta, onDone);
+    await askChatStream(text, onDelta, onDone, options);
     logger.info('assistant', 'Audio to answer stream processing completed');
     return {text};
 }
@@ -92,7 +93,8 @@ export async function transcribeAudioOnly(
 export async function askChatWithText(
     text: string,
     onDelta: (delta: string) => void,
-    onDone?: () => void
+    onDone?: () => void,
+    options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
 ): Promise<void> {
     logger.info('assistant', 'Starting chat with text', { 
         textLength: text?.length || 0,
@@ -103,7 +105,7 @@ export async function askChatWithText(
         if (onDone) onDone();
         return;
     }
-    await askChatStream(text, onDelta, onDone);
+    await askChatStream(text, onDelta, onDone, options);
     logger.info('assistant', 'Chat with text completed');
 }
 

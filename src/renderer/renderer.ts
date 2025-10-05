@@ -29,6 +29,8 @@ let audioCtx: AudioContext | null = null;
 let srcNode: MediaStreamAudioSourceNode | null = null;
 let scriptNode: ScriptProcessorNode | null = null;
 let pcmRing: PcmRingBuffer | null = null;
+let currentRequestId: string | null = null;
+let btnStop: HTMLButtonElement | null = null;
 
 async function getSystemAudioStream(): Promise<MediaStream> {
     try {
@@ -178,6 +180,7 @@ async function handleAskWindow(seconds: number) {
     const wav = floatsToWav(pcm.channels, pcm.sampleRate);
     const arrayBuffer = await wav.arrayBuffer();
     const requestId = `ask-window-${seconds}-` + Date.now();
+    currentRequestId = requestId;
 
     try {
         const transcribeRes = await window.api.assistant.transcribeOnly({
@@ -219,15 +222,25 @@ async function handleAskWindow(seconds: number) {
             setStatus('Done', 'ready');
             setProcessing(false);
             updateButtonsState();
+            if (btnStop) btnStop.classList.add('hidden');
+            currentRequestId = null;
         });
         window.api.assistant.onStreamError((_e: unknown, p: { requestId?: string; error: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
-            setStatus('Error', 'error');
-            showAnswer('Error: ' + p.error);
+            const msg = (p.error || '').toString();
+            if (msg.toLowerCase().includes('aborted')) {
+                setStatus('Done', 'ready');
+            } else {
+                setStatus('Error', 'error');
+                showAnswer('Error: ' + p.error);
+            }
             setProcessing(false);
             updateButtonsState();
+            if (btnStop) btnStop.classList.add('hidden');
+            currentRequestId = null;
         });
 
+        if (btnStop) btnStop.classList.remove('hidden');
         await window.api.assistant.askChat({ text, requestId });
 
     } catch (error) {
@@ -255,6 +268,7 @@ async function handleTextSend(text: string) {
     }
 
     const requestId = `text-send-${Date.now()}`;
+    currentRequestId = requestId;
 
     try {
         setStatus('Sending to ChatGPT...', 'sending');
@@ -279,15 +293,25 @@ async function handleTextSend(text: string) {
             setStatus('Done', 'ready');
             setProcessing(false);
             updateButtonsState();
+            if (btnStop) btnStop.classList.add('hidden');
+            currentRequestId = null;
         });
         window.api.assistant.onStreamError((_e: unknown, p: { requestId?: string; error: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
-            setStatus('Error', 'error');
-            showAnswer('Error: ' + p.error);
+            const msg = (p.error || '').toString();
+            if (msg.toLowerCase().includes('aborted')) {
+                setStatus('Done', 'ready');
+            } else {
+                setStatus('Error', 'error');
+                showAnswer('Error: ' + p.error);
+            }
             setProcessing(false);
             updateButtonsState();
+            if (btnStop) btnStop.classList.add('hidden');
+            currentRequestId = null;
         });
 
+        if (btnStop) btnStop.classList.remove('hidden');
         await window.api.assistant.askChat({
             text,
             requestId,
@@ -341,6 +365,20 @@ async function main() {
             handleTextSend(text);
         },
     });
+
+    btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
+    if (btnStop) {
+        btnStop.addEventListener('click', async () => {
+            if (!currentRequestId) { btnStop?.classList.add('hidden'); return; }
+            try {
+                await window.api.assistant.stopStream({ requestId: currentRequestId });
+            } catch (e) {
+                console.error('Stop stream error', e);
+            } finally {
+                btnStop?.classList.add('hidden');
+            }
+        });
+    }
 
     const settingsPanelContainer = document.getElementById('settingsPanel');
     if (settingsPanelContainer) {

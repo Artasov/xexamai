@@ -81,7 +81,8 @@ async function askChatLocal(prompt: string): Promise<string> {
 async function askChatStreamLocal(
     prompt: string,
     onDelta: (delta: string) => void,
-    onDone?: () => void
+    onDone?: () => void,
+    options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
 ): Promise<void> {
     const cfg = getConfig();
     const url = 'http://localhost:11434/api/chat';
@@ -105,6 +106,7 @@ async function askChatStreamLocal(
             ],
             stream: true,
         }),
+        signal: options?.signal,
     });
 
     if (!res.ok || !res.body) {
@@ -118,11 +120,13 @@ async function askChatStreamLocal(
     try {
         // Ollama-style NDJSON lines
         while (true) {
+            if (options?.shouldCancel?.()) break;
             const {done, value} = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, {stream: true});
             let idx;
             while ((idx = buffer.indexOf('\n')) !== -1) {
+                if (options?.shouldCancel?.()) { buffer = ''; break; }
                 const line = buffer.slice(0, idx).trim();
                 buffer = buffer.slice(idx + 1);
                 if (!line) continue;
@@ -225,7 +229,8 @@ export async function askChat(prompt: string): Promise<string> {
 export async function askChatStream(
     prompt: string,
     onDelta: (delta: string) => void,
-    onDone?: () => void
+    onDone?: () => void,
+    options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
 ): Promise<void> {
     const cfg = getConfig();
     if (!isLocalModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
@@ -233,7 +238,7 @@ export async function askChatStream(
     if (isLocalModel(cfg.chatModel)) {
         return withRetry(
             async () => {
-                await askChatStreamLocal(prompt, onDelta, onDone);
+                await askChatStreamLocal(prompt, onDelta, onDone, options);
             },
             cfg.retryConfig,
             'Local GPT-OSS streaming',
@@ -279,6 +284,7 @@ export async function askChatStream(
             let totalLength = 0;
             let chunkCount = 0;
             for await (const chunk of stream as any) {
+                if (options?.shouldCancel?.()) break;
                 try {
                     const delta = chunk?.choices?.[0]?.delta?.content;
                     if (typeof delta === 'string' && delta.length > 0) {

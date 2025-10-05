@@ -4,7 +4,8 @@ import {
     AssistantResponse,
     IPCChannels,
     SttProcessRequest,
-    TranscribeOnlyRequest
+    TranscribeOnlyRequest,
+    StopStreamRequest
 } from '../shared/types';
 import {
     askChatWithText,
@@ -15,6 +16,8 @@ import {
 import {logger} from '../services/logger.service';
 
 export function registerSttIpc() {
+    const controllers = new Map<string, { controller: AbortController; cancelled: boolean; sentDone: boolean }>();
+
     ipcMain.handle(IPCChannels.AssistantProcess, async (_event, payload: SttProcessRequest): Promise<AssistantResponse> => {
         logger.info('stt', 'Processing audio request', { 
             hasAudio: !!(payload as any)?.audio, 
@@ -140,17 +143,25 @@ export function registerSttIpc() {
 
             event.sender.send(IPCChannels.AssistantStreamTranscript, {requestId, delta: ''});
             let accumulated = '';
+            const ac = new AbortController();
+            controllers.set(requestId, { controller: ac, cancelled: false, sentDone: false });
+            const ctx = controllers.get(requestId)!;
             const {text} = await processAudioToAnswerStream(
                 audio,
                 filename,
                 payload.mime,
                 (delta) => {
+                    if (ctx.cancelled) return;
                     accumulated += delta;
                     event.sender.send(IPCChannels.AssistantStreamDelta, {requestId, delta});
                 },
                 () => {
+                    if (ctx.sentDone) return;
+                    ctx.sentDone = true;
                     event.sender.send(IPCChannels.AssistantStreamDone, {requestId, full: accumulated});
-                }
+                },
+                undefined,
+                { signal: ac.signal, shouldCancel: () => controllers.get(requestId)?.cancelled === true }
             );
             
             logger.info('stt', 'Audio stream processing completed', { 
@@ -159,6 +170,7 @@ export function registerSttIpc() {
                 requestId 
             });
             
+            controllers.delete(requestId);
             return {ok: true, text, answer: ''};
         } catch (err: any) {
             const message = err?.message || String(err);
@@ -257,21 +269,29 @@ export function registerSttIpc() {
 
             event.sender.send(IPCChannels.AssistantStreamTranscript, {requestId, delta: ''});
             let accumulated = '';
+            const ac = new AbortController();
+            controllers.set(requestId, { controller: ac, cancelled: false, sentDone: false });
+            const ctx = controllers.get(requestId)!;
             await askChatWithText(
                 payload.text,
                 (delta) => {
+                    if (ctx.cancelled) return;
                     accumulated += delta;
                     event.sender.send(IPCChannels.AssistantStreamDelta, {requestId, delta});
                 },
                 () => {
+                    if (ctx.sentDone) return;
+                    ctx.sentDone = true;
                     event.sender.send(IPCChannels.AssistantStreamDone, {requestId, full: accumulated});
-                }
+                },
+                { signal: ac.signal, shouldCancel: () => controllers.get(requestId)?.cancelled === true }
             );
             
             logger.info('chat', 'Chat processing completed', { 
                 responseLength: accumulated.length,
                 requestId 
             });
+            controllers.delete(requestId);
         } catch (err: any) {
             const message = err?.message || String(err);
             logger.error('chat', 'Chat processing failed', { 
@@ -282,6 +302,19 @@ export function registerSttIpc() {
                 error: message,
                 requestId: (payload as any)?.requestId
             });
+        }
+    });
+
+    ipcMain.handle(IPCChannels.AssistantStopStream, async (event, payload: StopStreamRequest): Promise<void> => {
+        const requestId = payload?.requestId || 'default';
+        const ctx = controllers.get(requestId);
+        if (!ctx) return;
+        try {
+            ctx.cancelled = true;
+            try { ctx.controller.abort(); } catch {}
+            // Не шлём принудительно Done тут, чтобы не перетирать UI.
+        } finally {
+            // keep for a bit until stream loop exits; cleanup in handlers
         }
     });
 }

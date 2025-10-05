@@ -48,6 +48,10 @@ export type AskChatRequest = {
     requestId?: string;
 };
 
+export type StopStreamRequest = {
+    requestId?: string;
+};
+
 export type AudioDevice = {
     deviceId: string;
     label: string;
@@ -71,6 +75,7 @@ export type AssistantAPI = {
             error: string
         }>;
         askChat: (args: AskChatRequest) => Promise<void>;
+        stopStream: (args: StopStreamRequest) => Promise<void>;
         onStreamTranscript: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
         onStreamDelta: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
         onStreamDone: (cb: (e: unknown, payload: { requestId?: string; full: string }) => void) => void;
