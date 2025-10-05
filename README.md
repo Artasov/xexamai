@@ -82,7 +82,9 @@
      `New-Item -ItemType Junction -Path "C:\Users\xl\.ollama\models" -Target "F:\ollama_models\models"`
 
 4. #### Запуск Ollama на
-   `ollama serve`
+   ```sh 
+   ollama serve
+   ```
 
 
 ### Локальное распознавание звука

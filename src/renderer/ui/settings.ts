@@ -138,6 +138,9 @@ export class SettingsPanel {
                             <option value="gpt-4">GPT-4 (Classic High Quality)</option>
                             <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Legacy - Fast)</option>
                             <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (Extended Context)</option>
+                            <option value="gpt-oss:7b">GPT-OSS 7B (Local)</option>
+                            <option value="gpt-oss:13b">GPT-OSS 13B (Local)</option>
+                            <option value="gpt-oss:20b">GPT-OSS 20B (Local)</option>
                         </select>
                     </div>
                 </div>
