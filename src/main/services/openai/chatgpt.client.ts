@@ -17,8 +17,22 @@ function getClient(): OpenAI {
     return client;
 }
 
-function isLocalOssModel(model?: string): boolean {
-    return typeof model === 'string' && model.startsWith('gpt-oss');
+const ALLOWED_LOCAL_MODELS = new Set<string>([
+    'gpt-oss:120b',
+    'gpt-oss:20b',
+    'gemma3:27b',
+    'gemma3:12b',
+    'gemma3:4b',
+    'gemma3:1b',
+    'deepseek-r1:8b',
+    'qwen3-coder:30b',
+    'qwen3:30b',
+    'qwen3:8b',
+    'qwen3:4b',
+]);
+
+function isLocalModel(model?: string): boolean {
+    return typeof model === 'string' && ALLOWED_LOCAL_MODELS.has(model);
 }
 
 async function askChatLocal(prompt: string): Promise<string> {
@@ -139,9 +153,9 @@ async function askChatStreamLocal(
 
 export async function askChat(prompt: string): Promise<string> {
     const cfg = getConfig();
-    if (!isLocalOssModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
+    if (!isLocalModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
-    if (isLocalOssModel(cfg.chatModel)) {
+    if (isLocalModel(cfg.chatModel)) {
         return withRetry(
             async () => askChatLocal(prompt),
             cfg.retryConfig,
@@ -212,9 +226,9 @@ export async function askChatStream(
     onDone?: () => void
 ): Promise<void> {
     const cfg = getConfig();
-    if (!isLocalOssModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
+    if (!isLocalModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
-    if (isLocalOssModel(cfg.chatModel)) {
+    if (isLocalModel(cfg.chatModel)) {
         return withRetry(
             async () => {
                 await askChatStreamLocal(prompt, onDelta, onDone);

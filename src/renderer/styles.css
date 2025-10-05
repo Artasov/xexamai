@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+* {
+    cursor: default !important;
+}
+
 /* Simple utility overrides */
 .btn {
     @apply px-3 py-2 rounded-md font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed;

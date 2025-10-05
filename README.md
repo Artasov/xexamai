@@ -94,7 +94,7 @@
 
 
 ### Локальное распознавание звука
-1. Выберите в настройках `LLM Model` одну из моделей `gpt-oss` 
+1. Выберите в `xexamai` в настройках `LLM Model` одну из моделей.
 
 2. ### Установить Cuda
    https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
@@ -105,7 +105,12 @@
 4. ### В переменную path окружения windows вставить
    `C:\Program Files\NVIDIA\CUDNN\v9.13\bin\12.9` 
 
-5. ### Перезапуск пк
+5. ### Установить [Python 3.12.5](https://www.python.org/downloads/release/python-3125/)
+ 
+6. ### Перезапуск пк
+
+7. ### Установить и запустить [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
+   Само оно при запуске системы запускаться не будет, поэтому его нужно включать руками чтобы сервер локального распознавания звука работал
 
 
 ## ⚠️ Important Notes

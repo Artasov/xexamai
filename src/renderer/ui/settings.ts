@@ -138,9 +138,17 @@ export class SettingsPanel {
                             <option value="gpt-4">GPT-4 (Classic High Quality)</option>
                             <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Legacy - Fast)</option>
                             <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (Extended Context)</option>
-                            <option value="gpt-oss:7b">GPT-OSS 7B (Local)</option>
-                            <option value="gpt-oss:13b">GPT-OSS 13B (Local)</option>
+                            <option value="gpt-oss:120b">GPT-OSS 120B (Local)</option>
                             <option value="gpt-oss:20b">GPT-OSS 20B (Local)</option>
+                            <option value="gemma3:27b">Gemma 3 27B (Local)</option>
+                            <option value="gemma3:12b">Gemma 3 12B (Local)</option>
+                            <option value="gemma3:4b">Gemma 3 4B (Local)</option>
+                            <option value="gemma3:1b">Gemma 3 1B (Local)</option>
+                            <option value="deepseek-r1:8b">DeepSeek-R1 8B (Local)</option>
+                            <option value="qwen3-coder:30b">Qwen3-Coder 30B (Local)</option>
+                            <option value="qwen3:30b">Qwen3 30B (Local)</option>
+                            <option value="qwen3:8b">Qwen3 8B (Local)</option>
+                            <option value="qwen3:4b">Qwen3 4B (Local)</option>
                         </select>
                     </div>
                 </div>
