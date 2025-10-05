@@ -94,6 +94,7 @@ export const api: AssistantAPI = {
         setAlwaysOnTop: (alwaysOnTop: boolean) => ipcRenderer.invoke(IPCChannels.SetAlwaysOnTop, alwaysOnTop),
         setWindowSize: (size: { width: number; height: number }) => ipcRenderer.invoke(IPCChannels.SetWindowSize, size),
         setDurations: (durations: number[]) => ipcRenderer.invoke(IPCChannels.SetDurations, durations),
+        setDurationHotkeys: (map: Record<number, string>) => ipcRenderer.invoke(IPCChannels.SetDurationHotkeys, map),
         setAudioInputDevice: (deviceId: string) => ipcRenderer.invoke(IPCChannels.SetAudioInputDevice, deviceId),
         setAudioInputType: (type: 'microphone' | 'system') => ipcRenderer.invoke(IPCChannels.SetAudioInputType, type),
         setTranscriptionModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetTranscriptionModel, model),
@@ -119,6 +120,14 @@ export const api: AssistantAPI = {
             }
         },
         openConfigFolder: () => ipcRenderer.invoke(IPCChannels.OpenConfigFolder),
+    },
+    hotkeys: {
+        onDuration: (cb) => {
+            ipcRenderer.on(IPCChannels.HotkeyDuration, cb as any);
+        },
+        offDuration: () => {
+            ipcRenderer.removeAllListeners(IPCChannels.HotkeyDuration);
+        },
     },
     window: {
         minimize: () => ipcRenderer.invoke('window:minimize'),

@@ -22,6 +22,7 @@ export type LocalDevice = 'cpu' | 'gpu';
 
 export type AppSettings = {
     durations: number[]; // seconds
+    durationHotkeys?: Record<number, string>; // digit or letter key, combined with Ctrl
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
@@ -65,6 +66,8 @@ export const IPCChannels = {
     SetAlwaysOnTop: 'settings:set:always-on-top',
     SetWindowSize: 'settings:set:window-size',
     SetDurations: 'settings:set:durations',
+    SetDurationHotkeys: 'settings:set:duration-hotkeys',
+    HotkeyDuration: 'hotkeys:duration', // main -> renderer event with { sec }
     SetAudioInputDevice: 'settings:set:audio-input-device',
     SetAudioInputType: 'settings:set:audio-input-type',
     SetTranscriptionModel: 'settings:set:transcription-model',
@@ -142,6 +145,10 @@ export type AssistantAPI = {
         offStreamDone: () => void;
         offStreamError: () => void;
     };
+    hotkeys: {
+        onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;
+        offDuration: () => void;
+    };
     settings: {
         get: () => Promise<AppSettings>;
         setOpenaiApiKey: (key: string) => Promise<void>;
@@ -149,6 +156,7 @@ export type AssistantAPI = {
         setAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>;
         setWindowSize: (size: { width: number; height: number }) => Promise<void>;
         setDurations: (durations: number[]) => Promise<void>;
+        setDurationHotkeys: (map: Record<number, string>) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
         setTranscriptionModel: (model: string) => Promise<void>;

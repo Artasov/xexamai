@@ -4,6 +4,7 @@ import {loadEnv} from './services/config.service';
 import {registerSttIpc} from './ipc/stt.ipc';
 import {registerSettingsIpc} from './ipc/settings.ipc';
 import {createMainWindow} from './windows/MainWindow';
+import {hotkeysService} from './services/hotkeys.service';
 
 // Enable WebGPU in Electron
 try {
@@ -36,6 +37,10 @@ function onReady() {
     registerSttIpc();
     registerSettingsIpc();
     registerWindowIpc();
+    if (mainWindow) {
+        hotkeysService.init(mainWindow);
+        hotkeysService.refresh();
+    }
     logger.info('app', 'Application ready');
 }
 

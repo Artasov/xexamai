@@ -322,9 +322,20 @@ export class SettingsPanel {
         const durationsList = this.container.querySelector('#durationsList');
         if (!durationsList) return;
 
+        const hotkeys = (this.settings as any).durationHotkeys || {};
         durationsList.innerHTML = this.settings.durations?.map((duration: number) => `
             <div class="duration-item">
                 <span class="duration-value">${duration}s</span>
+                <input 
+                    class="input-field hotkey-input" 
+                    data-duration="${duration}"
+                    maxlength="1"
+                    placeholder="Key"
+                    value="${(hotkeys as any)[duration] ? String((hotkeys as any)[duration]).toUpperCase() : ''}"
+                    style="width:60px;text-transform:uppercase;"
+                    title="Укажите символ для Ctrl-<ключ>"
+                />
+                <button class="btn btn-sm save-hotkey" data-duration="${duration}">Save</button>
                 <button class="btn btn-sm btn-danger remove-duration" data-duration="${duration}">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M18 6L6 18M6 6l12 12"/>
@@ -412,6 +423,24 @@ export class SettingsPanel {
                     this.options.onDurationsChange?.(newDurations);
                 } catch (error) {
                     this.showNotification('Error removing duration', 'error');
+                }
+            }
+            if (target.closest('.save-hotkey')) {
+                const button = target.closest('.save-hotkey') as HTMLElement;
+                const duration = parseInt(button.dataset.duration || '0');
+                const input = this.container.querySelector(`.hotkey-input[data-duration="${duration}"]`) as HTMLInputElement | null;
+                const raw = (input?.value || '').trim();
+                if (!raw) return;
+                const key = raw[0];
+                const next = Object.assign({}, (this.settings as any).durationHotkeys || {});
+                next[duration] = key.toLowerCase();
+                logger.info('settings', 'Save duration hotkey clicked', { duration, key });
+                try {
+                    await (window.api.settings as any).setDurationHotkeys(next);
+                    (this.settings as any).durationHotkeys = next;
+                    this.showNotification('Hotkey saved');
+                } catch (error) {
+                    this.showNotification('Error saving hotkey', 'error');
                 }
             }
         });

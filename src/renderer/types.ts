@@ -6,6 +6,7 @@ export type LocalDevice = 'cpu' | 'gpu';
 
 export type AppSettings = {
     durations: number[]; // seconds
+    durationHotkeys?: Record<number, string>;
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
@@ -106,6 +107,10 @@ export type AssistantAPI = {
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };
+    hotkeys: {
+        onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;
+        offDuration: () => void;
+    };
     window: {
         minimize: () => Promise<void>;
         close: () => Promise<void>;
@@ -116,3 +121,14 @@ export type AssistantAPI = {
     };
     log: (entry: LogEntry) => Promise<void>;
 };
+
+declare global {
+    interface Window {
+        api: AssistantAPI;
+        marked: {
+            parse: (text: string) => string;
+        };
+    }
+}
+
+export {};

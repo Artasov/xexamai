@@ -2,6 +2,7 @@ import {BrowserWindow, ipcMain, shell} from 'electron';
 import {AppSettings, DefaultSettings, IPCChannels, LocalDevice, TranscriptionMode, WhisperModel, DEFAULT_LLM_PROMPT} from '../shared/types';
 import {appConfigService} from '../services/app-config.service';
 import {logger} from '../services/logger.service';
+import {hotkeysService} from '../services/hotkeys.service';
 
 export function registerSettingsIpc() {
     ipcMain.handle(IPCChannels.GetSettings, async (): Promise<AppSettings> => {
@@ -9,6 +10,7 @@ export function registerSettingsIpc() {
         const config = appConfigService.getConfig();
         return {
             durations: config.durations || DefaultSettings.durations,
+            durationHotkeys: appConfigService.getDurationHotkeys(config.durations || DefaultSettings.durations),
             openaiApiKey: config.openaiApiKey,
             windowOpacity: config.windowOpacity || DefaultSettings.windowOpacity,
             alwaysOnTop: config.alwaysOnTop !== undefined ? config.alwaysOnTop : DefaultSettings.alwaysOnTop,
@@ -65,6 +67,13 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetDurations, async (_, durations: number[]): Promise<void> => {
         appConfigService.setDurations(durations);
+        // refresh hotkeys registrations
+        hotkeysService.refresh();
+    });
+
+    ipcMain.handle(IPCChannels.SetDurationHotkeys, async (_, map: Record<number, string>): Promise<void> => {
+        appConfigService.setDurationHotkeys(map);
+        hotkeysService.refresh();
     });
 
     ipcMain.handle(IPCChannels.SetAudioInputDevice, async (_, deviceId: string): Promise<void> => {

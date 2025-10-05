@@ -9,6 +9,7 @@ export interface AppConfigData {
     windowOpacity?: number;
     alwaysOnTop?: boolean;
     durations?: number[];
+    durationHotkeys?: Record<number, string>;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -50,6 +51,13 @@ export class AppConfigService {
                     windowOpacity: 100,
                     alwaysOnTop: false,
                     durations: [5, 10, 15, 20, 30, 60],
+                    durationHotkeys: {
+                        5: '1',
+                        10: '2',
+                        15: '3',
+                        20: '4',
+                        30: '5',
+                    },
                     transcriptionModel: 'gpt-4o-mini-transcribe',
                     transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
                     llmPrompt: DEFAULT_LLM_PROMPT,
@@ -67,6 +75,13 @@ export class AppConfigService {
                 windowOpacity: 100,
                 alwaysOnTop: false,
                 durations: [5, 10, 15, 20, 30, 60],
+                durationHotkeys: {
+                    5: '1',
+                    10: '2',
+                    15: '3',
+                    20: '4',
+                    30: '5',
+                },
                 transcriptionModel: 'gpt-4o-mini-transcribe',
                 transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
                 llmPrompt: DEFAULT_LLM_PROMPT,
@@ -115,11 +130,61 @@ export class AppConfigService {
     public setDurations(durations: number[]): void {
         const oldDurations = this.configData.durations;
         this.configData.durations = durations;
+        // prune hotkeys for removed durations
+        if (this.configData.durationHotkeys) {
+            const next: Record<number, string> = {} as any;
+            for (const d of durations) {
+                const k = (this.configData.durationHotkeys as any)[d];
+                if (k) next[d] = k;
+            }
+            this.configData.durationHotkeys = next;
+        }
         this.saveConfig();
         logger.info('settings', 'Recording durations updated', { 
             oldDurations, 
             newDurations: durations 
         });
+    }
+
+    public setDurationHotkeys(map: Record<number, string>): void {
+        const sanitized: Record<number, string> = {} as any;
+        for (const [k, v] of Object.entries(map || {})) {
+            const num = Number(k);
+            if (!Number.isFinite(num)) continue;
+            const key = String(v || '').trim();
+            if (!key) continue;
+            // allow single char 0-9,a-z
+            if (/^[0-9a-zA-Z]$/.test(key)) {
+                sanitized[num] = key.toLowerCase();
+            }
+        }
+        const old = this.configData.durationHotkeys;
+        this.configData.durationHotkeys = sanitized;
+        this.saveConfig();
+        logger.info('settings', 'Duration hotkeys updated', { old, next: sanitized });
+    }
+
+    public getDurationHotkeys(durations?: number[]): Record<number, string> {
+        const existing = this.configData.durationHotkeys || {};
+        const list = durations || this.getDurations();
+        const defaultsOrder: Array<{ d: number; key: string }> = [
+            { d: 5, key: '1' },
+            { d: 10, key: '2' },
+            { d: 15, key: '3' },
+            { d: 20, key: '4' },
+            { d: 30, key: '5' },
+        ];
+        const result: Record<number, string> = {} as any;
+        for (const d of list) {
+            const k = (existing as any)[d];
+            if (k) {
+                result[d] = String(k);
+                continue;
+            }
+            const def = defaultsOrder.find(x => x.d === d);
+            if (def) result[d] = def.key;
+        }
+        return result;
     }
 
     public getConfigDirectory(): string {

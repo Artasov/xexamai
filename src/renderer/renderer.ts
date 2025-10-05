@@ -12,12 +12,6 @@ import {logger} from './utils/logger.js';
 
 import type {AssistantAPI} from './types.js';
 
-declare global {
-    interface Window {
-        api: AssistantAPI;
-    }
-}
-
 let media: MediaRecorder | null = null;
 let ring: AudioRingBuffer | null = null;
 let mimeSelected = 'audio/webm';
@@ -361,7 +355,7 @@ async function main() {
         }
     }
 
-    const {durations} = await window.api.settings.get();
+    const {durations, durationHotkeys} = await window.api.settings.get();
     if (Array.isArray(durations) && durations.length) {
         try {
             (state as any).durationSec = Math.max(...durations);
@@ -379,6 +373,31 @@ async function main() {
         onTextSend: (text) => {
             handleTextSend(text);
         },
+    });
+
+    // Проставим подписи хоткеев на кнопках
+    try {
+        const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
+        if (durationsEl && durationHotkeys) {
+            const buttons = durationsEl.querySelectorAll('button');
+            buttons.forEach((btn) => {
+                const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
+                const key = (durationHotkeys as any)[sec];
+                if (key) {
+                    const label = document.createElement('span');
+                    label.className = 'ml-2 text-xs text-gray-400';
+                    label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
+                    btn.appendChild(label);
+                }
+            });
+        }
+    } catch {}
+
+    // Подписка на глобальные хоткеи
+    window.api.hotkeys.onDuration((_e: unknown, payload: { sec: number }) => {
+        try {
+            handleAskWindow(payload.sec);
+        } catch {}
     });
 
     btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
