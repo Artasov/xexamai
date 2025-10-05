@@ -14,9 +14,6 @@
 
 - [Key Features](#-key-features)
 - [How to Use](#-how-to-use)
-  - [Setup](#1-setup)
-  - [Usage](#2-usage)
-  - [Usage Tips](#3-usage-tips)
 - [How to Use Locally](#how-to-use-locally)
   - [Local LLM Processing](#local-llm-processing)
   - [Local Speech Recognition](#local-speech-recognition)
