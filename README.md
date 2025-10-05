@@ -17,7 +17,7 @@
 - [How to Use Locally FREE](#how-to-use-locally)
   - [Local LLM Processing](#local-llm-processing)
   - [Local Speech Recognition](#local-speech-recognition)
-- [Important Notes](#-important-notes)
+- [Important Notes](#important-notes)
 - [For Developers](#-for-developers)
 
 ## 🚀 Key Features
@@ -77,6 +77,20 @@ The assistant works in two stages:
 
 Each stage can be run locally.
 
+
+1. #### Install CUDA
+   https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
+
+2. #### cuDNN 9.13.1
+   https://developer.nvidia.com/cudnn-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
+
+3. #### Add to Windows PATH environment variable
+   `C:\\Program Files\\NVIDIA\\CUDNN\\v9.13\\bin\\12.9`
+
+4. #### Restart the PC
+   > If you will use local speech recognition, then install python from the step below, if you don't have it yet.
+
+
 ### Local LLM Processing
 
 Minimum recommended configuration:
@@ -86,10 +100,9 @@ Minimum recommended configuration:
 
 1. 
    * In Settings choose `Transcription Mode` = `Local`
-   * In Settings choose a `Local Whisper Model` from the available models:
+   * In Settings choose a `LLM Model` from the available models:
      * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
        > Choose a smaller model if your PC is low-spec
-   * In Settings choose `Local Device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
 
 2. #### Install Ollama
    https://ollama.com/
@@ -110,26 +123,17 @@ Minimum recommended configuration:
 
 
 ### Local Speech Recognition
-1. In `xexamai` Settings select an `LLM Model`.
+1. In `xexamai` settings select an `Transcription Mode` = `Local`.
 
-2. ### Install CUDA
-   https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
+2. Same choose one of `Local Whisper Model`
 
-3. ### cuDNN 9.13.1
-   https://developer.nvidia.com/cudnn-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
+3. In Settings choose `Local Device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
 
-4. ### Add to Windows PATH environment variable
-   `C:\\Program Files\\NVIDIA\\CUDNN\\v9.13\\bin\\12.9`
-
-5. ### Install [Python 3.12.5](https://www.python.org/downloads/release/python-3125/)
- 
-6. ### Restart the PC
-
-7. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
+4. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
    It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is running
 
 
-## ⚠️ Important Notes
+## Important Notes
 
 - This application is intended for educational purposes
 - Ensure that AI assistance is allowed in your situation
