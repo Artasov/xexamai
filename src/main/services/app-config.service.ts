@@ -2,7 +2,7 @@ import {app} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {logger} from './logger.service';
-import {WhisperModel, TranscriptionMode} from '../shared/types';
+import {WhisperModel, TranscriptionMode, LocalDevice} from '../shared/types';
 
 export interface AppConfigData {
     openaiApiKey?: string;
@@ -16,6 +16,7 @@ export interface AppConfigData {
     llmModel?: string;
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
+    localDevice?: LocalDevice;
 }
 
 export class AppConfigService {
@@ -48,7 +49,8 @@ export class AppConfigService {
                     transcriptionModel: 'gpt-4o-mini-transcribe',
                     transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
                     transcriptionMode: 'api',
-                    localWhisperModel: 'base'
+                    localWhisperModel: 'base',
+                    localDevice: 'cpu'
                 };
                 this.saveConfig();
             }
@@ -61,7 +63,8 @@ export class AppConfigService {
                 transcriptionModel: 'gpt-4o-mini-transcribe',
                 transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
                 transcriptionMode: 'api',
-                localWhisperModel: 'base'
+                localWhisperModel: 'base',
+                localDevice: 'cpu'
             };
         }
     }
@@ -235,6 +238,20 @@ export class AppConfigService {
 
     public getAlwaysOnTop(): boolean {
         return this.configData.alwaysOnTop || false;
+    }
+
+    public setLocalDevice(device: LocalDevice): void {
+        const oldDevice = this.configData.localDevice;
+        this.configData.localDevice = device;
+        this.saveConfig();
+        logger.info('settings', 'Local device changed', { 
+            oldDevice, 
+            newDevice: device 
+        });
+    }
+
+    public getLocalDevice(): LocalDevice {
+        return this.configData.localDevice || 'cpu';
     }
 }
 

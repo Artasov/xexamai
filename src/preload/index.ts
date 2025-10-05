@@ -1,5 +1,5 @@
 import {contextBridge, ipcRenderer} from 'electron';
-import {AssistantAPI, AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, WhisperModel} from '../main/shared/types';
+import {AssistantAPI, AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, WhisperModel, LocalDevice} from '../main/shared/types';
 
 export const api: AssistantAPI = {
     assistant: {
@@ -94,6 +94,7 @@ export const api: AssistantAPI = {
         setLlmModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetLlmModel, model),
         setTranscriptionMode: (mode: TranscriptionMode) => ipcRenderer.invoke(IPCChannels.SetTranscriptionMode, mode),
         setLocalWhisperModel: (model: WhisperModel) => ipcRenderer.invoke(IPCChannels.SetLocalWhisperModel, model),
+        setLocalDevice: (device: LocalDevice) => ipcRenderer.invoke(IPCChannels.SetLocalDevice, device),
         getAudioDevices: async () => {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();

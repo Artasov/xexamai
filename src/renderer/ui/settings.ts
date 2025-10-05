@@ -117,6 +117,16 @@ export class SettingsPanel {
                     </div>
                 </div>
 
+                <div class="settings-section" id="localDeviceSection" style="display: none;">
+                    <h3 class="settings-title">Local Device</h3>
+                    <div class="input-group">
+                        <select id="localDevice" class="input-field">
+                            <option value="cpu">CPU - Стабильная работа, медленнее</option>
+                            <option value="gpu">GPU - Быстрее, требует CUDA/OpenCL</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="settings-section">
                     <h3 class="settings-title">LLM Model</h3>
                     <div class="input-group">
@@ -213,11 +223,13 @@ export class SettingsPanel {
         const transcriptionMode = this.container.querySelector('#transcriptionMode') as HTMLSelectElement;
         const apiSection = this.container.querySelector('#apiTranscriptionSection') as HTMLElement;
         const localSection = this.container.querySelector('#localTranscriptionSection') as HTMLElement;
+        const localDeviceSection = this.container.querySelector('#localDeviceSection') as HTMLElement;
 
-        if (transcriptionMode && apiSection && localSection) {
+        if (transcriptionMode && apiSection && localSection && localDeviceSection) {
             const isLocal = transcriptionMode.value === 'local';
             apiSection.style.display = isLocal ? 'none' : 'block';
             localSection.style.display = isLocal ? 'block' : 'none';
+            localDeviceSection.style.display = isLocal ? 'block' : 'none';
         }
     }
 
@@ -401,6 +413,23 @@ export class SettingsPanel {
                     this.showNotification(`Local Whisper model changed to ${model}`);
                 } catch (error) {
                     this.showNotification('Error saving local Whisper model', 'error');
+                }
+            });
+        }
+
+        const localDeviceSelect = this.container.querySelector('#localDevice') as HTMLSelectElement;
+        if (localDeviceSelect) {
+            localDeviceSelect.value = this.settings.localDevice || 'cpu';
+
+            localDeviceSelect.addEventListener('change', async () => {
+                const device = localDeviceSelect.value as 'cpu' | 'gpu';
+                logger.info('settings', 'Local device changed', { device });
+                try {
+                    await window.api.settings.setLocalDevice(device);
+                    this.settings.localDevice = device;
+                    this.showNotification(`Local device changed to ${device.toUpperCase()}`);
+                } catch (error) {
+                    this.showNotification('Error saving local device', 'error');
                 }
             });
         }

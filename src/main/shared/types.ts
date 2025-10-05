@@ -18,6 +18,8 @@ export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'lar
 
 export type TranscriptionMode = 'api' | 'local';
 
+export type LocalDevice = 'cpu' | 'gpu';
+
 export type AppSettings = {
     durations: number[]; // seconds
     openaiApiKey?: string;
@@ -30,6 +32,7 @@ export type AppSettings = {
     llmModel?: string;
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
+    localDevice?: LocalDevice;
 };
 
 export const DefaultSettings: AppSettings = {
@@ -38,6 +41,7 @@ export const DefaultSettings: AppSettings = {
     alwaysOnTop: false,
     transcriptionMode: 'api',
     localWhisperModel: 'base',
+    localDevice: 'cpu',
 };
 
 export const IPCChannels = {
@@ -61,6 +65,7 @@ export const IPCChannels = {
     SetLlmModel: 'settings:set:llm-model',
     SetTranscriptionMode: 'settings:set:transcription-mode',
     SetLocalWhisperModel: 'settings:set:local-whisper-model',
+    SetLocalDevice: 'settings:set:local-device',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
     Log: 'log:entry',
@@ -137,6 +142,7 @@ export type AssistantAPI = {
         setLlmModel: (model: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
+        setLocalDevice: (device: LocalDevice) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };

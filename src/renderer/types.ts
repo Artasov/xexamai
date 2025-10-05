@@ -2,6 +2,8 @@ export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'lar
 
 export type TranscriptionMode = 'api' | 'local';
 
+export type LocalDevice = 'cpu' | 'gpu';
+
 export type AppSettings = {
     durations: number[]; // seconds
     openaiApiKey?: string;
@@ -14,6 +16,7 @@ export type AppSettings = {
     llmModel?: string;
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
+    localDevice?: LocalDevice;
 };
 
 export type AssistantResponse = {
@@ -89,6 +92,7 @@ export type AssistantAPI = {
         setLlmModel: (model: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
+        setLocalDevice: (device: LocalDevice) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };

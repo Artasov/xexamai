@@ -1,5 +1,5 @@
 import {BrowserWindow, ipcMain, shell} from 'electron';
-import {AppSettings, DefaultSettings, IPCChannels, TranscriptionMode, WhisperModel} from '../shared/types';
+import {AppSettings, DefaultSettings, IPCChannels, TranscriptionMode, WhisperModel, LocalDevice} from '../shared/types';
 import {appConfigService} from '../services/app-config.service';
 import {logger} from '../services/logger.service';
 
@@ -19,6 +19,7 @@ export function registerSettingsIpc() {
             llmModel: config.llmModel,
             transcriptionMode: config.transcriptionMode || DefaultSettings.transcriptionMode,
             localWhisperModel: config.localWhisperModel || DefaultSettings.localWhisperModel,
+            localDevice: config.localDevice || DefaultSettings.localDevice,
         };
     });
 
@@ -82,6 +83,10 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetLocalWhisperModel, async (_, model: WhisperModel): Promise<void> => {
         appConfigService.setLocalWhisperModel(model);
+    });
+
+    ipcMain.handle(IPCChannels.SetLocalDevice, async (_, device: LocalDevice): Promise<void> => {
+        appConfigService.setLocalDevice(device);
     });
 
     ipcMain.handle(IPCChannels.OpenConfigFolder, async (): Promise<void> => {

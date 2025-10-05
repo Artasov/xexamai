@@ -53,6 +53,7 @@ async function transcribeAudioLocal(
         filename, 
         mime: _mime, 
         model: cfg.localWhisperModel,
+        device: cfg.localDevice || 'cpu',
         audioSeconds,
     });
 
@@ -63,12 +64,14 @@ async function transcribeAudioLocal(
         const form = new FormData();
         form.append('model', mapLocalModelName(cfg.localWhisperModel));
         form.append('response_format', 'json');
-        const blob = new Blob([buffer], { type: _mime });
+        form.append('device', cfg.localDevice || 'cpu');
+        const blob = new Blob([new Uint8Array(buffer)], { type: _mime });
         form.append('file', blob, filename);
 
         logger.info('transcription', 'Sending HTTP request to Local Whisper', {
             url,
             model: mapLocalModelName(cfg.localWhisperModel),
+            device: cfg.localDevice || 'cpu',
             responseFormat: 'json',
             hasFile: true,
         });
@@ -84,6 +87,7 @@ async function transcribeAudioLocal(
         logger.info('transcription', 'Local Whisper transcription completed', {
             textLength: text.length,
             model: cfg.localWhisperModel,
+            device: cfg.localDevice || 'cpu',
             transcribedText: text,
         });
         return text;
@@ -91,6 +95,7 @@ async function transcribeAudioLocal(
         logger.error('transcription', 'Local Whisper transcription failed', {
             error: error instanceof Error ? error.message : String(error),
             model: cfg.localWhisperModel,
+            device: cfg.localDevice || 'cpu',
         });
         throw (error instanceof Error ? error : new Error(String(error)));
     }

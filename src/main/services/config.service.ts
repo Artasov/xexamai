@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import dotenv from 'dotenv';
 import {RetryConfig} from './retry.service';
 import {appConfigService} from './app-config.service';
-import {TranscriptionMode, WhisperModel} from '../shared/types';
+import {TranscriptionMode, WhisperModel, LocalDevice} from '../shared/types';
 
 export type AppConfig = {
     openaiApiKey: string | undefined;
@@ -13,6 +13,7 @@ export type AppConfig = {
     chatModel: string;
     transcriptionMode: TranscriptionMode;
     localWhisperModel: WhisperModel;
+    localDevice: LocalDevice;
     retryConfig: RetryConfig;
 };
 
@@ -45,6 +46,7 @@ export function getConfig(): AppConfig {
         chatModel: userConfig.llmModel || process.env.OPENAI_CHAT_MODEL || 'gpt-4.1-nano',
         transcriptionMode: userConfig.transcriptionMode || 'api',
         localWhisperModel: userConfig.localWhisperModel || 'base',
+        localDevice: userConfig.localDevice || 'cpu',
         retryConfig,
     };
 }
