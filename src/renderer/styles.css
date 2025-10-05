@@ -328,20 +328,14 @@ body {
 
 #answerOut li {
     @apply mb-1 text-gray-200;
-    display: flex;
-    flex-direction: column;
 }
 
 #answerOut ul li {
     @apply list-disc list-inside;
-    display: flex;
-    flex-direction: column;
 }
 
 #answerOut ol li {
     @apply list-decimal list-inside;
-    display: flex;
-    flex-direction: column;
 }
 
 /* Nested lists */
