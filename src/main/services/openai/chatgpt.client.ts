@@ -35,6 +35,8 @@ function isLocalModel(model?: string): boolean {
     return typeof model === 'string' && ALLOWED_LOCAL_MODELS.has(model);
 }
 
+const LOCAL_LLM_TIMEOUT_MS = 600000; // 600s only for local LLM
+
 async function askChatLocal(prompt: string): Promise<string> {
     const cfg = getConfig();
     const url = 'http://localhost:11434/api/chat';
@@ -160,7 +162,7 @@ export async function askChat(prompt: string): Promise<string> {
             async () => askChatLocal(prompt),
             cfg.retryConfig,
             'Local GPT-OSS completion',
-            DefaultTimeoutConfig.chatgptTimeoutMs
+            LOCAL_LLM_TIMEOUT_MS
         );
     }
 
@@ -235,7 +237,7 @@ export async function askChatStream(
             },
             cfg.retryConfig,
             'Local GPT-OSS streaming',
-            DefaultTimeoutConfig.chatgptTimeoutMs
+            LOCAL_LLM_TIMEOUT_MS
         );
     }
 
