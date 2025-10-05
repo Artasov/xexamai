@@ -1,10 +1,9 @@
 import OpenAI from 'openai';
-import {toFile} from 'openai/uploads';
-import {getConfig} from '../config.service';
-import {withRetry} from '../retry.service';
-import {calculateWhisperTimeout, DefaultTimeoutConfig} from '../timeout.config';
-import {logger} from '../logger.service';
-import {whisperLocalService} from '../whisper-local.service';
+import { toFile } from 'openai/uploads';
+import { getConfig } from '../config.service';
+import { withRetry } from '../retry.service';
+import { calculateWhisperTimeout, DefaultTimeoutConfig } from '../timeout.config';
+import { logger } from '../logger.service';
 
 let client: OpenAI | null = null;
 
@@ -27,12 +26,18 @@ export async function transcribeAudio(
 ): Promise<string> {
     const cfg = getConfig();
 
-    // Проверяем режим транскрипции
     if (cfg.transcriptionMode === 'local') {
         return await transcribeAudioLocal(buffer, filename, _mime, audioSeconds);
     } else {
         return await transcribeAudioApi(buffer, filename, _mime, audioSeconds);
     }
+}
+
+function mapLocalModelName(name?: string): string {
+    const m = (name || '').toLowerCase();
+    if (m === 'large-v2') return 'large';
+    if (m === 'large-v3') return 'large-v3';
+    return m || 'base';
 }
 
 async function transcribeAudioLocal(
@@ -43,43 +48,51 @@ async function transcribeAudioLocal(
 ): Promise<string> {
     const cfg = getConfig();
     
-    logger.info('transcription', 'Starting local Whisper transcription', { 
-        bufferSize: buffer.length, 
+    logger.info('transcription', 'Starting local Whisper transcription (local HTTP API)', {
+        bufferSize: buffer.length,
         filename, 
         mime: _mime, 
         model: cfg.localWhisperModel,
-        audioSeconds
+        audioSeconds,
     });
 
     try {
-        // Инициализируем модель если она еще не загружена
-        if (!(await whisperLocalService.isModelLoaded(cfg.localWhisperModel))) {
-            await whisperLocalService.initialize(cfg.localWhisperModel);
-        }
+        const base = (process.env.LOCAL_WHISPER_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+        const url = `${base}/v1/audio/transcriptions`;
 
-        const text = await whisperLocalService.transcribe(buffer, {
-            language: 'ru', // Русский язык по умолчанию
-            task: 'transcribe',
-            chunk_length_s: audioSeconds ? Math.max(audioSeconds, 10) : 30,
-            stride_length_s: 5,
+        const form = new FormData();
+        form.append('model', mapLocalModelName(cfg.localWhisperModel));
+        form.append('response_format', 'json');
+        const blob = new Blob([buffer], { type: _mime });
+        form.append('file', blob, filename);
+
+        logger.info('transcription', 'Sending HTTP request to Local Whisper', {
+            url,
+            model: mapLocalModelName(cfg.localWhisperModel),
+            responseFormat: 'json',
+            hasFile: true,
         });
 
-        logger.info('transcription', 'Local Whisper transcription completed', { 
+        const res = await fetch(url, { method: 'POST', body: form as any });
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            throw new Error(`Local Whisper HTTP ${res.status}: ${errText}`);
+        }
+        const data: any = await res.json().catch(async () => ({ text: await res.text() }));
+        const text: string = (data && (data.text || data?.data?.text)) || '';
+
+        logger.info('transcription', 'Local Whisper transcription completed', {
             textLength: text.length,
             model: cfg.localWhisperModel,
-            transcribedText: text
+            transcribedText: text,
         });
-
         return text;
     } catch (error) {
-        logger.error('transcription', 'Local Whisper transcription failed', { 
+        logger.error('transcription', 'Local Whisper transcription failed', {
             error: error instanceof Error ? error.message : String(error),
-            model: cfg.localWhisperModel
+            model: cfg.localWhisperModel,
         });
-        
-        // Fallback на API если локальное распознавание не удалось
-        logger.info('transcription', 'Falling back to API transcription');
-        return await transcribeAudioApi(buffer, filename, _mime, audioSeconds);
+        throw (error instanceof Error ? error : new Error(String(error)));
     }
 }
 
@@ -92,35 +105,34 @@ async function transcribeAudioApi(
     const cfg = getConfig();
     if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
-    logger.info('transcription', 'Starting OpenAI transcription', { 
-        bufferSize: buffer.length, 
-        filename, 
-        mime: _mime, 
+    logger.info('transcription', 'Starting OpenAI transcription', {
+        bufferSize: buffer.length,
+        filename,
+        mime: _mime,
         model: cfg.transcriptionModel,
         audioSeconds,
         hasPrompt: !!cfg.transcriptionPrompt,
         prompt: cfg.transcriptionPrompt || null,
         apiKey: cfg.openaiApiKey ? `${cfg.openaiApiKey.substring(0, 8)}...` : null,
-        baseUrl: cfg.openaiBaseUrl || 'https://api.openai.com'
+        baseUrl: cfg.openaiBaseUrl || 'https://api.openai.com',
     });
 
     const timeoutMs = audioSeconds ? calculateWhisperTimeout(audioSeconds) : DefaultTimeoutConfig.whisperTimeoutMs;
 
     return withRetry(
         async () => {
-            const file = await toFile(buffer, filename, {type: _mime});
+            const file = await toFile(buffer, filename, { type: _mime });
             const transcriptionParams: any = {
                 file,
                 model: cfg.transcriptionModel,
                 response_format: 'json',
                 temperature: 0.2,
             };
-            
-            // Добавляем промт только если он не пустой
+
             if (cfg.transcriptionPrompt && cfg.transcriptionPrompt.trim()) {
                 transcriptionParams.prompt = cfg.transcriptionPrompt;
             }
-            
+
             logger.info('transcription', 'Sending HTTP request to OpenAI', {
                 url: `${cfg.openaiBaseUrl || 'https://api.openai.com'}/v1/audio/transcriptions`,
                 method: 'POST',
@@ -128,19 +140,19 @@ async function transcribeAudioApi(
                 hasPrompt: !!cfg.transcriptionPrompt,
                 prompt: cfg.transcriptionPrompt || null,
                 temperature: 0.2,
-                responseFormat: 'json'
+                responseFormat: 'json',
             });
 
             const res = await getClient().audio.transcriptions.create(transcriptionParams);
             const text = (res as any).text || '';
-            
-            logger.info('transcription', 'OpenAI transcription completed', { 
+
+            logger.info('transcription', 'OpenAI transcription completed', {
                 textLength: text.length,
                 model: cfg.transcriptionModel,
                 transcribedText: text,
-                responseTime: Date.now()
+                responseTime: Date.now(),
             });
-            
+
             return text;
         },
         cfg.retryConfig,
@@ -148,3 +160,4 @@ async function transcribeAudioApi(
         timeoutMs
     );
 }
+

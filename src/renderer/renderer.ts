@@ -186,7 +186,6 @@ async function handleAskWindow(seconds: number) {
             filename: `last_${seconds}s.wav`,
             audioSeconds: seconds,
         });
-
         if (!transcribeRes.ok) {
             setStatus('Error', 'error');
             showAnswer('Error: ' + transcribeRes.error);
@@ -194,8 +193,9 @@ async function handleAskWindow(seconds: number) {
             updateButtonsState();
             return;
         }
+        const text = transcribeRes.text;
 
-        showText(transcribeRes.text);
+        showText(text);
 
         setStatus('Sending to ChatGPT...', 'sending');
 
@@ -228,10 +228,7 @@ async function handleAskWindow(seconds: number) {
             updateButtonsState();
         });
 
-        await window.api.assistant.askChat({
-            text: transcribeRes.text,
-            requestId,
-        });
+        await window.api.assistant.askChat({ text, requestId });
 
     } catch (error) {
         setStatus('Error', 'error');

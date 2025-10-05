@@ -5,6 +5,12 @@ import {registerSttIpc} from './ipc/stt.ipc';
 import {registerSettingsIpc} from './ipc/settings.ipc';
 import {createMainWindow} from './windows/MainWindow';
 
+// Enable WebGPU in Electron
+try {
+    app.commandLine.appendSwitch('enable-unsafe-webgpu');
+    app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer,UseDawnBackendForWebGPU');
+} catch {}
+
 loadEnv();
 initMain();
 
