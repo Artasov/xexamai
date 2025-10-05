@@ -271,7 +271,7 @@ button:focus-visible {
 }
 
 .duration-item {
-    @apply flex items-center justify-between p-2 bg-gray-700 rounded-md;
+    @apply flex items-center justify-between p-2 bg-gray-700 rounded-md gap-2 w-min;
 }
 
 .duration-value {
@@ -279,11 +279,11 @@ button:focus-visible {
 }
 
 .duration-input-group {
-    @apply flex gap-2;
+    @apply flex gap-2 min-w-[250px] w-min;
 }
 
 .btn-secondary {
-    @apply flex items-center gap-2;
+    @apply flex items-center;
 }
 
 /* Notifications */

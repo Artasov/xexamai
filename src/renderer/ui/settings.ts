@@ -4,6 +4,7 @@ import {logger} from '../utils/logger.js';
 export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;
     onDurationsChange?: (durations: number[]) => void;
+    onHotkeysChange?: (map: Record<number, string>) => void;
 }
 
 export class SettingsPanel {
@@ -327,7 +328,7 @@ export class SettingsPanel {
             <div class="duration-item">
                 <span class="duration-value">${duration}s</span>
                 <input 
-                    class="input-field hotkey-input" 
+                    class="input-field hotkey-input !py-0" 
                     data-duration="${duration}"
                     maxlength="1"
                     placeholder="Key"
@@ -336,7 +337,7 @@ export class SettingsPanel {
                     title="Укажите символ для Ctrl-<ключ>"
                 />
                 <button class="btn btn-sm save-hotkey" data-duration="${duration}">Save</button>
-                <button class="btn btn-sm btn-danger remove-duration" data-duration="${duration}">
+                <button class="btn btn-sm btn-danger remove-duration !px-1 !py-1" data-duration="${duration}">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M18 6L6 18M6 6l12 12"/>
                     </svg>
@@ -438,6 +439,7 @@ export class SettingsPanel {
                 try {
                     await (window.api.settings as any).setDurationHotkeys(next);
                     (this.settings as any).durationHotkeys = next;
+                    this.options.onHotkeysChange?.(next);
                     this.showNotification('Hotkey saved');
                 } catch (error) {
                     this.showNotification('Error saving hotkey', 'error');

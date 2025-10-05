@@ -65,7 +65,7 @@ export function updateDurations(durations: number[], onDurationChange?: (sec: nu
         durationsEl.innerHTML = '';
         durations.forEach((sec) => {
             const b = document.createElement('button');
-            b.className = 'btn btn-secondary';
+            b.className = 'btn btn-secondary fcsc !p-1';
             b.textContent = `${sec}s`;
             b.dataset['sec'] = String(sec);
             b.addEventListener('click', () => {

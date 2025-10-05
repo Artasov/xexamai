@@ -384,8 +384,11 @@ async function main() {
                 const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
                 const key = (durationHotkeys as any)[sec];
                 if (key) {
+                    // remove old hint if exists
+                    const old = btn.querySelector('.hk');
+                    if (old) old.remove();
                     const label = document.createElement('span');
-                    label.className = 'ml-2 text-xs text-gray-400';
+                    label.className = 'hk text-xs text-gray-400';
                     label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
                     btn.appendChild(label);
                 }
@@ -425,7 +428,43 @@ async function main() {
                     (state as any).durationSec = Math.max(...newDurations);
                 } catch {
                 }
-            }
+                // refresh hints after durations changed: read current hotkeys and repaint
+                window.api.settings.get().then((s) => {
+                    const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
+                    if (durationsEl) {
+                        const buttons = durationsEl.querySelectorAll('button');
+                        buttons.forEach((btn) => {
+                            const old = btn.querySelector('.hk');
+                            if (old) old.remove();
+                            const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
+                            const key = (s.durationHotkeys as any)?.[sec];
+                            if (key) {
+                                const label = document.createElement('span');
+                                label.className = 'hk text-xs text-gray-400';
+                                label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
+                                btn.appendChild(label);
+                            }
+                        });
+                    }
+                }).catch(() => {});
+            },
+            onHotkeysChange: (map) => {
+                const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
+                if (!durationsEl) return;
+                const buttons = durationsEl.querySelectorAll('button');
+                buttons.forEach((btn) => {
+                    const old = btn.querySelector('.hk');
+                    if (old) old.remove();
+                    const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
+                    const key = (map as any)[sec];
+                    if (key) {
+                        const label = document.createElement('span');
+                        label.className = 'hk text-xs text-gray-400';
+                        label.textContent = `(Ctrl-${String(key).toUpperCase()})`;
+                        btn.appendChild(label);
+                    }
+                });
+            },
         });
     }
 
