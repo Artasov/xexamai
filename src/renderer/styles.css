@@ -317,7 +317,7 @@ body {
 /* Lists */
 #answerOut ul,
 #answerOut ol {
-    @apply mb-3 ml-4;
+    @apply ml-4;
     display: flex;
     flex-direction: column;
 }
