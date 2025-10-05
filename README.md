@@ -1,7 +1,7 @@
 <div align="center">
   <img src="brand/logo.png" alt="xexamai Logo" width="200" height="200">
   <h1>XEXAMAI</h1>
-  <h3><strong>Your smart assistant for interviews and exams</strong></h3>
+  <h3><strong>Your smart free assistant for interviews and exams</strong></h3>
   <h3>⭐ <strong>Star this repository if it helped you!</strong> ⭐</h3>
 </div>
 <div align="center">
@@ -22,16 +22,15 @@
 
 ## 🚀 Key Features
 
-- **🎯 Complete invisibility** - stays hidden during screen sharing in Zoom, Google Meet, Teams and other platforms
-- **🎨 Adjustable transparency** - customize the interface to your needs
-- **🧠 Advanced AI models** - uses cutting-edge speech recognition and AI generation
-- **⚡ Instant processing** - send the last X seconds of audio with one click
-- **🔒 Privacy & Security** - all data processed locally, audio is not stored
-- **💻 Cross-platform** - works on Windows, macOS and Linux
-- **🎧 Flexible audio settings** - choose between system sound and microphone
-- **📱 Simple interface** - intuitive and easy to use
-- **🎛️ Customizable transcription** - choose from multiple AI models and customize prompts
-- **🌍 Multi-language support** - optimized prompts for different languages and contexts
+- **Complete invisibility** - stays hidden during screen sharing in Zoom, Google Meet, Teams and other platforms
+- **Adjustable transparency** - customize the interface to your needs
+- **Advanced AI models** - uses cutting-edge speech recognition and AI generation
+- **Local AI models** - use freely for free
+- **Privacy & Security** - all data processed locally, audio is not stored
+- **Flexible audio settings** - choose between system sound and microphone
+- **Cross-platform** - works on Windows, macOS and Linux
+- **Simple interface** - intuitive and easy to use
+- **Customizable transcription** - choose from multiple AI models and customize prompts
 
 ### If you have any issues using the app, please open an [issue](https://github.com/Artasov/xexamai/issues)
 
