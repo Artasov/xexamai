@@ -14,6 +14,7 @@ export type AppSettings = {
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
+    llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
@@ -90,6 +91,7 @@ export type AssistantAPI = {
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
         setLlmModel: (model: string) => Promise<void>;
+        setLlmPrompt: (prompt: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         setLocalDevice: (device: LocalDevice) => Promise<void>;

@@ -92,6 +92,7 @@ export const api: AssistantAPI = {
         setTranscriptionModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetTranscriptionModel, model),
         setTranscriptionPrompt: (prompt: string) => ipcRenderer.invoke(IPCChannels.SetTranscriptionPrompt, prompt),
         setLlmModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetLlmModel, model),
+        setLlmPrompt: (prompt: string) => ipcRenderer.invoke(IPCChannels.SetLlmPrompt, prompt),
         setTranscriptionMode: (mode: TranscriptionMode) => ipcRenderer.invoke(IPCChannels.SetTranscriptionMode, mode),
         setLocalWhisperModel: (model: WhisperModel) => ipcRenderer.invoke(IPCChannels.SetLocalWhisperModel, model),
         setLocalDevice: (device: LocalDevice) => ipcRenderer.invoke(IPCChannels.SetLocalDevice, device),

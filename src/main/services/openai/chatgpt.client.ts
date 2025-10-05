@@ -31,7 +31,7 @@ export async function askChat(prompt: string): Promise<string> {
 
     return withRetry(
         async () => {
-            const systemMessage = 'You are a concise, helpful assistant. If the input is a partial question transcribed from audio, infer missing parts prudently and provide a clear answer. If you are unsure, ask a clarifying question.';
+            const systemMessage = cfg.llmPrompt;
             
             logger.info('chatgpt', 'Sending HTTP request to OpenAI', {
                 url: `${cfg.openaiBaseUrl || 'https://api.openai.com'}/v1/chat/completions`,
@@ -95,7 +95,7 @@ export async function askChatStream(
 
     return withRetry(
         async () => {
-            const systemMessage = 'You are a concise, helpful assistant. If the input is a partial question transcribed from audio, infer missing parts prudently and provide a clear answer. If you are unsure, ask a clarifying question.';
+            const systemMessage = cfg.llmPrompt;
             
             logger.info('chatgpt', 'Sending HTTP streaming request to OpenAI', {
                 url: `${cfg.openaiBaseUrl || 'https://api.openai.com'}/v1/chat/completions`,

@@ -156,6 +156,19 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">LLM Prompt</h3>
+                    <div class="fc gap-2">
+                        <textarea 
+                            id="llmPrompt" 
+                            class="input-field prompt-textarea" 
+                            placeholder="Enter LLM system prompt (leave empty to use default)..."
+                            rows="4"
+                        >${this.settings.llmPrompt || ''}</textarea>
+                        <button id="saveLlmPrompt" class="btn btn-sm">Save Prompt</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Audio Input Type</h3>
                     <div class="input-group">
                         <select id="audioInputType" class="input-field">
@@ -464,6 +477,23 @@ export class SettingsPanel {
                     this.showNotification('Transcription prompt saved successfully');
                 } catch (error) {
                     this.showNotification('Error saving transcription prompt', 'error');
+                }
+            });
+        }
+
+        const saveLlmPromptBtn = this.container.querySelector('#saveLlmPrompt');
+        const llmPromptTextarea = this.container.querySelector('#llmPrompt') as HTMLTextAreaElement;
+
+        if (saveLlmPromptBtn && llmPromptTextarea) {
+            saveLlmPromptBtn.addEventListener('click', async () => {
+                const prompt = llmPromptTextarea.value.trim();
+                logger.info('settings', 'LLM prompt save button clicked', { promptLength: prompt.length });
+                try {
+                    await window.api.settings.setLlmPrompt(prompt);
+                    this.settings.llmPrompt = prompt;
+                    this.showNotification('LLM prompt saved successfully');
+                } catch (error) {
+                    this.showNotification('Error saving LLM prompt', 'error');
                 }
             });
         }

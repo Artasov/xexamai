@@ -30,10 +30,13 @@ export type AppSettings = {
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
+    llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
 };
+
+export const DEFAULT_LLM_PROMPT = 'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
 
 export const DefaultSettings: AppSettings = {
     durations: [5, 10, 15, 20, 30, 60],
@@ -63,6 +66,7 @@ export const IPCChannels = {
     SetTranscriptionModel: 'settings:set:transcription-model',
     SetTranscriptionPrompt: 'settings:set:transcription-prompt',
     SetLlmModel: 'settings:set:llm-model',
+    SetLlmPrompt: 'settings:set:llm-prompt',
     SetTranscriptionMode: 'settings:set:transcription-mode',
     SetLocalWhisperModel: 'settings:set:local-whisper-model',
     SetLocalDevice: 'settings:set:local-device',
@@ -140,6 +144,7 @@ export type AssistantAPI = {
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
         setLlmModel: (model: string) => Promise<void>;
+        setLlmPrompt: (prompt: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         setLocalDevice: (device: LocalDevice) => Promise<void>;
