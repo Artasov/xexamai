@@ -1,6 +1,137 @@
 import type {AppSettings} from '../types.js';
 import {logger} from '../utils/logger.js';
 
+type CustomSelectOption = { value: string; label: string; title?: string };
+
+class CustomSelect {
+    private container: HTMLElement;
+    private button: HTMLButtonElement;
+    private list: HTMLDivElement;
+    private options: CustomSelectOption[] = [];
+    private value: string = '';
+    private onChange?: (value: string) => void;
+    private isOpen: boolean = false;
+
+    constructor(container: HTMLElement, options: CustomSelectOption[], initialValue: string, onChange?: (value: string) => void) {
+        this.container = container;
+        this.onChange = onChange;
+        this.button = document.createElement('button');
+        this.button.type = 'button';
+        this.button.className = 'input-field frbc gap-2 relative';
+        this.button.setAttribute('aria-haspopup', 'listbox');
+        this.button.setAttribute('aria-expanded', 'false');
+
+        const chevron = document.createElement('span');
+        chevron.textContent = '▾';
+        chevron.className = 'text-gray-400';
+
+        this.list = document.createElement('div');
+        this.list.className = 'bg-gray-800 border border-gray-700 rounded shadow-lg';
+        this.list.setAttribute('role', 'listbox');
+        // Render as portal to body to avoid clipping and stacking issues
+        this.list.style.position = 'fixed';
+        this.list.style.top = '-1000px';
+        this.list.style.left = '-1000px';
+        this.list.style.maxHeight = '60vh';
+        this.list.style.overflow = 'auto';
+        this.list.style.zIndex = '2147483647';
+        this.list.style.display = 'none';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'relative w-full';
+        wrap.appendChild(this.button);
+        this.container.innerHTML = '';
+        this.container.appendChild(wrap);
+        document.body.appendChild(this.list);
+
+        this.setOptions(options);
+        this.setValue(initialValue);
+
+        this.button.addEventListener('click', () => this.toggle());
+        document.addEventListener('click', (e) => {
+            if (!this.container.contains(e.target as Node)) this.close();
+        });
+        window.addEventListener('resize', () => this.repositionIfOpen());
+        window.addEventListener('scroll', () => this.repositionIfOpen(), true);
+    }
+
+    public setOptions(options: CustomSelectOption[]) {
+        this.options = options || [];
+        this.list.innerHTML = '';
+        this.options.forEach((opt) => {
+            const item = document.createElement('div');
+            item.className = 'px-3 py-2 hover:bg-gray-700 cursor-pointer';
+            item.textContent = opt.label;
+            if (opt.title) item.title = opt.title;
+            item.setAttribute('role', 'option');
+            item.dataset.value = opt.value;
+            item.addEventListener('click', () => {
+                this.setValue(opt.value);
+                this.onChange?.(opt.value);
+                this.close();
+            });
+            this.list.appendChild(item);
+        });
+        this.updateButtonLabel();
+    }
+
+    public setValue(value: string) {
+        this.value = value;
+        this.updateButtonLabel();
+    }
+
+    public getValue(): string {
+        return this.value;
+    }
+
+    private updateButtonLabel() {
+        const current = this.options.find((o) => o.value === this.value) || this.options[0];
+        const label = current ? current.label : '';
+        this.button.textContent = label || '';
+        // add chevron back (textContent replaced it)
+        const chevron = document.createElement('span');
+        chevron.textContent = '▾';
+        chevron.className = 'ml-2 text-gray-400';
+        this.button.appendChild(chevron);
+    }
+
+    private toggle() {
+        if (this.isOpen) this.close(); else this.open();
+    }
+
+    private open() {
+        this.reposition();
+        this.list.style.display = 'block';
+        this.button.setAttribute('aria-expanded', 'true');
+        this.isOpen = true;
+    }
+
+    private close() {
+        this.list.style.display = 'none';
+        this.button.setAttribute('aria-expanded', 'false');
+        this.isOpen = false;
+    }
+
+    private repositionIfOpen() {
+        if (!this.isOpen) return;
+        this.reposition();
+    }
+
+    private reposition() {
+        try {
+            const rect = this.button.getBoundingClientRect();
+            const margin = 4;
+            const top = rect.bottom + margin;
+            const left = rect.left;
+            const width = rect.width;
+            this.list.style.top = `${Math.max(0, Math.floor(top))}px`;
+            this.list.style.left = `${Math.max(0, Math.floor(left))}px`;
+            this.list.style.minWidth = `${Math.max(140, Math.floor(width))}px`;
+            this.list.style.maxWidth = `${Math.max(140, Math.floor(Math.min(window.innerWidth - left - 8, 560)))}px`;
+        } catch {}
+    }
+}
+
 export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;
     onDurationsChange?: (durations: number[]) => void;
@@ -14,6 +145,15 @@ export class SettingsPanel {
         durations: [5, 10, 15, 20, 30, 60],
         windowOpacity: 100,
     };
+
+    // Custom select instances
+    private csTranscriptionMode?: CustomSelect;
+    private csTranscriptionModel?: CustomSelect;
+    private csLocalWhisperModel?: CustomSelect;
+    private csLocalDevice?: CustomSelect;
+    private csLlmModel?: CustomSelect;
+    private csAudioInputType?: CustomSelect;
+    private csAudioInputDevice?: CustomSelect;
 
     constructor(container: HTMLElement, options: SettingsPanelOptions = {}) {
         this.container = container;
@@ -29,6 +169,7 @@ export class SettingsPanel {
         }
 
         this.render();
+        this.initCustomSelects();
         this.attachEventListeners();
         await this.loadAudioDevices();
         this.updateAudioTypeVisibility();
@@ -112,72 +253,35 @@ export class SettingsPanel {
                 <div class="settings-section">
                     <h3 class="settings-title">Transcription Mode</h3>
                     <div class="input-group">
-                        <select id="transcriptionMode" class="input-field">
-                            <option value="api">API</option>
-                            <option value="local">Local</option>
-                        </select>
+                        <div id="transcriptionMode" class="input-field"></div>
                     </div>
                 </div>
 
                 <div class="settings-section" id="apiTranscriptionSection">
                     <h3 class="settings-title">API Transcription Model</h3>
                     <div class="input-group">
-                        <select id="transcriptionModel" class="input-field">
-                            <option value="gpt-4o-mini-transcribe">GPT-4o Mini Transcribe (Default)</option>
-                            <option value="whisper-1">Whisper-1 (Balanced)</option>
-                            <option value="gpt-4o-transcribe">GPT-4o Transcribe (High Quality)</option>
-                        </select>
+                        <div id="transcriptionModel" class="input-field"></div>
                     </div>
                 </div>
 
                 <div class="settings-section" id="localTranscriptionSection" style="display: none;">
                     <h3 class="settings-title">Local Whisper Model</h3>
                     <div class="input-group">
-                        <select id="localWhisperModel" class="input-field">
-                            <option value="tiny">Tiny (~39 MB) - Быстрая, но менее точная</option>
-                            <option value="base">Base (~74 MB) - Баланс скорости и точности</option>
-                            <option value="small">Small (~244 MB) - Хорошая точность</option>
-                            <option value="medium">Medium (~769 MB) - Высокая точность</option>
-                            <option value="large">Large (~1550 MB) - Очень высокая точность</option>
-                            <option value="large-v2">Large V2 (~1550 MB) - Улучшенная версия Large</option>
-                            <option value="large-v3">Large V3 (~1550 MB) - Последняя версия Large</option>
-                        </select>
+                        <div id="localWhisperModel" class="input-field"></div>
                     </div>
                 </div>
 
                 <div class="settings-section" id="localDeviceSection" style="display: none;">
                     <h3 class="settings-title">Local Device</h3>
                     <div class="input-group">
-                        <select id="localDevice" class="input-field">
-                            <option value="cpu">CPU - Стабильная работа, медленнее</option>
-                            <option value="gpu">GPU - Быстрее, требует CUDA/OpenCL</option>
-                        </select>
+                        <div id="localDevice" class="input-field"></div>
                     </div>
                 </div>
 
                 <div class="settings-section">
                     <h3 class="settings-title">LLM Model</h3>
                     <div class="input-group">
-                        <select id="llmModel" class="input-field">
-                            <option value="gpt-4.1-nano">GPT-4.1 Nano (Default - Fast & Efficient)</option>
-                            <option value="gpt-4o">GPT-4o (Latest - High Quality)</option>
-                            <option value="gpt-4o-mini">GPT-4o Mini (Fast & Cost-effective)</option>
-                            <option value="gpt-4-turbo">GPT-4 Turbo (High Performance)</option>
-                            <option value="gpt-4">GPT-4 (Classic High Quality)</option>
-                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Legacy - Fast)</option>
-                            <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16K (Extended Context)</option>
-                            <option value="gpt-oss:120b">GPT-OSS 120B (Local)</option>
-                            <option value="gpt-oss:20b">GPT-OSS 20B (Local)</option>
-                            <option value="gemma3:27b">Gemma 3 27B (Local)</option>
-                            <option value="gemma3:12b">Gemma 3 12B (Local)</option>
-                            <option value="gemma3:4b">Gemma 3 4B (Local)</option>
-                            <option value="gemma3:1b">Gemma 3 1B (Local)</option>
-                            <option value="deepseek-r1:8b">DeepSeek-R1 8B (Local)</option>
-                            <option value="qwen3-coder:30b">Qwen3-Coder 30B (Local)</option>
-                            <option value="qwen3:30b">Qwen3 30B (Local)</option>
-                            <option value="qwen3:8b">Qwen3 8B (Local)</option>
-                            <option value="qwen3:4b">Qwen3 4B (Local)</option>
-                        </select>
+                        <div id="llmModel" class="input-field"></div>
                     </div>
                 </div>
 
@@ -210,19 +314,14 @@ export class SettingsPanel {
                 <div class="settings-section">
                     <h3 class="settings-title">Audio Input Type</h3>
                     <div class="input-group">
-                        <select id="audioInputType" class="input-field">
-                            <option value="microphone">Microphone</option>
-                            <option value="system">System Audio</option>
-                        </select>
+                        <div id="audioInputType" class="input-field"></div>
                     </div>
                 </div>
 
                 <div class="settings-section" id="microphoneSection">
                     <h3 class="settings-title">Microphone Device</h3>
                     <div class="input-group">
-                        <select id="audioInputDevice" class="input-field">
-                            <option value="">Loading devices...</option>
-                        </select>
+                        <div id="audioInputDevice" class="input-field"></div>
                         <button id="refreshDevices" class="btn btn-sm">Refresh</button>
                     </div>
                 </div>
@@ -290,23 +389,21 @@ export class SettingsPanel {
     }
 
     private updateAudioTypeVisibility() {
-        const audioInputType = this.container.querySelector('#audioInputType') as HTMLSelectElement;
         const microphoneSection = this.container.querySelector('#microphoneSection') as HTMLElement;
-
-        if (audioInputType && microphoneSection) {
-            const isMicrophone = audioInputType.value === 'microphone';
+        if (microphoneSection) {
+            const typeVal = this.csAudioInputType?.getValue() || this.settings.audioInputType || 'microphone';
+            const isMicrophone = typeVal === 'microphone';
             microphoneSection.style.display = isMicrophone ? 'block' : 'none';
         }
     }
 
     private updateTranscriptionModeVisibility() {
-        const transcriptionMode = this.container.querySelector('#transcriptionMode') as HTMLSelectElement;
         const apiSection = this.container.querySelector('#apiTranscriptionSection') as HTMLElement;
         const localSection = this.container.querySelector('#localTranscriptionSection') as HTMLElement;
         const localDeviceSection = this.container.querySelector('#localDeviceSection') as HTMLElement;
-
-        if (transcriptionMode && apiSection && localSection && localDeviceSection) {
-            const isLocal = transcriptionMode.value === 'local';
+        if (apiSection && localSection && localDeviceSection) {
+            const modeVal = this.csTranscriptionMode?.getValue() || this.settings.transcriptionMode || 'api';
+            const isLocal = modeVal === 'local';
             apiSection.style.display = isLocal ? 'none' : 'block';
             localSection.style.display = isLocal ? 'block' : 'none';
             localDeviceSection.style.display = isLocal ? 'block' : 'none';
@@ -314,36 +411,28 @@ export class SettingsPanel {
     }
 
     private async loadAudioDevices() {
-        const deviceSelect = this.container.querySelector('#audioInputDevice') as HTMLSelectElement;
-        if (!deviceSelect) return;
-
         try {
             const devices = await window.api.settings.getAudioDevices();
-            deviceSelect.innerHTML = '';
-
-            const defaultOption = document.createElement('option');
-            defaultOption.value = '';
-            defaultOption.textContent = 'Default (System Default)';
-            deviceSelect.appendChild(defaultOption);
-
+            const opts: CustomSelectOption[] = [
+                { value: '', label: 'Default (System Default)' }
+            ];
             devices.forEach((device: { deviceId: string; label: string; kind: 'audioinput' | 'audiooutput' }) => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
                 const maxLength = 50;
                 const displayLabel = device.label.length > maxLength
                     ? device.label.substring(0, maxLength) + '...'
                     : device.label;
-                option.textContent = displayLabel;
-                option.title = device.label;
-                deviceSelect.appendChild(option);
+                opts.push({ value: device.deviceId, label: displayLabel, title: device.label });
             });
-
-            if (this.settings.audioInputDeviceId) {
-                deviceSelect.value = this.settings.audioInputDeviceId;
+            if (this.csAudioInputDevice) {
+                this.csAudioInputDevice.setOptions(opts);
+                this.csAudioInputDevice.setValue(this.settings.audioInputDeviceId || '');
             }
         } catch (error) {
             console.error('Error loading audio devices:', error);
-            deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
+            if (this.csAudioInputDevice) {
+                this.csAudioInputDevice.setOptions([{ value: '', label: 'Error loading devices' }]);
+                this.csAudioInputDevice.setValue('');
+            }
         }
     }
 
@@ -372,6 +461,203 @@ export class SettingsPanel {
                 </button>
             </div>
         `).join('') || '';
+    }
+
+    private initCustomSelects() {
+        // Transcription Mode
+        const tmEl = this.container.querySelector('#transcriptionMode') as HTMLElement | null;
+        if (tmEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'api', label: 'API' },
+                { value: 'local', label: 'Local' },
+            ];
+            this.csTranscriptionMode = new CustomSelect(
+                tmEl,
+                opts,
+                this.settings.transcriptionMode || 'api',
+                async (val) => {
+                    const mode = (val as 'api' | 'local');
+                    logger.info('settings', 'Transcription mode changed', { mode });
+                    try {
+                        await window.api.settings.setTranscriptionMode(mode);
+                        this.settings.transcriptionMode = mode;
+                        this.updateTranscriptionModeVisibility();
+                        this.showNotification(`Transcription mode changed to ${mode === 'api' ? 'API' : 'Local'}`);
+                    } catch (error) {
+                        this.showNotification('Error saving transcription mode', 'error');
+                    }
+                }
+            );
+        }
+
+        // API Transcription Model
+        const tmodelEl = this.container.querySelector('#transcriptionModel') as HTMLElement | null;
+        if (tmodelEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'gpt-4o-mini-transcribe', label: 'GPT-4o Mini Transcribe (Default)' },
+                { value: 'whisper-1', label: 'Whisper-1 (Balanced)' },
+                { value: 'gpt-4o-transcribe', label: 'GPT-4o Transcribe (High Quality)' },
+            ];
+            this.csTranscriptionModel = new CustomSelect(
+                tmodelEl,
+                opts,
+                this.settings.transcriptionModel || 'gpt-4o-mini-transcribe',
+                async (val) => {
+                    const model = val;
+                    logger.info('settings', 'Transcription model changed', { model });
+                    try {
+                        await window.api.settings.setTranscriptionModel(model);
+                        this.settings.transcriptionModel = model;
+                        this.showNotification(`Transcription model changed to ${model}`);
+                    } catch (error) {
+                        this.showNotification('Error saving transcription model', 'error');
+                    }
+                }
+            );
+        }
+
+        // Local Whisper Model
+        const lwmEl = this.container.querySelector('#localWhisperModel') as HTMLElement | null;
+        if (lwmEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'tiny', label: 'Tiny (~39 MB) - Быстрая, но менее точная' },
+                { value: 'base', label: 'Base (~74 MB) - Баланс скорости и точности' },
+                { value: 'small', label: 'Small (~244 MB) - Хорошая точность' },
+                { value: 'medium', label: 'Medium (~769 MB) - Высокая точность' },
+                { value: 'large', label: 'Large (~1550 MB) - Очень высокая точность' },
+                { value: 'large-v2', label: 'Large V2 (~1550 MB) - Улучшенная версия Large' },
+                { value: 'large-v3', label: 'Large V3 (~1550 MB) - Последняя версия Large' },
+            ];
+            this.csLocalWhisperModel = new CustomSelect(
+                lwmEl,
+                opts,
+                this.settings.localWhisperModel || 'base',
+                async (val) => {
+                    const model = (val as 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'large-v2' | 'large-v3');
+                    logger.info('settings', 'Local Whisper model changed', { model });
+                    try {
+                        await window.api.settings.setLocalWhisperModel(model);
+                        this.settings.localWhisperModel = model;
+                        this.showNotification(`Local Whisper model changed to ${model}`);
+                    } catch (error) {
+                        this.showNotification('Error saving local Whisper model', 'error');
+                    }
+                }
+            );
+        }
+
+        // Local Device
+        const ldevEl = this.container.querySelector('#localDevice') as HTMLElement | null;
+        if (ldevEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'cpu', label: 'CPU - Стабильная работа, медленнее' },
+                { value: 'gpu', label: 'GPU - Быстрее, требует CUDA/OpenCL' },
+            ];
+            this.csLocalDevice = new CustomSelect(
+                ldevEl,
+                opts,
+                this.settings.localDevice || 'cpu',
+                async (val) => {
+                    const device = (val as 'cpu' | 'gpu');
+                    logger.info('settings', 'Local device changed', { device });
+                    try {
+                        await window.api.settings.setLocalDevice(device);
+                        this.settings.localDevice = device;
+                        this.showNotification(`Local device changed to ${device.toUpperCase()}`);
+                    } catch (error) {
+                        this.showNotification('Error saving local device', 'error');
+                    }
+                }
+            );
+        }
+
+        // LLM Model
+        const llmEl = this.container.querySelector('#llmModel') as HTMLElement | null;
+        if (llmEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano (Default - Fast & Efficient)' },
+                { value: 'gpt-4o', label: 'GPT-4o (Latest - High Quality)' },
+                { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast & Cost-effective)' },
+                { value: 'gpt-4-turbo', label: 'GPT-4 Turbo (High Performance)' },
+                { value: 'gpt-4', label: 'GPT-4 (Classic High Quality)' },
+                { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo (Legacy - Fast)' },
+                { value: 'gpt-3.5-turbo-16k', label: 'GPT-3.5 Turbo 16K (Extended Context)' },
+                { value: 'gpt-oss:120b', label: 'GPT-OSS 120B (Local)' },
+                { value: 'gpt-oss:20b', label: 'GPT-OSS 20B (Local)' },
+                { value: 'gemma3:27b', label: 'Gemma 3 27B (Local)' },
+                { value: 'gemma3:12b', label: 'Gemma 3 12B (Local)' },
+                { value: 'gemma3:4b', label: 'Gemma 3 4B (Local)' },
+                { value: 'gemma3:1b', label: 'Gemma 3 1B (Local)' },
+                { value: 'deepseek-r1:8b', label: 'DeepSeek-R1 8B (Local)' },
+                { value: 'qwen3-coder:30b', label: 'Qwen3-Coder 30B (Local)' },
+                { value: 'qwen3:30b', label: 'Qwen3 30B (Local)' },
+                { value: 'qwen3:8b', label: 'Qwen3 8B (Local)' },
+                { value: 'qwen3:4b', label: 'Qwen3 4B (Local)' },
+            ];
+            this.csLlmModel = new CustomSelect(
+                llmEl,
+                opts,
+                this.settings.llmModel || 'gpt-4.1-nano',
+                async (val) => {
+                    const model = val;
+                    logger.info('settings', 'LLM model changed', { model });
+                    try {
+                        await window.api.settings.setLlmModel(model);
+                        this.settings.llmModel = model;
+                        this.showNotification(`LLM model changed to ${model}`);
+                    } catch (error) {
+                        this.showNotification('Error saving LLM model', 'error');
+                    }
+                }
+            );
+        }
+
+        // Audio Input Type
+        const aitEl = this.container.querySelector('#audioInputType') as HTMLElement | null;
+        if (aitEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'microphone', label: 'Microphone' },
+                { value: 'system', label: 'System Audio' },
+            ];
+            this.csAudioInputType = new CustomSelect(
+                aitEl,
+                opts,
+                this.settings.audioInputType || 'microphone',
+                async (val) => {
+                    const audioType = (val as 'microphone' | 'system');
+                    logger.info('settings', 'Audio input type changed', { audioType });
+                    try {
+                        await window.api.settings.setAudioInputType(audioType);
+                        this.settings.audioInputType = audioType;
+                        this.updateAudioTypeVisibility();
+                        this.showNotification(`Audio input type changed to ${audioType === 'microphone' ? 'Microphone' : 'System Audio'}`);
+                    } catch (error) {
+                        this.showNotification('Error saving audio input type', 'error');
+                    }
+                }
+            );
+        }
+
+        // Audio Input Device (populated later)
+        const aidEl = this.container.querySelector('#audioInputDevice') as HTMLElement | null;
+        if (aidEl) {
+            this.csAudioInputDevice = new CustomSelect(
+                aidEl,
+                [{ value: '', label: 'Loading devices...' }],
+                this.settings.audioInputDeviceId || '',
+                async (val) => {
+                    const deviceId = val;
+                    logger.info('settings', 'Audio input device changed', { deviceId });
+                    try {
+                        await window.api.settings.setAudioInputDevice(deviceId);
+                        this.settings.audioInputDeviceId = deviceId;
+                        this.showNotification('Audio input device saved successfully');
+                    } catch (error) {
+                        this.showNotification('Error saving audio input device', 'error');
+                    }
+                }
+            );
+        }
     }
 
     private attachEventListeners() {
@@ -488,91 +774,7 @@ export class SettingsPanel {
             }
         });
 
-        const transcriptionModeSelect = this.container.querySelector('#transcriptionMode') as HTMLSelectElement;
-        if (transcriptionModeSelect) {
-            transcriptionModeSelect.value = this.settings.transcriptionMode || 'api';
-
-            transcriptionModeSelect.addEventListener('change', async () => {
-                const mode = transcriptionModeSelect.value as 'api' | 'local';
-                logger.info('settings', 'Transcription mode changed', { mode });
-                try {
-                    await window.api.settings.setTranscriptionMode(mode);
-                    this.settings.transcriptionMode = mode;
-                    this.updateTranscriptionModeVisibility();
-                    this.showNotification(`Transcription mode changed to ${mode === 'api' ? 'API' : 'Local'}`);
-                } catch (error) {
-                    this.showNotification('Error saving transcription mode', 'error');
-                }
-            });
-        }
-
-        const transcriptionModelSelect = this.container.querySelector('#transcriptionModel') as HTMLSelectElement;
-        if (transcriptionModelSelect) {
-            transcriptionModelSelect.value = this.settings.transcriptionModel || 'gpt-4o-mini-transcribe';
-
-            transcriptionModelSelect.addEventListener('change', async () => {
-                const model = transcriptionModelSelect.value;
-                logger.info('settings', 'Transcription model changed', { model });
-                try {
-                    await window.api.settings.setTranscriptionModel(model);
-                    this.settings.transcriptionModel = model;
-                    this.showNotification(`Transcription model changed to ${model}`);
-                } catch (error) {
-                    this.showNotification('Error saving transcription model', 'error');
-                }
-            });
-        }
-
-        const localWhisperModelSelect = this.container.querySelector('#localWhisperModel') as HTMLSelectElement;
-        if (localWhisperModelSelect) {
-            localWhisperModelSelect.value = this.settings.localWhisperModel || 'base';
-
-            localWhisperModelSelect.addEventListener('change', async () => {
-                const model = localWhisperModelSelect.value as 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'large-v2' | 'large-v3';
-                logger.info('settings', 'Local Whisper model changed', { model });
-                try {
-                    await window.api.settings.setLocalWhisperModel(model);
-                    this.settings.localWhisperModel = model;
-                    this.showNotification(`Local Whisper model changed to ${model}`);
-                } catch (error) {
-                    this.showNotification('Error saving local Whisper model', 'error');
-                }
-            });
-        }
-
-        const localDeviceSelect = this.container.querySelector('#localDevice') as HTMLSelectElement;
-        if (localDeviceSelect) {
-            localDeviceSelect.value = this.settings.localDevice || 'cpu';
-
-            localDeviceSelect.addEventListener('change', async () => {
-                const device = localDeviceSelect.value as 'cpu' | 'gpu';
-                logger.info('settings', 'Local device changed', { device });
-                try {
-                    await window.api.settings.setLocalDevice(device);
-                    this.settings.localDevice = device;
-                    this.showNotification(`Local device changed to ${device.toUpperCase()}`);
-                } catch (error) {
-                    this.showNotification('Error saving local device', 'error');
-                }
-            });
-        }
-
-        const llmModelSelect = this.container.querySelector('#llmModel') as HTMLSelectElement;
-        if (llmModelSelect) {
-            llmModelSelect.value = this.settings.llmModel || 'gpt-4.1-nano';
-
-            llmModelSelect.addEventListener('change', async () => {
-                const model = llmModelSelect.value;
-                logger.info('settings', 'LLM model changed', { model });
-                try {
-                    await window.api.settings.setLlmModel(model);
-                    this.settings.llmModel = model;
-                    this.showNotification(`LLM model changed to ${model}`);
-                } catch (error) {
-                    this.showNotification('Error saving LLM model', 'error');
-                }
-            });
-        }
+        // custom selects events are wired in initCustomSelects()
 
         const saveTranscriptionPromptBtn = this.container.querySelector('#saveTranscriptionPrompt');
         const transcriptionPromptTextarea = this.container.querySelector('#transcriptionPrompt') as HTMLTextAreaElement;
@@ -608,38 +810,7 @@ export class SettingsPanel {
             });
         }
 
-        const audioInputTypeSelect = this.container.querySelector('#audioInputType') as HTMLSelectElement;
-        if (audioInputTypeSelect) {
-            audioInputTypeSelect.value = this.settings.audioInputType || 'microphone';
-
-            audioInputTypeSelect.addEventListener('change', async () => {
-                const audioType = audioInputTypeSelect.value as 'microphone' | 'system';
-                logger.info('settings', 'Audio input type changed', { audioType });
-                try {
-                    await window.api.settings.setAudioInputType(audioType);
-                    this.settings.audioInputType = audioType;
-                    this.updateAudioTypeVisibility();
-                    this.showNotification(`Audio input type changed to ${audioType === 'microphone' ? 'Microphone' : 'System Audio'}`);
-                } catch (error) {
-                    this.showNotification('Error saving audio input type', 'error');
-                }
-            });
-        }
-
-        const audioInputDeviceSelect = this.container.querySelector('#audioInputDevice') as HTMLSelectElement;
-        if (audioInputDeviceSelect) {
-            audioInputDeviceSelect.addEventListener('change', async () => {
-                const deviceId = audioInputDeviceSelect.value;
-                logger.info('settings', 'Audio input device changed', { deviceId });
-                try {
-                    await window.api.settings.setAudioInputDevice(deviceId);
-                    this.settings.audioInputDeviceId = deviceId;
-                    this.showNotification('Audio input device saved successfully');
-                } catch (error) {
-                    this.showNotification('Error saving audio input device', 'error');
-                }
-            });
-        }
+        // audio input device change handled in initCustomSelects()
 
         const refreshDevicesBtn = this.container.querySelector('#refreshDevices');
         if (refreshDevicesBtn) {
