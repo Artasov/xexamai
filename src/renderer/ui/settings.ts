@@ -255,6 +255,22 @@ export class SettingsPanel {
                         Open Config Folder
                     </button>
                 </div>
+
+                <div class="settings-section">
+                    <h3 class="settings-title">API Timeouts</h3>
+                    <div class="frbc gap-2">
+                        <div class="fc gap-1" style="width:48%">
+                            <label class="input-label">Transcription API timeout (ms)</label>
+                            <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
+                            <button id="saveApiSttTimeout" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="fc gap-1" style="width:48%">
+                            <label class="input-label">LLM API timeout (ms)</label>
+                            <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
+                            <button id="saveApiLlmTimeout" class="btn btn-sm">Save</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -632,6 +648,40 @@ export class SettingsPanel {
                     await window.api.settings.openConfigFolder();
                 } catch (error) {
                     this.showNotification('Error opening config folder', 'error');
+                }
+            });
+        }
+
+        // API Timeouts
+        const apiSttInput = this.container.querySelector('#apiSttTimeoutMs') as HTMLInputElement;
+        const apiLlmInput = this.container.querySelector('#apiLlmTimeoutMs') as HTMLInputElement;
+        if (apiSttInput) apiSttInput.value = String((this.settings as any).apiSttTimeoutMs || 10000);
+        if (apiLlmInput) apiLlmInput.value = String((this.settings as any).apiLlmTimeoutMs || 10000);
+
+        const saveApiSttBtn = this.container.querySelector('#saveApiSttTimeout');
+        if (saveApiSttBtn && apiSttInput) {
+            saveApiSttBtn.addEventListener('click', async () => {
+                const val = Math.max(1000, Math.min(600000, Math.floor(parseInt(apiSttInput.value || '0'))));
+                try {
+                    await (window.api.settings as any).setApiSttTimeoutMs(val);
+                    (this.settings as any).apiSttTimeoutMs = val;
+                    this.showNotification('Transcription API timeout saved');
+                } catch (error) {
+                    this.showNotification('Error saving Transcription API timeout', 'error');
+                }
+            });
+        }
+
+        const saveApiLlmBtn = this.container.querySelector('#saveApiLlmTimeout');
+        if (saveApiLlmBtn && apiLlmInput) {
+            saveApiLlmBtn.addEventListener('click', async () => {
+                const val = Math.max(1000, Math.min(600000, Math.floor(parseInt(apiLlmInput.value || '0'))));
+                try {
+                    await (window.api.settings as any).setApiLlmTimeoutMs(val);
+                    (this.settings as any).apiLlmTimeoutMs = val;
+                    this.showNotification('LLM API timeout saved');
+                } catch (error) {
+                    this.showNotification('Error saving LLM API timeout', 'error');
                 }
             });
         }

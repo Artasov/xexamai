@@ -37,6 +37,8 @@ export type AppSettings = {
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
+    apiSttTimeoutMs?: number;
+    apiLlmTimeoutMs?: number;
 };
 
 export const DEFAULT_LLM_PROMPT = 'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
@@ -77,6 +79,8 @@ export const IPCChannels = {
     SetTranscriptionMode: 'settings:set:transcription-mode',
     SetLocalWhisperModel: 'settings:set:local-whisper-model',
     SetLocalDevice: 'settings:set:local-device',
+    SetApiSttTimeoutMs: 'settings:set:api-stt-timeout-ms',
+    SetApiLlmTimeoutMs: 'settings:set:api-llm-timeout-ms',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
     Log: 'log:entry',
@@ -166,6 +170,8 @@ export type AssistantAPI = {
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         setLocalDevice: (device: LocalDevice) => Promise<void>;
+        setApiSttTimeoutMs: (timeoutMs: number) => Promise<void>;
+        setApiLlmTimeoutMs: (timeoutMs: number) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };

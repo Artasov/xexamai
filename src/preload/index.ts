@@ -104,6 +104,8 @@ export const api: AssistantAPI = {
         setTranscriptionMode: (mode: TranscriptionMode) => ipcRenderer.invoke(IPCChannels.SetTranscriptionMode, mode),
         setLocalWhisperModel: (model: WhisperModel) => ipcRenderer.invoke(IPCChannels.SetLocalWhisperModel, model),
         setLocalDevice: (device: LocalDevice) => ipcRenderer.invoke(IPCChannels.SetLocalDevice, device),
+        setApiSttTimeoutMs: (timeoutMs: number) => ipcRenderer.invoke(IPCChannels.SetApiSttTimeoutMs, timeoutMs),
+        setApiLlmTimeoutMs: (timeoutMs: number) => ipcRenderer.invoke(IPCChannels.SetApiLlmTimeoutMs, timeoutMs),
         getAudioDevices: async () => {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();

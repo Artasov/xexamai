@@ -122,7 +122,10 @@ async function transcribeAudioApi(
         baseUrl: cfg.openaiBaseUrl || 'https://api.openai.com',
     });
 
-    const timeoutMs = audioSeconds ? calculateWhisperTimeout(audioSeconds) : DefaultTimeoutConfig.whisperTimeoutMs;
+    const timeoutBase = cfg.apiSttTimeoutMs || DefaultTimeoutConfig.whisperTimeoutMs;
+    const timeoutMs = audioSeconds
+        ? calculateWhisperTimeout(audioSeconds, { ...DefaultTimeoutConfig, whisperTimeoutMs: timeoutBase })
+        : timeoutBase;
 
     return withRetry(
         async () => {

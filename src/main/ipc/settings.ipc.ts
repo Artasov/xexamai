@@ -25,6 +25,8 @@ export function registerSettingsIpc() {
             transcriptionMode: config.transcriptionMode || DefaultSettings.transcriptionMode,
             localWhisperModel: config.localWhisperModel || DefaultSettings.localWhisperModel,
             localDevice: config.localDevice || DefaultSettings.localDevice,
+            apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),
+            apiLlmTimeoutMs: appConfigService.getApiLlmTimeoutMs(),
         };
     });
 
@@ -118,6 +120,14 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetLocalDevice, async (_, device: LocalDevice): Promise<void> => {
         appConfigService.setLocalDevice(device);
+    });
+
+    ipcMain.handle(IPCChannels.SetApiSttTimeoutMs, async (_, timeoutMs: number): Promise<void> => {
+        appConfigService.setApiSttTimeoutMs(timeoutMs);
+    });
+
+    ipcMain.handle(IPCChannels.SetApiLlmTimeoutMs, async (_, timeoutMs: number): Promise<void> => {
+        appConfigService.setApiLlmTimeoutMs(timeoutMs);
     });
 
     ipcMain.handle(IPCChannels.OpenConfigFolder, async (): Promise<void> => {

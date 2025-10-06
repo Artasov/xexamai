@@ -222,7 +222,7 @@ export async function askChat(prompt: string): Promise<string> {
         },
         cfg.retryConfig,
         'ChatGPT completion',
-        DefaultTimeoutConfig.chatgptTimeoutMs
+        cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
     );
 }
 
@@ -307,7 +307,7 @@ export async function askChatStream(
         },
         cfg.retryConfig,
         'ChatGPT streaming',
-        DefaultTimeoutConfig.chatgptTimeoutMs
+        cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
     );
 }
 

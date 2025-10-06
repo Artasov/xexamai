@@ -22,6 +22,9 @@ export interface AppConfigData {
     // window size
     windowWidth?: number;
     windowHeight?: number;
+    // timeouts (ms)
+    apiSttTimeoutMs?: number; // OpenAI transcription API timeout
+    apiLlmTimeoutMs?: number; // OpenAI chat completion timeout
 }
 
 export class AppConfigService {
@@ -66,6 +69,8 @@ export class AppConfigService {
                     localDevice: 'cpu',
                     windowWidth: 420,
                     windowHeight: 780,
+                    apiSttTimeoutMs: 10000,
+                    apiLlmTimeoutMs: 10000,
                 };
                 this.saveConfig();
             }
@@ -90,6 +95,8 @@ export class AppConfigService {
                 localDevice: 'cpu',
                 windowWidth: 420,
                 windowHeight: 780,
+                apiSttTimeoutMs: 10000,
+                apiLlmTimeoutMs: 10000,
             };
         }
     }
@@ -367,6 +374,30 @@ export class AppConfigService {
     public getWindowHeight(): number {
         const h = this.configData.windowHeight || 780;
         return Math.max(700, h);
+    }
+
+    public setApiSttTimeoutMs(timeoutMs: number): void {
+        const old = this.configData.apiSttTimeoutMs;
+        const safe = Math.max(1000, Math.min(600000, Math.floor(timeoutMs || 0)));
+        this.configData.apiSttTimeoutMs = safe;
+        this.saveConfig();
+        logger.info('settings', 'API STT timeout changed', { old, next: safe });
+    }
+
+    public getApiSttTimeoutMs(): number {
+        return this.configData.apiSttTimeoutMs || 10000;
+    }
+
+    public setApiLlmTimeoutMs(timeoutMs: number): void {
+        const old = this.configData.apiLlmTimeoutMs;
+        const safe = Math.max(1000, Math.min(600000, Math.floor(timeoutMs || 0)));
+        this.configData.apiLlmTimeoutMs = safe;
+        this.saveConfig();
+        logger.info('settings', 'API LLM timeout changed', { old, next: safe });
+    }
+
+    public getApiLlmTimeoutMs(): number {
+        return this.configData.apiLlmTimeoutMs || 10000;
     }
 }
 

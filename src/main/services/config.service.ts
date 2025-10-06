@@ -16,6 +16,8 @@ export type AppConfig = {
     localWhisperModel: WhisperModel;
     localDevice: LocalDevice;
     retryConfig: RetryConfig;
+    apiSttTimeoutMs: number;
+    apiLlmTimeoutMs: number;
 };
 
 
@@ -50,6 +52,8 @@ export function getConfig(): AppConfig {
         localWhisperModel: userConfig.localWhisperModel || 'base',
         localDevice: userConfig.localDevice || 'cpu',
         retryConfig,
+        apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),
+        apiLlmTimeoutMs: appConfigService.getApiLlmTimeoutMs(),
     };
 }
 

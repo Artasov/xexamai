@@ -21,6 +21,8 @@ export type AppSettings = {
     transcriptionMode?: TranscriptionMode;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
+    apiSttTimeoutMs?: number;
+    apiLlmTimeoutMs?: number;
 };
 
 export type AssistantResponse = {
@@ -104,6 +106,8 @@ export type AssistantAPI = {
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         setLocalDevice: (device: LocalDevice) => Promise<void>;
+        setApiSttTimeoutMs: (timeoutMs: number) => Promise<void>;
+        setApiLlmTimeoutMs: (timeoutMs: number) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
     };
