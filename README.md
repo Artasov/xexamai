@@ -85,7 +85,8 @@ Each stage can be run locally.
    https://developer.nvidia.com/cudnn-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
 
 3. #### Add to Windows PATH environment variable
-   `C:\\Program Files\\NVIDIA\\CUDNN\\v9.13\\bin\\12.9`
+   `C:\Program Files\NVIDIA\CUDNN\v9.13\bin\12.9`
+   > Or the path where cuDNN was installed
 
 4. #### Restart the PC
    > If you will use local speech recognition, then install python from the step below, if you don't have it yet.
@@ -99,8 +100,8 @@ Minimum recommended configuration:
 - RAM - 16 GB
 
 1. 
-   * In Settings choose `Transcription Mode` = `Local`
-   * In Settings choose a `LLM Model` from the available models:
+   * In `xexamai` Settings choose `Transcription Mode` = `Local`
+   * In `xexamai` Settings choose a `LLM Model` from the available models:
      * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
        > Choose a smaller model if your PC is low-spec
 
