@@ -10,6 +10,7 @@ export interface AppConfigData {
     alwaysOnTop?: boolean;
     durations?: number[];
     durationHotkeys?: Record<number, string>;
+    toggleInputHotkey?: string;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -169,6 +170,21 @@ export class AppConfigService {
         this.configData.durationHotkeys = sanitized;
         this.saveConfig();
         logger.info('settings', 'Duration hotkeys updated', { old, next: sanitized });
+    }
+
+    public setToggleInputHotkey(key: string): void {
+        const old = this.configData.toggleInputHotkey;
+        const v = String(key || '').trim();
+        if (/^[0-9a-zA-Z]$/.test(v)) {
+            this.configData.toggleInputHotkey = v.toLowerCase();
+            this.saveConfig();
+            logger.info('settings', 'Toggle input hotkey updated', { old, next: this.configData.toggleInputHotkey });
+        }
+    }
+
+    public getToggleInputHotkey(): string {
+        const key = this.configData.toggleInputHotkey || 'g';
+        return (/^[0-9a-zA-Z]$/.test(key) ? key.toLowerCase() : 'g');
     }
 
     public getDurationHotkeys(durations?: number[]): Record<number, string> {

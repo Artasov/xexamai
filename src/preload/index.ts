@@ -1,6 +1,7 @@
 import {contextBridge, ipcRenderer} from 'electron';
 import {marked} from 'marked';
-import {AssistantAPI, AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, WhisperModel, LocalDevice} from '../main/shared/types';
+import {AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, WhisperModel, LocalDevice} from '../main/shared/types';
+import type {AssistantAPI} from '../renderer/types';
 
 export const api: AssistantAPI = {
     assistant: {
@@ -95,6 +96,7 @@ export const api: AssistantAPI = {
         setWindowSize: (size: { width: number; height: number }) => ipcRenderer.invoke(IPCChannels.SetWindowSize, size),
         setDurations: (durations: number[]) => ipcRenderer.invoke(IPCChannels.SetDurations, durations),
         setDurationHotkeys: (map: Record<number, string>) => ipcRenderer.invoke(IPCChannels.SetDurationHotkeys, map),
+        setToggleInputHotkey: (key: string) => ipcRenderer.invoke(IPCChannels.SetToggleInputHotkey, key),
         setAudioInputDevice: (deviceId: string) => ipcRenderer.invoke(IPCChannels.SetAudioInputDevice, deviceId),
         setAudioInputType: (type: 'microphone' | 'system') => ipcRenderer.invoke(IPCChannels.SetAudioInputType, type),
         setTranscriptionModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetTranscriptionModel, model),
@@ -130,6 +132,12 @@ export const api: AssistantAPI = {
         offDuration: () => {
             ipcRenderer.removeAllListeners(IPCChannels.HotkeyDuration);
         },
+        onToggleInput: (cb: () => void) => {
+            ipcRenderer.on(IPCChannels.HotkeyToggleInput, cb as any);
+        },
+        offToggleInput: () => {
+            ipcRenderer.removeAllListeners(IPCChannels.HotkeyToggleInput);
+        },
     },
     window: {
         minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -139,6 +147,7 @@ export const api: AssistantAPI = {
         enable: () => ipcRenderer.invoke('enable-loopback-audio'),
         disable: () => ipcRenderer.invoke('disable-loopback-audio'),
     },
+    // capture removed: using standard getDisplayMedia in renderer
     log: (entry: LogEntry) => ipcRenderer.invoke(IPCChannels.Log, entry),
 };
 

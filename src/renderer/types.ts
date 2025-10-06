@@ -7,6 +7,7 @@ export type LocalDevice = 'cpu' | 'gpu';
 export type AppSettings = {
     durations: number[]; // seconds
     durationHotkeys?: Record<number, string>;
+    toggleInputHotkey?: string;
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
@@ -97,7 +98,9 @@ export type AssistantAPI = {
         setAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>;
         setWindowSize: (size: { width: number; height: number }) => Promise<void>;
         setDurations: (durations: number[]) => Promise<void>;
+        setDurationHotkeys: (map: Record<number, string>) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
+        setToggleInputHotkey: (key: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
@@ -114,6 +117,8 @@ export type AssistantAPI = {
     hotkeys: {
         onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;
         offDuration: () => void;
+        onToggleInput: (cb: () => void) => void;
+        offToggleInput: () => void;
     };
     window: {
         minimize: () => Promise<void>;

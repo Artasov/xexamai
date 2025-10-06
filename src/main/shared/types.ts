@@ -23,6 +23,7 @@ export type LocalDevice = 'cpu' | 'gpu';
 export type AppSettings = {
     durations: number[]; // seconds
     durationHotkeys?: Record<number, string>; // digit or letter key, combined with Ctrl
+    toggleInputHotkey?: string; // single letter/digit for Ctrl-<key>
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
@@ -45,6 +46,7 @@ export const DEFAULT_LLM_PROMPT = 'You are a seasoned technical interview coach 
 
 export const DefaultSettings: AppSettings = {
     durations: [5, 10, 15, 20, 30, 60],
+    toggleInputHotkey: 'g',
     windowOpacity: 100,
     alwaysOnTop: false,
     transcriptionMode: 'api',
@@ -69,7 +71,9 @@ export const IPCChannels = {
     SetWindowSize: 'settings:set:window-size',
     SetDurations: 'settings:set:durations',
     SetDurationHotkeys: 'settings:set:duration-hotkeys',
+    SetToggleInputHotkey: 'settings:set:toggle-input-hotkey',
     HotkeyDuration: 'hotkeys:duration', // main -> renderer event with { sec }
+    HotkeyToggleInput: 'hotkeys:toggle-input', // main -> renderer event with no payload
     SetAudioInputDevice: 'settings:set:audio-input-device',
     SetAudioInputType: 'settings:set:audio-input-type',
     SetTranscriptionModel: 'settings:set:transcription-model',
@@ -152,6 +156,8 @@ export type AssistantAPI = {
     hotkeys: {
         onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;
         offDuration: () => void;
+        onToggleInput: (cb: () => void) => void;
+        offToggleInput: () => void;
     };
     settings: {
         get: () => Promise<AppSettings>;
@@ -162,6 +168,7 @@ export type AssistantAPI = {
         setDurations: (durations: number[]) => Promise<void>;
         setDurationHotkeys: (map: Record<number, string>) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
+        setToggleInputHotkey: (key: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;

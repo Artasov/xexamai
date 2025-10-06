@@ -78,6 +78,11 @@ export function registerSettingsIpc() {
         hotkeysService.refresh();
     });
 
+    ipcMain.handle(IPCChannels.SetToggleInputHotkey, async (_, key: string): Promise<void> => {
+        appConfigService.setToggleInputHotkey(key);
+        hotkeysService.refresh();
+    });
+
     ipcMain.handle(IPCChannels.SetAudioInputDevice, async (_, deviceId: string): Promise<void> => {
         appConfigService.setAudioInputDevice(deviceId);
     });

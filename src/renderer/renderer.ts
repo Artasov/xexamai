@@ -88,27 +88,15 @@ async function rebuildAudioGraph(stream: MediaStream) {
 
 async function switchAudioInput(newType: 'microphone' | 'system') {
     logger.info('audio', 'Switch input requested', { newType });
-    try {
-        await window.api.settings.setAudioInputType(newType);
-    } catch {}
+    try { await window.api.settings.setAudioInputType(newType); } catch {}
     await updateToggleButtonLabel();
 
-    // If not recording, nothing else to do
+    // Если запись не идёт — выходим
     if (!state.isRecording) return;
 
-    // If switching away from system, ensure loopback is disabled before building new stream
-    if (newType === 'microphone') {
-        try { await window.api.loopback.disable(); } catch {}
-    }
-
-    const stream = await getSystemAudioStream();
-
-    // Update visualizer and audio processing
-    if (!visualizer) visualizer = new AudioVisualizer();
-    if (waveCanvas) visualizer.start(stream, waveCanvas, { bars: 72, smoothing: 0.75 });
-
-    await rebuildAudioGraph(stream);
-    await rebuildRecorderWithStream(stream);
+    // Простая и стабильная стратегия: перезапустить цикл
+    await stopRecording();
+    await startRecording();
 }
 
 async function getSystemAudioStream(): Promise<MediaStream> {
@@ -119,13 +107,10 @@ async function getSystemAudioStream(): Promise<MediaStream> {
         if (audioInputType === 'system') {
             try {
                 await window.api.loopback.enable();
-
                 const disp = await navigator.mediaDevices.getDisplayMedia({audio: true, video: true});
                 const audioTracks = disp.getAudioTracks();
                 const stream = new MediaStream(audioTracks);
-
                 disp.getVideoTracks().forEach((t) => t.stop());
-
                 return stream;
             } catch (error) {
                 console.error('Error getting system audio:', error);
@@ -505,6 +490,21 @@ async function main() {
             handleAskWindow(payload.sec);
         } catch {}
     });
+
+    // Хоткей переключения входа
+    try {
+        window.api.hotkeys.onToggleInput(async () => {
+            if (state.isProcessing) return;
+            try {
+                const s = await window.api.settings.get();
+                const cur = (s.audioInputType || 'microphone') as 'microphone' | 'system';
+                const next: 'microphone' | 'system' = cur === 'microphone' ? 'system' : 'microphone';
+                await switchAudioInput(next);
+            } catch (e) {
+                console.error('Toggle input via hotkey failed', e);
+            }
+        });
+    } catch {}
 
     btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
     if (btnStop) {

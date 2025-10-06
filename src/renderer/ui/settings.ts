@@ -246,6 +246,18 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
+                    <h3 class="settings-title">Hotkey: Toggle Audio Input</h3>
+                    <div class="fc gap-2">
+                        <div class="frs gap-2">
+                            <label class="input-label" for="toggleInputHotkey">Ctrl-</label>
+                            <input id="toggleInputHotkey" class="input-field w-24" maxlength="1" placeholder="G" value="${(this.settings as any).toggleInputHotkey || 'g'}" />
+                            <button id="saveToggleInputHotkey" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="text-xs text-gray-400">Single letter or digit, used with Ctrl (e.g., Ctrl-G)</div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
                     <h3 class="settings-title">Config Folder</h3>
                     <button id="openConfigFolder" class="btn btn-secondary">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -456,6 +468,19 @@ export class SettingsPanel {
                     await (window.api.settings as any).setDurationHotkeys(next);
                     (this.settings as any).durationHotkeys = next;
                     this.options.onHotkeysChange?.(next);
+                    this.showNotification('Hotkey saved');
+                } catch (error) {
+                    this.showNotification('Error saving hotkey', 'error');
+                }
+            }
+            if (target.id === 'saveToggleInputHotkey') {
+                const input = this.container.querySelector('#toggleInputHotkey') as HTMLInputElement | null;
+                const raw = (input?.value || '').trim();
+                const key = (raw || 'g')[0];
+                if (!key) return;
+                try {
+                    await (window.api.settings as any).setToggleInputHotkey(key);
+                    (this.settings as any).toggleInputHotkey = key.toLowerCase();
                     this.showNotification('Hotkey saved');
                 } catch (error) {
                     this.showNotification('Error saving hotkey', 'error');

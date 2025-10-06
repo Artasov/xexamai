@@ -31,6 +31,21 @@ class HotkeysService {
                 });
             } catch {}
         }
+
+        // Toggle input hotkey
+        const toggleKey = appConfigService.getToggleInputHotkey();
+        if (toggleKey) {
+            const accelerator = `Control+${toggleKey.toUpperCase()}`;
+            try {
+                globalShortcut.register(accelerator, () => {
+                    if (this.win && !this.win.isDestroyed()) {
+                        try {
+                            this.win.webContents.send(IPCChannels.HotkeyToggleInput);
+                        } catch {}
+                    }
+                });
+            } catch {}
+        }
     }
 
     public dispose() {
