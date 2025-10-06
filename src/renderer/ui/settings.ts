@@ -829,9 +829,16 @@ export class SettingsPanel {
                 try {
                     await window.api.settings.setAlwaysOnTop(alwaysOnTop);
                     this.settings.alwaysOnTop = alwaysOnTop;
-                    this.showNotification(`Always on top ${alwaysOnTop ? 'enabled' : 'disabled'}`);
+                    
+                    // Показываем более информативное уведомление
+                    if (alwaysOnTop) {
+                        this.showNotification('Always on top enabled. Note: Some fullscreen apps may still cover this window.');
+                    } else {
+                        this.showNotification('Always on top disabled');
+                    }
                 } catch (error) {
-                    this.showNotification('Error saving always on top setting', 'error');
+                    logger.error('settings', 'Failed to set always on top', { error });
+                    this.showNotification('Error saving always on top setting. Check console for details.', 'error');
                 }
             });
         }

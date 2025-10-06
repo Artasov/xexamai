@@ -3,6 +3,7 @@ import {AppSettings, DefaultSettings, IPCChannels, LocalDevice, TranscriptionMod
 import {appConfigService} from '../services/app-config.service';
 import {logger} from '../services/logger.service';
 import {hotkeysService} from '../services/hotkeys.service';
+import {platform} from 'node:os';
 
 export function registerSettingsIpc() {
     ipcMain.handle(IPCChannels.GetSettings, async (): Promise<AppSettings> => {
@@ -48,7 +49,43 @@ export function registerSettingsIpc() {
 
         const mainWindow = BrowserWindow.getAllWindows()[0];
         if (mainWindow) {
-            mainWindow.setAlwaysOnTop(alwaysOnTop);
+            try {
+                // Проверяем поддержку платформы
+                const currentPlatform = platform();
+                logger.info('settings', 'Setting always on top', { 
+                    alwaysOnTop, 
+                    platform: currentPlatform,
+                    windowId: mainWindow.id 
+                });
+
+                mainWindow.setAlwaysOnTop(alwaysOnTop);
+                
+                // Дополнительная проверка для Windows
+                if (currentPlatform === 'win32' && alwaysOnTop) {
+                    // Принудительно показываем окно для Windows
+                    if (mainWindow.isMinimized()) {
+                        mainWindow.restore();
+                    }
+                    mainWindow.focus();
+                    
+                    // Дополнительная попытка для проблемных случаев
+                    setTimeout(() => {
+                        try {
+                            mainWindow.setAlwaysOnTop(true, 'screen-saver');
+                            logger.info('settings', 'Applied screen-saver level for always on top');
+                        } catch (error) {
+                            logger.warn('settings', 'Failed to apply screen-saver level', { error });
+                        }
+                    }, 100);
+                }
+                
+                logger.info('settings', 'Always on top set successfully', { alwaysOnTop });
+            } catch (error) {
+                logger.error('settings', 'Failed to set always on top', { error, alwaysOnTop });
+                throw error;
+            }
+        } else {
+            logger.warn('settings', 'No main window found when setting always on top', { alwaysOnTop });
         }
     });
 
