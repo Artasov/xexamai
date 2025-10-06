@@ -27,6 +27,90 @@ let currentRequestId: string | null = null;
 let btnStop: HTMLButtonElement | null = null;
 let activeOpId: number = 0;
 
+async function updateToggleButtonLabel() {
+    try {
+        const btn = document.getElementById('btnToggleInput') as HTMLButtonElement | null;
+        if (!btn) return;
+        const settings = await window.api.settings.get();
+        const t = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
+        btn.textContent = t === 'microphone' ? 'MIC' : 'SYS';
+        btn.title = t === 'microphone' ? 'Using Microphone' : 'Using System Audio';
+    } catch {}
+}
+
+async function rebuildRecorderWithStream(stream: MediaStream) {
+    const timeslice = 1000;
+    try {
+        media?.stop();
+    } catch {}
+    try {
+        media?.stream.getTracks().forEach((t) => t.stop());
+    } catch {}
+    media = new MediaRecorder(stream, { mimeType: mimeSelected });
+    currentStream = stream;
+    media.addEventListener('dataavailable', (ev) => {
+        if (!ev.data || ev.data.size === 0 || !ring) return;
+        ring.push({ t: Date.now(), blob: ev.data, ms: timeslice } as any);
+    });
+    media.addEventListener('error', (ev) => {
+        try { console.error('[mediaRecorder] error', (ev as any).error); } catch {}
+    });
+    media.start(timeslice);
+}
+
+async function rebuildAudioGraph(stream: MediaStream) {
+    try { scriptNode?.disconnect(); } catch {}
+    try { srcNode?.disconnect(); } catch {}
+    try { await audioCtx?.close(); } catch {}
+    audioCtx = null;
+    srcNode = null;
+    scriptNode = null;
+    try {
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const tmpSrc = audioCtx.createMediaStreamSource(stream);
+        const ch = Math.max(1, tmpSrc.channelCount || 1);
+        const sp = audioCtx.createScriptProcessor(4096, ch, ch);
+        if (!pcmRing) pcmRing = new PcmRingBuffer(audioCtx.sampleRate, ch, state.durationSec);
+        sp.onaudioprocess = (ev) => {
+            const ib = ev.inputBuffer;
+            const chs = ib.numberOfChannels;
+            const frames = ib.length;
+            const data: Float32Array[] = [];
+            for (let c = 0; c < chs; c++) data.push(new Float32Array(ib.getChannelData(c)));
+            pcmRing?.push(data, frames);
+        };
+        tmpSrc.connect(sp);
+        sp.connect(audioCtx.destination);
+        srcNode = tmpSrc;
+        scriptNode = sp;
+    } catch {}
+}
+
+async function switchAudioInput(newType: 'microphone' | 'system') {
+    logger.info('audio', 'Switch input requested', { newType });
+    try {
+        await window.api.settings.setAudioInputType(newType);
+    } catch {}
+    await updateToggleButtonLabel();
+
+    // If not recording, nothing else to do
+    if (!state.isRecording) return;
+
+    // If switching away from system, ensure loopback is disabled before building new stream
+    if (newType === 'microphone') {
+        try { await window.api.loopback.disable(); } catch {}
+    }
+
+    const stream = await getSystemAudioStream();
+
+    // Update visualizer and audio processing
+    if (!visualizer) visualizer = new AudioVisualizer();
+    if (waveCanvas) visualizer.start(stream, waveCanvas, { bars: 72, smoothing: 0.75 });
+
+    await rebuildAudioGraph(stream);
+    await rebuildRecorderWithStream(stream);
+}
+
 async function getSystemAudioStream(): Promise<MediaStream> {
     try {
         const settings = await window.api.settings.get();
@@ -374,6 +458,25 @@ async function main() {
             handleTextSend(text);
         },
     });
+
+    // Toggle input button
+    try {
+        await updateToggleButtonLabel();
+        const btn = document.getElementById('btnToggleInput') as HTMLButtonElement | null;
+        if (btn) {
+            btn.addEventListener('click', async () => {
+                if (state.isProcessing) return;
+                try {
+                    const s = await window.api.settings.get();
+                    const cur = (s.audioInputType || 'microphone') as 'microphone' | 'system';
+                    const next: 'microphone' | 'system' = cur === 'microphone' ? 'system' : 'microphone';
+                    await switchAudioInput(next);
+                } catch (e) {
+                    console.error('Toggle input failed', e);
+                }
+            });
+        }
+    } catch {}
 
     // Проставим подписи хоткеев на кнопках
     try {
