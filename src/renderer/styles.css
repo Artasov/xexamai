@@ -346,8 +346,6 @@ body {
     @apply text-gray-200 leading-relaxed;
     font-size: 14px;
     line-height: 1.6;
-    display: flex;
-    flex-direction: column;
 }
 
 /* Headers */
@@ -380,13 +378,13 @@ body {
 /* Lists */
 #answerOut ul,
 #answerOut ol {
-    @apply ml-4;
-    display: flex;
-    flex-direction: column;
+    @apply ml-4 mb-2;
+    display: block;
 }
 
 #answerOut li {
     @apply mb-1 text-gray-200;
+    display: list-item;
 }
 
 #answerOut ul li {
@@ -403,8 +401,7 @@ body {
 #answerOut ul ol,
 #answerOut ol ul {
     @apply mt-1 mb-0;
-    display: flex;
-    flex-direction: column;
+    display: block;
 }
 
 /* Code */
@@ -414,9 +411,14 @@ body {
 }
 
 #answerOut pre {
-    @apply bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4 overflow-x-auto;
+    @apply bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4;
     font-size: 13px;
-    min-height: 55px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    overflow-y: visible;
+    max-height: none;
+    min-height: auto;
 }
 
 #answerOut pre code {
