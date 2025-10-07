@@ -167,6 +167,31 @@ button:focus-visible {
     @apply text-blue-400 border-blue-500;
 }
 
+/* Settings sub-tabs */
+.settings-tabs-container {
+    @apply mb-4;
+}
+
+.settings-tabs {
+    @apply flex gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700;
+}
+
+.settings-tab {
+    @apply px-3 py-2 text-sm font-medium text-gray-400 hover:text-gray-200 rounded-md transition-colors;
+}
+
+.settings-tab.active {
+    @apply text-gray-100 bg-gray-700;
+}
+
+.settings-panel-content {
+    @apply transition-opacity duration-200;
+}
+
+.settings-panel-content.hidden {
+    display: none;
+}
+
 .content-area {
     @apply transition-opacity duration-200;
 }

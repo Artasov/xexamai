@@ -88,7 +88,23 @@
 
         <!-- Settings content area -->
         <div id="settingsContent" class="content-area hidden fc overflow-auto">
-            <div id="settingsPanel" class="w-full overflow-auto pr-1"></div>
+            <!-- Settings sub-navigation -->
+            <div class="settings-tabs-container mb-4">
+                <div class="settings-tabs">
+                    <button id="settingsGeneralTab" class="settings-tab active">General</button>
+                    <button id="settingsAiTab" class="settings-tab">AI Models</button>
+                    <button id="settingsAudioTab" class="settings-tab">Audio</button>
+                    <button id="settingsHotkeysTab" class="settings-tab">Hotkeys</button>
+                    <button id="settingsAdvancedTab" class="settings-tab">Advanced</button>
+                </div>
+            </div>
+            
+            <!-- Settings content panels -->
+            <div id="settingsGeneralPanel" class="settings-panel-content w-full overflow-auto pr-1"></div>
+            <div id="settingsAiPanel" class="settings-panel-content w-full overflow-auto pr-1 hidden"></div>
+            <div id="settingsAudioPanel" class="settings-panel-content w-full overflow-auto pr-1 hidden"></div>
+            <div id="settingsHotkeysPanel" class="settings-panel-content w-full overflow-auto pr-1 hidden"></div>
+            <div id="settingsAdvancedPanel" class="settings-panel-content w-full overflow-auto pr-1 hidden"></div>
         </div>
     </main>
 </div>

@@ -533,9 +533,16 @@ async function main() {
         });
     }
 
-    const settingsPanelContainer = document.getElementById('settingsPanel');
-    if (settingsPanelContainer) {
-        new SettingsPanel(settingsPanelContainer, {
+    // Initialize settings panels for each tab
+    const settingsGeneralPanel = document.getElementById('settingsGeneralPanel');
+    const settingsAiPanel = document.getElementById('settingsAiPanel');
+    const settingsAudioPanel = document.getElementById('settingsAudioPanel');
+    const settingsHotkeysPanel = document.getElementById('settingsHotkeysPanel');
+    const settingsAdvancedPanel = document.getElementById('settingsAdvancedPanel');
+
+    if (settingsGeneralPanel) {
+        new SettingsPanel(settingsGeneralPanel, {
+            panelType: 'general',
             onDurationsChange: (newDurations) => {
                 updateDurations(newDurations, (sec) => {
                     handleAskWindow(sec);
@@ -582,6 +589,62 @@ async function main() {
                 });
             },
         });
+    }
+
+    // Initialize other settings panels
+    if (settingsAiPanel) {
+        new SettingsPanel(settingsAiPanel, { panelType: 'ai' });
+    }
+    if (settingsAudioPanel) {
+        new SettingsPanel(settingsAudioPanel, { panelType: 'audio' });
+    }
+    if (settingsHotkeysPanel) {
+        new SettingsPanel(settingsHotkeysPanel, { panelType: 'hotkeys' });
+    }
+    if (settingsAdvancedPanel) {
+        new SettingsPanel(settingsAdvancedPanel, { panelType: 'advanced' });
+    }
+
+    // Settings sub-tabs navigation
+    const settingsGeneralTab = document.getElementById('settingsGeneralTab');
+    const settingsAiTab = document.getElementById('settingsAiTab');
+    const settingsAudioTab = document.getElementById('settingsAudioTab');
+    const settingsHotkeysTab = document.getElementById('settingsHotkeysTab');
+    const settingsAdvancedTab = document.getElementById('settingsAdvancedTab');
+
+    function switchSettingsTab(activeTab: string) {
+        // Hide all panels
+        [settingsGeneralPanel, settingsAiPanel, settingsAudioPanel, settingsHotkeysPanel, settingsAdvancedPanel].forEach(panel => {
+            if (panel) panel.classList.add('hidden');
+        });
+        
+        // Remove active class from all tabs
+        [settingsGeneralTab, settingsAiTab, settingsAudioTab, settingsHotkeysTab, settingsAdvancedTab].forEach(tab => {
+            if (tab) tab.classList.remove('active');
+        });
+
+        // Show active panel and tab
+        const activePanel = document.getElementById(`settings${activeTab}Panel`);
+        const activeTabElement = document.getElementById(`settings${activeTab}Tab`);
+        if (activePanel) activePanel.classList.remove('hidden');
+        if (activeTabElement) activeTabElement.classList.add('active');
+    }
+
+    // Add event listeners for settings sub-tabs
+    if (settingsGeneralTab) {
+        settingsGeneralTab.addEventListener('click', () => switchSettingsTab('General'));
+    }
+    if (settingsAiTab) {
+        settingsAiTab.addEventListener('click', () => switchSettingsTab('Ai'));
+    }
+    if (settingsAudioTab) {
+        settingsAudioTab.addEventListener('click', () => switchSettingsTab('Audio'));
+    }
+    if (settingsHotkeysTab) {
+        settingsHotkeysTab.addEventListener('click', () => switchSettingsTab('Hotkeys'));
+    }
+    if (settingsAdvancedTab) {
+        settingsAdvancedTab.addEventListener('click', () => switchSettingsTab('Advanced'));
     }
 
     const mainTab = document.getElementById('mainTab');

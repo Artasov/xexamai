@@ -136,6 +136,7 @@ export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;
     onDurationsChange?: (durations: number[]) => void;
     onHotkeysChange?: (map: Record<number, string>) => void;
+    panelType?: 'general' | 'ai' | 'audio' | 'hotkeys' | 'advanced';
 }
 
 export class SettingsPanel {
@@ -145,6 +146,7 @@ export class SettingsPanel {
         durations: [5, 10, 15, 20, 30, 60],
         windowOpacity: 100,
     };
+    private panelType: 'general' | 'ai' | 'audio' | 'hotkeys' | 'advanced' = 'general';
 
     // Custom select instances
     private csTranscriptionMode?: CustomSelect;
@@ -160,6 +162,7 @@ export class SettingsPanel {
     constructor(container: HTMLElement, options: SettingsPanelOptions = {}) {
         this.container = container;
         this.options = options;
+        this.panelType = options.panelType || 'general';
         this.init().then();
     }
 
@@ -182,6 +185,21 @@ export class SettingsPanel {
     private render() {
         this.container.innerHTML = `
             <div class="settings-panel">
+                ${this.renderGeneralSections()}
+                ${this.renderAiSections()}
+                ${this.renderAudioSections()}
+                ${this.renderHotkeysSections()}
+                ${this.renderAdvancedSections()}
+            </div>
+        `;
+
+        this.renderDurations();
+    }
+
+    private renderGeneralSections(): string {
+        if (this.panelType !== 'general') return '';
+        
+        return `
                 <div class="settings-section">
                     <h3 class="settings-title">OpenAI API Key</h3>
                     <div class="input-group">
@@ -197,7 +215,7 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
-                    <h3 class="settings-title">Window Behavior</h3>
+                    <h3 class="settings-title">Window behavior</h3>
                     <div class="checkbox-control">
                         <label class="checkbox-label">
                             <input 
@@ -222,7 +240,7 @@ export class SettingsPanel {
                     </div>
 
                     <div class="frsc gap-2">
-                        <span class="checkbox-text">Window Opacity</span>
+                        <span class="checkbox-text">Window opacity</span>
                         <div class="opacity-control">
                             <input 
                                 type="range" 
@@ -238,7 +256,7 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
-                    <h3 class="settings-title">Window Size on Startup</h3>
+                    <h3 class="settings-title">Window size on startup</h3>
                     <div class="fc gap-2">
                         <div class="fc gap-1">
                             <label for="windowWidth" class="text-xs text-gray-400">Width (min 400)</label>
@@ -263,50 +281,140 @@ export class SettingsPanel {
                         <button id="saveWindowSize" class="btn btn-sm">Save</button>
                     </div>
                 </div>
-                
+
+                <div class="settings-section">
+                    <h3 class="settings-title">Config Folder</h3>
+                    <button id="openConfigFolder" class="btn btn-secondary fr gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
+                            <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>
+                        </svg>
+                        Open Config Folder
+                    </button>
+                </div>
+        `;
+    }
+
+    private renderAiSections(): string {
+        if (this.panelType !== 'ai') return '';
+        
+        return `
                 <div class="settings-section fc">
                     <h3 class="settings-title">AI Mode</h3>
                     <div class="fr gap-1">
                         <div class="fc gap-1">
                             <h3 class="text-xs text-gray-400">Transcription</h3>
                             <div id="transcriptionMode" class="min-w-[100px]"></div>
-                            
                         </div>
-        
                         <div class="fc gap-1">
                             <h3 class="text-xs text-gray-400">LLM</h3>
                             <div id="llmHost" class="min-w-[100px]"></div>
                         </div>
                     </div>
                 </div>
+                
+                <div class="settings-section fc">
+                    <h3 class="settings-title">AI Model</h3>
+                    
+                    <div class="fr gap-2 flex-wrap">
+                        <div class="fc gap-1">
+                            <div class="fc gap-1" id="apiTranscriptionSection">
+                                <div class="fc">
+                                    <h3 class="text-xs text-gray-400">Transcription</h3>
+                                    <div id="transcriptionModel"></div>
+                                </div>
+                            </div>
+                            <div class="fc gap-1" id="localTranscriptionSection" style="display: none;">
+                                <h3 class="text-xs text-gray-400">Transcription</h3>
+                                <div id="localWhisperModel"></div>
+                            </div>
+                            <div class="fc gap-1" id="localDeviceSection" style="display: none;">
+                                <h3 class="text-xs text-gray-400">Local transcription device</h3>
+                                <div id="localDevice"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="fr gap-1">
+                            <div class="fc gap-1" id="apiLlmSection">
+                                <div class="fc gap-1">
+                                    <h3 class="text-xs text-gray-400">LLM Model</h3>
+                                    <div id="llmModel"></div>
+                                </div>
+                            </div>
+                            <div class="fc gap-1" id="localLlmSection" style="display: none;">
+                                <h3 class="text-xs text-gray-400">LLM Model</h3>
+                                <div id="localLlmModel"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+              
 
-                <div class="settings-section" id="apiTranscriptionSection">
-                    <h3 class="settings-title">Transcription Model</h3>
-                    <div id="transcriptionModel"></div>
+        `;
+    }
+
+    private renderAudioSections(): string {
+        if (this.panelType !== 'audio') return '';
+        
+        return `
+                <div class="settings-section">
+                    <h3 class="settings-title">Audio input</h3>
+                    <div id="audioInputType"></div>
                 </div>
 
-                <div class="settings-section" id="localTranscriptionSection" style="display: none;">
-                    <h3 class="settings-title">Transcription Model</h3>
-                    <div id="localWhisperModel"></div>
+                <div class="settings-section fc" id="microphoneSection">
+                    <h3 class="settings-title">Microphone device</h3>
+                    <div class="fr gap-2">
+                        <div id="audioInputDevice"></div>
+                        <button id="refreshDevices" class="btn btn-sm">Refresh</button>
+                    </div>
                 </div>
+        `;
+    }
 
-                <div class="settings-section" id="localDeviceSection" style="display: none;">
-                    <h3 class="settings-title">Local Device</h3>
-                    <div id="localDevice"></div>
-                </div>
-
-                <div class="settings-section" id="apiLlmSection">
-                    <h3 class="settings-title">LLM Model</h3>
-                    <div id="llmModel"></div>
-                </div>
-
-                <div class="settings-section" id="localLlmSection" style="display: none;">
-                    <h3 class="settings-title">LLM Model</h3>
-                    <div id="localLlmModel"></div>
+    private renderHotkeysSections(): string {
+        if (this.panelType !== 'hotkeys') return '';
+        
+        return `
+                <div class="settings-section">
+                    <h3 class="settings-title">Recording durations</h3>
+                    <div class="durations-control">
+                        <div id="durationsList" class="durations-list"></div>
+                        <div class="duration-input-group">
+                            <input 
+                                type="number" 
+                                id="newDuration" 
+                                class="input-field" 
+                                placeholder="Duration in seconds"
+                                min="1"
+                                max="300"
+                            />
+                            <button id="addDuration" class="btn btn-sm">Add</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="settings-section">
-                    <h3 class="settings-title">Transcription Prompt</h3>
+                    <h3 class="settings-title">Hotkey: toggle audio input</h3>
+                    <div class="fc gap-2">
+                        <div class="frsc gap-2">
+                            <label class="input-label" for="toggleInputHotkey">Ctrl-</label>
+                            <input id="toggleInputHotkey" class="input-field w-24" maxlength="1" placeholder="G" value="${(this.settings as any).toggleInputHotkey || 'g'}" />
+                            <button id="saveToggleInputHotkey" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="text-xs text-gray-400">Single letter or digit, used with Ctrl (e.g., Ctrl-G)</div>
+                    </div>
+                </div>
+        `;
+    }
+
+    private renderAdvancedSections(): string {
+        if (this.panelType !== 'advanced') return '';
+        
+        return `
+                <div class="settings-section">
+                    <h3 class="settings-title">Transcription prompt</h3>
                     <div class="fc gap-2">
                         <textarea 
                             id="transcriptionPrompt" 
@@ -332,60 +440,6 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
-                    <h3 class="settings-title">Audio input</h3>
-                    <div id="audioInputType"></div>
-                </div>
-
-                <div class="settings-section" id="microphoneSection">
-                    <h3 class="settings-title">Microphone Device</h3>
-                    <div class="fr gap-2">
-                        <div id="audioInputDevice"></div>
-                        <button id="refreshDevices" class="btn btn-sm">Refresh</button>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">Recording Durations</h3>
-                    <div class="durations-control">
-                        <div id="durationsList" class="durations-list"></div>
-                        <div class="duration-input-group">
-                            <input 
-                                type="number" 
-                                id="newDuration" 
-                                class="input-field" 
-                                placeholder="Duration in seconds"
-                                min="1"
-                                max="300"
-                            />
-                            <button id="addDuration" class="btn btn-sm">Add</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">Hotkey: Toggle Audio Input</h3>
-                    <div class="fc gap-2">
-                        <div class="frsc gap-2">
-                            <label class="input-label" for="toggleInputHotkey">Ctrl-</label>
-                            <input id="toggleInputHotkey" class="input-field w-24" maxlength="1" placeholder="G" value="${(this.settings as any).toggleInputHotkey || 'g'}" />
-                            <button id="saveToggleInputHotkey" class="btn btn-sm">Save</button>
-                        </div>
-                        <div class="text-xs text-gray-400">Single letter or digit, used with Ctrl (e.g., Ctrl-G)</div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">Config Folder</h3>
-                    <button id="openConfigFolder" class="btn btn-secondary fr gap-2">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
-                            <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>
-                        </svg>
-                        Open Config Folder
-                    </button>
-                </div>
-
-                <div class="settings-section">
                     <h3 class="settings-title">API Timeouts</h3>
                     <div class="frbc gap-2">
                         <div class="fc gap-1" style="width:48%">
@@ -400,10 +454,7 @@ export class SettingsPanel {
                         </div>
                     </div>
                 </div>
-            </div>
         `;
-
-        this.renderDurations();
     }
 
     private updateAudioTypeVisibility() {
@@ -411,7 +462,7 @@ export class SettingsPanel {
         if (microphoneSection) {
             const typeVal = this.csAudioInputType?.getValue() || this.settings.audioInputType || 'microphone';
             const isMicrophone = typeVal === 'microphone';
-            microphoneSection.style.display = isMicrophone ? 'block' : 'none';
+            microphoneSection.style.display = isMicrophone ? 'flex' : 'none';
         }
     }
 
@@ -422,9 +473,9 @@ export class SettingsPanel {
         if (apiSection && localSection && localDeviceSection) {
             const modeVal = this.csTranscriptionMode?.getValue() || this.settings.transcriptionMode || 'api';
             const isLocal = modeVal === 'local';
-            apiSection.style.display = isLocal ? 'none' : 'block';
-            localSection.style.display = isLocal ? 'block' : 'none';
-            localDeviceSection.style.display = isLocal ? 'block' : 'none';
+            apiSection.style.display = isLocal ? 'none' : 'flex';
+            localSection.style.display = isLocal ? 'flex' : 'none';
+            localDeviceSection.style.display = isLocal ? 'flex' : 'none';
         }
     }
 
@@ -434,8 +485,8 @@ export class SettingsPanel {
         if (apiSection && localSection) {
             const hostVal = this.csLlmHost?.getValue() || this.settings.llmHost || 'api';
             const isLocal = hostVal === 'local';
-            apiSection.style.display = isLocal ? 'none' : 'block';
-            localSection.style.display = isLocal ? 'block' : 'none';
+            apiSection.style.display = isLocal ? 'none' : 'flex';
+            localSection.style.display = isLocal ? 'flex' : 'none';
         }
     }
 
