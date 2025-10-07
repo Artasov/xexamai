@@ -12,6 +12,7 @@ export function createMainWindow(): BrowserWindow {
     const win = new BrowserWindow({
         width: initialWidth,
         height: initialHeight,
+        minWidth: 400,
         frame: false,
         titleBarStyle: 'hidden',
         transparent: true,

@@ -180,12 +180,12 @@ button:focus-visible {
 }
 
 .settings-section {
-    @apply border border-gray-700 rounded-lg p-4 bg-gray-800 shadow-lg;
+    @apply border border-gray-700 rounded-lg px-4 pb-4 pt-3 bg-gray-800 shadow-lg;
     overflow: hidden; /* Prevent content from overflowing */
 }
 
 .settings-title {
-    @apply text-lg font-semibold text-gray-200 mb-2;
+    @apply text-lg font-semibold text-gray-200 mb-1;
 }
 
 .input-group {

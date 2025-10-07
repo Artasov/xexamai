@@ -263,55 +263,46 @@ export class SettingsPanel {
                         <button id="saveWindowSize" class="btn btn-sm">Save</button>
                     </div>
                 </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">Transcription Mode</h3>
-                    <div class="input-group">
-                        <div id="transcriptionMode" class="input-field"></div>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">LLM Mode</h3>
-                    <div class="input-group">
-                        <div id="llmHost" class="input-field"></div>
-                    </div>
-                </div>
                 
+                <div class="settings-section fc">
+                    <h3 class="settings-title">AI Mode</h3>
+                    <div class="fr gap-1">
+                        <div class="fc gap-1">
+                            <h3 class="text-xs text-gray-400">Transcription</h3>
+                            <div id="transcriptionMode" class="min-w-[100px]"></div>
+                            
+                        </div>
+        
+                        <div class="fc gap-1">
+                            <h3 class="text-xs text-gray-400">LLM</h3>
+                            <div id="llmHost" class="min-w-[100px]"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="settings-section" id="apiTranscriptionSection">
                     <h3 class="settings-title">Transcription Model</h3>
-                    <div class="input-group">
-                        <div id="transcriptionModel" class="input-field"></div>
-                    </div>
+                    <div id="transcriptionModel"></div>
                 </div>
 
                 <div class="settings-section" id="localTranscriptionSection" style="display: none;">
                     <h3 class="settings-title">Transcription Model</h3>
-                    <div class="input-group">
-                        <div id="localWhisperModel" class="input-field"></div>
-                    </div>
+                    <div id="localWhisperModel"></div>
                 </div>
 
                 <div class="settings-section" id="localDeviceSection" style="display: none;">
                     <h3 class="settings-title">Local Device</h3>
-                    <div class="input-group">
-                        <div id="localDevice" class="input-field"></div>
-                    </div>
+                    <div id="localDevice"></div>
                 </div>
-
 
                 <div class="settings-section" id="apiLlmSection">
                     <h3 class="settings-title">LLM Model</h3>
-                    <div class="input-group">
-                        <div id="llmModel" class="input-field"></div>
-                    </div>
+                    <div id="llmModel"></div>
                 </div>
 
                 <div class="settings-section" id="localLlmSection" style="display: none;">
                     <h3 class="settings-title">LLM Model</h3>
-                    <div class="input-group">
-                        <div id="localLlmModel" class="input-field"></div>
-                    </div>
+                    <div id="localLlmModel"></div>
                 </div>
 
                 <div class="settings-section">
@@ -341,16 +332,14 @@ export class SettingsPanel {
                 </div>
 
                 <div class="settings-section">
-                    <h3 class="settings-title">Audio Input Type</h3>
-                    <div class="input-group">
-                        <div id="audioInputType" class="input-field"></div>
-                    </div>
+                    <h3 class="settings-title">Audio input</h3>
+                    <div id="audioInputType"></div>
                 </div>
 
                 <div class="settings-section" id="microphoneSection">
                     <h3 class="settings-title">Microphone Device</h3>
-                    <div class="input-group">
-                        <div id="audioInputDevice" class="input-field"></div>
+                    <div class="fr gap-2">
+                        <div id="audioInputDevice"></div>
                         <button id="refreshDevices" class="btn btn-sm">Refresh</button>
                     </div>
                 </div>
@@ -376,7 +365,7 @@ export class SettingsPanel {
                 <div class="settings-section">
                     <h3 class="settings-title">Hotkey: Toggle Audio Input</h3>
                     <div class="fc gap-2">
-                        <div class="frs gap-2">
+                        <div class="frsc gap-2">
                             <label class="input-label" for="toggleInputHotkey">Ctrl-</label>
                             <input id="toggleInputHotkey" class="input-field w-24" maxlength="1" placeholder="G" value="${(this.settings as any).toggleInputHotkey || 'g'}" />
                             <button id="saveToggleInputHotkey" class="btn btn-sm">Save</button>
@@ -387,7 +376,7 @@ export class SettingsPanel {
 
                 <div class="settings-section">
                     <h3 class="settings-title">Config Folder</h3>
-                    <button id="openConfigFolder" class="btn btn-secondary">
+                    <button id="openConfigFolder" class="btn btn-secondary fr gap-2">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M3 7v10a2 2 0 002 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
                             <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>
@@ -400,12 +389,12 @@ export class SettingsPanel {
                     <h3 class="settings-title">API Timeouts</h3>
                     <div class="frbc gap-2">
                         <div class="fc gap-1" style="width:48%">
-                            <label class="input-label">Transcription API timeout (ms)</label>
+                            <label class="text-xs text-gray-400">Transcription API timeout (ms)</label>
                             <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
                             <button id="saveApiSttTimeout" class="btn btn-sm">Save</button>
                         </div>
                         <div class="fc gap-1" style="width:48%">
-                            <label class="input-label">LLM API timeout (ms)</label>
+                            <label class="text-xs text-gray-400">LLM API timeout (ms)</label>
                             <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
                             <button id="saveApiLlmTimeout" class="btn btn-sm">Save</button>
                         </div>
