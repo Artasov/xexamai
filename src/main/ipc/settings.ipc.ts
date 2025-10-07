@@ -15,6 +15,7 @@ export function registerSettingsIpc() {
             openaiApiKey: config.openaiApiKey,
             windowOpacity: config.windowOpacity || DefaultSettings.windowOpacity,
             alwaysOnTop: config.alwaysOnTop !== undefined ? config.alwaysOnTop : DefaultSettings.alwaysOnTop,
+            hideApp: appConfigService.getHideApp(),
             windowWidth: config.windowWidth || 420,
             windowHeight: config.windowHeight || 780,
             audioInputDeviceId: config.audioInputDeviceId,
@@ -86,6 +87,28 @@ export function registerSettingsIpc() {
             }
         } else {
             logger.warn('settings', 'No main window found when setting always on top', { alwaysOnTop });
+        }
+    });
+
+    ipcMain.handle(IPCChannels.SetHideApp, async (_, hideApp: boolean): Promise<void> => {
+        appConfigService.setHideApp(hideApp);
+
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow) {
+            try {
+                logger.info('settings', 'Setting hide app', { 
+                    hideApp, 
+                    windowId: mainWindow.id 
+                });
+
+                mainWindow.setContentProtection(hideApp);
+                mainWindow.setSkipTaskbar(hideApp);
+            } catch (error) {
+                logger.error('settings', 'Error setting hide app', { 
+                    error: error instanceof Error ? error.message : String(error),
+                    hideApp
+                });
+            }
         }
     });
 

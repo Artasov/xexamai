@@ -221,6 +221,17 @@ export class SettingsPanel {
                             <span class="checkbox-text">Always on top</span>
                         </label>
                     </div>
+                    <div class="checkbox-control">
+                        <label class="checkbox-label">
+                            <input 
+                                type="checkbox" 
+                                id="hideApp" 
+                                class="checkbox-input"
+                                ${this.settings.hideApp ? 'checked' : ''}
+                            />
+                            <span class="checkbox-text">Hide app from screen recording</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="settings-section">
@@ -839,6 +850,27 @@ export class SettingsPanel {
                 } catch (error) {
                     logger.error('settings', 'Failed to set always on top', { error });
                     this.showNotification('Error saving always on top setting. Check console for details.', 'error');
+                }
+            });
+        }
+
+        const hideAppCheckbox = this.container.querySelector('#hideApp') as HTMLInputElement;
+        if (hideAppCheckbox) {
+            hideAppCheckbox.addEventListener('change', async () => {
+                const hideApp = hideAppCheckbox.checked;
+                logger.info('settings', 'Hide app changed', { hideApp });
+                try {
+                    await window.api.settings.setHideApp(hideApp);
+                    this.settings.hideApp = hideApp;
+                    
+                    if (hideApp) {
+                        this.showNotification('App will be hidden from screen recording and demonstrations');
+                    } else {
+                        this.showNotification('App will be visible in screen recording and demonstrations');
+                    }
+                } catch (error) {
+                    logger.error('settings', 'Failed to set hide app', { error });
+                    this.showNotification('Error saving hide app setting. Check console for details.', 'error');
                 }
             });
         }

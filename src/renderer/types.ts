@@ -11,6 +11,7 @@ export type AppSettings = {
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
+    hideApp?: boolean;
     windowWidth?: number;
     windowHeight?: number;
     audioInputDeviceId?: string;
@@ -96,6 +97,7 @@ export type AssistantAPI = {
         setOpenaiApiKey: (key: string) => Promise<void>;
         setWindowOpacity: (opacity: number) => Promise<void>;
         setAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>;
+        setHideApp: (hideApp: boolean) => Promise<void>;
         setWindowSize: (size: { width: number; height: number }) => Promise<void>;
         setDurations: (durations: number[]) => Promise<void>;
         setDurationHotkeys: (map: Record<number, string>) => Promise<void>;

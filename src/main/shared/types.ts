@@ -27,6 +27,7 @@ export type AppSettings = {
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
+    hideApp?: boolean;
     windowWidth?: number;
     windowHeight?: number;
     audioInputDeviceId?: string;
@@ -68,6 +69,7 @@ export const IPCChannels = {
     SetOpenaiApiKey: 'settings:set:openai-api-key',
     SetWindowOpacity: 'settings:set:window-opacity',
     SetAlwaysOnTop: 'settings:set:always-on-top',
+    SetHideApp: 'settings:set:hide-app',
     SetWindowSize: 'settings:set:window-size',
     SetDurations: 'settings:set:durations',
     SetDurationHotkeys: 'settings:set:duration-hotkeys',

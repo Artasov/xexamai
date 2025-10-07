@@ -5,6 +5,7 @@ import {appConfigService} from '../services/app-config.service';
 export function createMainWindow(): BrowserWindow {
     const opacity = appConfigService.getWindowOpacity();
     const alwaysOnTop = appConfigService.getAlwaysOnTop();
+    const hideApp = appConfigService.getHideApp();
     const initialWidth = appConfigService.getWindowWidth();
     const initialHeight = appConfigService.getWindowHeight();
 
@@ -47,8 +48,8 @@ export function createMainWindow(): BrowserWindow {
         `);
     });
 
-    win.setContentProtection(true);
-    win.setSkipTaskbar(true);
+    win.setContentProtection(hideApp);
+    win.setSkipTaskbar(hideApp);
 
     win.once('ready-to-show', () => {
         const shouldOpenDevTools = process.env.NODE_ENV === 'development' ||
@@ -58,8 +59,8 @@ export function createMainWindow(): BrowserWindow {
             win.webContents.openDevTools({mode: 'detach'});
         }
 
-        win.setContentProtection(true);
-        win.setSkipTaskbar(true);
+        win.setContentProtection(hideApp);
+        win.setSkipTaskbar(hideApp);
 
         win.show();
     });

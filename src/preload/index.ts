@@ -93,6 +93,7 @@ export const api: AssistantAPI = {
         setOpenaiApiKey: (key: string) => ipcRenderer.invoke(IPCChannels.SetOpenaiApiKey, key),
         setWindowOpacity: (opacity: number) => ipcRenderer.invoke(IPCChannels.SetWindowOpacity, opacity),
         setAlwaysOnTop: (alwaysOnTop: boolean) => ipcRenderer.invoke(IPCChannels.SetAlwaysOnTop, alwaysOnTop),
+        setHideApp: (hideApp: boolean) => ipcRenderer.invoke(IPCChannels.SetHideApp, hideApp),
         setWindowSize: (size: { width: number; height: number }) => ipcRenderer.invoke(IPCChannels.SetWindowSize, size),
         setDurations: (durations: number[]) => ipcRenderer.invoke(IPCChannels.SetDurations, durations),
         setDurationHotkeys: (map: Record<number, string>) => ipcRenderer.invoke(IPCChannels.SetDurationHotkeys, map),

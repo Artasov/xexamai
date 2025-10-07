@@ -8,6 +8,7 @@ export interface AppConfigData {
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
+    hideApp?: boolean;
     durations?: number[];
     durationHotkeys?: Record<number, string>;
     toggleInputHotkey?: string;
@@ -54,6 +55,7 @@ export class AppConfigService {
                     openaiApiKey: process.env.OPENAI_API_KEY,
                     windowOpacity: 100,
                     alwaysOnTop: false,
+                    hideApp: true,
                     durations: [5, 10, 15, 20, 30, 60],
                     durationHotkeys: {
                         5: '1',
@@ -80,6 +82,7 @@ export class AppConfigService {
             this.configData = {
                 windowOpacity: 100,
                 alwaysOnTop: false,
+                hideApp: true,
                 durations: [5, 10, 15, 20, 30, 60],
                 durationHotkeys: {
                     5: '1',
@@ -414,6 +417,20 @@ export class AppConfigService {
 
     public getApiLlmTimeoutMs(): number {
         return this.configData.apiLlmTimeoutMs || 10000;
+    }
+
+    public setHideApp(hideApp: boolean): void {
+        const oldValue = this.configData.hideApp;
+        this.configData.hideApp = hideApp;
+        this.saveConfig();
+        logger.info('settings', 'Hide app changed', { 
+            oldValue, 
+            newValue: hideApp 
+        });
+    }
+
+    public getHideApp(): boolean {
+        return this.configData.hideApp !== undefined ? this.configData.hideApp : true;
     }
 }
 
