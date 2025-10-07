@@ -143,7 +143,19 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
             await onRecordToggle(shouldStart);
             btnRecord.textContent = shouldStart ? 'Stop' : 'Start Audio Loop';
             btnRecord.dataset['state'] = shouldStart ? 'rec' : 'idle';
-            setStatus(shouldStart ? 'Recording...' : 'Ready', shouldStart ? 'recording' : 'ready');
+            if (shouldStart) {
+                try {
+                    const s = await window.api.settings.get();
+                    if ((s.streamMode || 'base') !== 'stream') {
+                        setStatus('Recording...', 'recording');
+                    }
+                    // In stream mode, renderer will set a more specific status
+                } catch {
+                    setStatus('Recording...', 'recording');
+                }
+            } else {
+                setStatus('Ready', 'ready');
+            }
         } finally {
             btnRecord.disabled = false;
             updateButtonsState();

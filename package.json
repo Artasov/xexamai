@@ -43,7 +43,8 @@
     "electron-audio-loopback": "1.0.6",
     "marked": "^16.3.0",
     "nodejs-whisper": "0.2.9",
-    "openai": "6.1.0"
+    "openai": "6.1.0",
+    "@google/genai": "^1.22.0"
   },
   "build": {
     "appId": "com.xexamai.app",

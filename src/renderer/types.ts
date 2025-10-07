@@ -28,6 +28,10 @@ export type AppSettings = {
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
+    // New Gemini settings
+    geminiApiKey?: string;
+    streamMode?: 'base' | 'stream';
+    streamSendHotkey?: string;
 };
 
 export type AssistantResponse = {
@@ -95,6 +99,13 @@ export type AssistantAPI = {
         offStreamDone: () => void;
         offStreamError: () => void;
     };
+    gemini: {
+        startLive: (opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) => Promise<void>;
+        sendAudioChunk: (params: { data: string; mime: string }) => void;
+        stopLive: () => void;
+        onMessage: (cb: (message: any) => void) => void;
+        onError: (cb: (error: string) => void) => void;
+    };
     settings: {
         get: () => Promise<AppSettings>;
         setOpenaiApiKey: (key: string) => Promise<void>;
@@ -119,6 +130,10 @@ export type AssistantAPI = {
         setApiLlmTimeoutMs: (timeoutMs: number) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
+        // New Gemini settings
+        setGeminiApiKey: (key: string) => Promise<void>;
+        setStreamMode: (mode: 'base' | 'stream') => Promise<void>;
+        setStreamSendHotkey: (key: string) => Promise<void>;
     };
     hotkeys: {
         onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;

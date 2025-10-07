@@ -44,6 +44,10 @@ export type AppSettings = {
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
+    // New Gemini settings
+    geminiApiKey?: string;
+    streamMode?: 'base' | 'stream';
+    streamSendHotkey?: string; // single letter/digit for Ctrl-<key>
 };
 
 export const DEFAULT_LLM_PROMPT = 'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
@@ -57,6 +61,8 @@ export const DefaultSettings: AppSettings = {
     llmHost: 'api',
     localWhisperModel: 'base',
     localDevice: 'cpu',
+    streamMode: 'base',
+    streamSendHotkey: '~',
 };
 
 export const IPCChannels = {
@@ -94,6 +100,10 @@ export const IPCChannels = {
     SetApiLlmTimeoutMs: 'settings:set:api-llm-timeout-ms',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
+    // New Gemini settings
+    SetGeminiApiKey: 'settings:set:gemini-api-key',
+    SetStreamMode: 'settings:set:stream-mode',
+    SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
     Log: 'log:entry',
 } as const;
 

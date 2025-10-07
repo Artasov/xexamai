@@ -72,6 +72,26 @@
                             </button>
                         </div>
                     </div>
+                    
+                    <!-- Stream Results Section (only visible in stream mode) -->
+                    <div id="streamResultsSection" class="mt-2 hidden">
+                        <div class="label mb-2">Stream Results:</div>
+                        <div class="flex gap-2">
+                            <textarea
+                                    id="streamResultsTextarea"
+                                    placeholder="Stream transcription will appear here..."
+                                    class="input-field flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-gray-100 placeholder-gray-400 resize-none"
+                                    rows="4"
+                            ></textarea>
+                            <button
+                                    id="btnSendStreamText"
+                                    class="btn btn-primary self-start"
+                                    disabled
+                            >
+                                Send
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="result-panel fc overflow-y-auto card md:col-span-2">

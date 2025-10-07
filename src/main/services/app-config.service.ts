@@ -28,6 +28,10 @@ export interface AppConfigData {
     // timeouts (ms)
     apiSttTimeoutMs?: number; // OpenAI transcription API timeout
     apiLlmTimeoutMs?: number; // OpenAI chat completion timeout
+    // New Gemini settings
+    geminiApiKey?: string;
+    streamMode?: 'base' | 'stream';
+    streamSendHotkey?: string;
 }
 
 export class AppConfigService {
@@ -448,6 +452,51 @@ export class AppConfigService {
 
     public getHideApp(): boolean {
         return this.configData.hideApp !== undefined ? this.configData.hideApp : true;
+    }
+
+    // New Gemini settings methods
+    public setGeminiApiKey(key: string): void {
+        const oldKey = this.configData.geminiApiKey;
+        this.configData.geminiApiKey = key;
+        this.saveConfig();
+        logger.info('settings', 'Gemini API key updated', { 
+            hasOldKey: !!oldKey, 
+            hasNewKey: !!key,
+            keyLength: key?.length 
+        });
+    }
+
+    public getGeminiApiKey(): string | undefined {
+        return this.configData.geminiApiKey;
+    }
+
+    public setStreamMode(mode: 'base' | 'stream'): void {
+        const oldMode = this.configData.streamMode;
+        this.configData.streamMode = mode;
+        this.saveConfig();
+        logger.info('settings', 'Stream mode changed', { 
+            oldMode, 
+            newMode: mode 
+        });
+    }
+
+    public getStreamMode(): 'base' | 'stream' {
+        return this.configData.streamMode || 'base';
+    }
+
+    public setStreamSendHotkey(key: string): void {
+        const old = this.configData.streamSendHotkey;
+        const v = String(key || '').trim();
+        if (/^[0-9a-zA-Z~`!@#$%^&*()_+\-=\[\]{}|;':",./<>?]$/.test(v)) {
+            this.configData.streamSendHotkey = v;
+            this.saveConfig();
+            logger.info('settings', 'Stream send hotkey updated', { old, next: this.configData.streamSendHotkey });
+        }
+    }
+
+    public getStreamSendHotkey(): string {
+        const key = this.configData.streamSendHotkey || '~';
+        return key;
     }
 }
 

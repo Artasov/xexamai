@@ -158,6 +158,7 @@ export class SettingsPanel {
     private csLocalLlmModel?: CustomSelect;
     private csAudioInputType?: CustomSelect;
     private csAudioInputDevice?: CustomSelect;
+    private csStreamMode?: CustomSelect;
 
     constructor(container: HTMLElement, options: SettingsPanelOptions = {}) {
         this.container = container;
@@ -200,7 +201,7 @@ export class SettingsPanel {
         
         return `
                 <div class="settings-section">
-                    <h3 class="settings-title">OpenAI API Key</h3>
+                    <h3 class="settings-title">API Keys</h3>
                     <div class="input-group">
                         <input 
                             type="password" 
@@ -210,6 +211,16 @@ export class SettingsPanel {
                             value="${this.settings.openaiApiKey || ''}"
                         />
                         <button id="saveApiKey" class="btn btn-sm">Save</button>
+                    </div>
+                    <div class="input-group">
+                        <input 
+                            type="password" 
+                            id="geminiApiKey" 
+                            class="input-field" 
+                            placeholder="Enter your Gemini API key"
+                            value="${this.settings.geminiApiKey || ''}"
+                        />
+                        <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
                     </div>
                 </div>
 
@@ -308,6 +319,10 @@ export class SettingsPanel {
                         <div class="fc gap-1">
                             <h3 class="text-xs text-gray-400">LLM</h3>
                             <div id="llmHost" class="min-w-[100px]"></div>
+                        </div>
+                        <div class="fc gap-1">
+                            <h3 class="text-xs text-gray-400">Stream Mode</h3>
+                            <div id="streamMode" class="min-w-[100px]"></div>
                         </div>
                     </div>
                 </div>
@@ -451,6 +466,18 @@ export class SettingsPanel {
                             <button id="saveToggleInputHotkey" class="btn btn-sm">Save</button>
                         </div>
                         <div class="text-xs text-gray-400">Single letter or digit, used with Ctrl (e.g., Ctrl-G)</div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3 class="settings-title">Hotkey: send from stream textarea</h3>
+                    <div class="fc gap-2">
+                        <div class="frsc gap-2">
+                            <label class="input-label" for="streamSendHotkey">Ctrl-</label>
+                            <input id="streamSendHotkey" class="input-field w-24" maxlength="1" placeholder="~" value="${(this.settings as any).streamSendHotkey || '~'}" />
+                            <button id="saveStreamSendHotkey" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="text-xs text-gray-400">Single character for sending text from stream results (e.g., Ctrl-~)</div>
                     </div>
                 </div>
         `;
@@ -783,6 +810,10 @@ export class SettingsPanel {
                         this.settings.audioInputType = audioType;
                         this.updateAudioTypeVisibility();
                         this.showNotification(`Audio input type changed to ${audioType === 'microphone' ? 'Microphone' : 'System Audio'}`);
+                        // notify renderer to refresh in-memory input type immediately
+                        try {
+                            window.dispatchEvent(new CustomEvent('xexamai:settings-changed', { detail: { key: 'audioInputType', value: audioType } }));
+                        } catch {}
                     } catch (error) {
                         this.showNotification('Error saving audio input type', 'error');
                     }
@@ -810,6 +841,35 @@ export class SettingsPanel {
                 }
             );
         }
+
+        // Stream Mode
+        const smEl = this.container.querySelector('#streamMode') as HTMLElement | null;
+        if (smEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'base', label: 'Base (Current behavior)' },
+                { value: 'stream', label: 'Stream (Real-time Gemini)' },
+            ];
+            this.csStreamMode = new CustomSelect(
+                smEl,
+                opts,
+                this.settings.streamMode || 'base',
+                async (val) => {
+                    const mode = (val as 'base' | 'stream');
+                    logger.info('settings', 'Stream mode changed', { mode });
+                    try {
+                        await window.api.settings.setStreamMode(mode);
+                        this.settings.streamMode = mode;
+                        this.showNotification(`Stream mode changed to ${mode === 'base' ? 'Base' : 'Stream'}`);
+                        // notify renderer to refresh UI immediately
+                        try {
+                            window.dispatchEvent(new CustomEvent('xexamai:settings-changed', { detail: { key: 'streamMode', value: mode } }));
+                        } catch {}
+                    } catch (error) {
+                        this.showNotification('Error saving stream mode', 'error');
+                    }
+                }
+            );
+        }
     }
 
     private attachEventListeners() {
@@ -827,6 +887,25 @@ export class SettingsPanel {
                         this.showNotification('API Key saved successfully');
                     } catch (error) {
                         this.showNotification('Error saving API Key', 'error');
+                    }
+                }
+            });
+        }
+
+        const saveGeminiApiKeyBtn = this.container.querySelector('#saveGeminiApiKey');
+        const geminiApiKeyInput = this.container.querySelector('#geminiApiKey') as HTMLInputElement;
+
+        if (saveGeminiApiKeyBtn && geminiApiKeyInput) {
+            saveGeminiApiKeyBtn.addEventListener('click', async () => {
+                const key = geminiApiKeyInput.value.trim();
+                if (key) {
+                    logger.info('settings', 'Gemini API key save button clicked');
+                    try {
+                        await window.api.settings.setGeminiApiKey(key);
+                        this.settings.geminiApiKey = key;
+                        this.showNotification('Gemini API Key saved successfully');
+                    } catch (error) {
+                        this.showNotification('Error saving Gemini API Key', 'error');
                     }
                 }
             });
@@ -922,6 +1001,23 @@ export class SettingsPanel {
                     this.showNotification('Hotkey saved');
                 } catch (error) {
                     this.showNotification('Error saving hotkey', 'error');
+                }
+            }
+            if (target.id === 'saveStreamSendHotkey') {
+                const input = this.container.querySelector('#streamSendHotkey') as HTMLInputElement | null;
+                const raw = (input?.value || '').trim();
+                const key = (raw || '~')[0];
+                if (!key) return;
+                try {
+                    await (window.api.settings as any).setStreamSendHotkey(key);
+                    (this.settings as any).streamSendHotkey = key;
+                    this.showNotification('Stream send hotkey saved');
+                    // notify renderer so the keydown handler updates without restart
+                    try {
+                        window.dispatchEvent(new CustomEvent('xexamai:settings-changed', { detail: { key: 'streamSendHotkey', value: key } }));
+                    } catch {}
+                } catch (error) {
+                    this.showNotification('Error saving stream send hotkey', 'error');
                 }
             }
         });

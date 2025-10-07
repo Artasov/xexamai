@@ -9,6 +9,7 @@ import {floatsToWav} from './audio/encoder.js';
 import {PcmRingBuffer} from './audio/pcmRingBuffer.js';
 import {SettingsPanel} from './ui/settings.js';
 import {logger} from './utils/logger.js';
+// Gemini SDK is loaded in preload and exposed via window.api.gemini
 
 import type {AssistantAPI} from './types.js';
 
@@ -26,6 +27,17 @@ let pcmRing: PcmRingBuffer | null = null;
 let currentRequestId: string | null = null;
 let btnStop: HTMLButtonElement | null = null;
 let activeOpId: number = 0;
+// Stream mode variables
+let streamModeContainer: HTMLElement | null = null;
+let streamResults: HTMLTextAreaElement | null = null;
+let btnSendStream: HTMLButtonElement | null = null;
+let isStreamMode: boolean = false;
+let geminiStreamingClient: any = null;
+let geminiLiveSession: any = null; // kept only as flag; real session is in preload
+// Current stream send hotkey (updated live from settings)
+let currentStreamSendHotkey: string = '~';
+// Current audio input type (kept in-memory to avoid async before getDisplayMedia)
+let currentAudioInputType: 'microphone' | 'system' = 'microphone';
 
 // Font size management constants
 const FONT_SIZE_KEY = 'xexamai-answer-font-size';
@@ -39,9 +51,292 @@ async function updateToggleButtonLabel() {
         if (!btn) return;
         const settings = await window.api.settings.get();
         const t = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
+        currentAudioInputType = t;
         btn.textContent = t === 'microphone' ? 'MIC' : 'SYS';
         btn.title = t === 'microphone' ? 'Using Microphone' : 'Using System Audio';
     } catch {}
+}
+
+async function updateStreamModeVisibility() {
+    try {
+        const settings = await window.api.settings.get();
+        const streamMode = settings.streamMode || 'base';
+        isStreamMode = streamMode === 'stream';
+        
+        console.log('Updating stream mode visibility:', { streamMode, isStreamMode, streamModeContainer: !!streamModeContainer });
+        
+        if (streamModeContainer) {
+            if (isStreamMode) {
+                streamModeContainer.classList.remove('hidden');
+                streamModeContainer.style.display = 'block';
+            } else {
+                streamModeContainer.classList.add('hidden');
+                streamModeContainer.style.display = 'none';
+            }
+        } else {
+            console.warn('streamModeContainer not found');
+        }
+
+        // Toggle durations (Send the last: 5s, 10s, 15s, ...) visibility opposite to stream mode
+        try {
+            const durationsContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
+            if (durationsContainer) {
+                if (isStreamMode) {
+                    durationsContainer.classList.add('hidden');
+                    durationsContainer.style.display = 'none';
+                } else {
+                    durationsContainer.classList.remove('hidden');
+                    durationsContainer.style.display = 'block';
+                }
+            }
+        } catch {}
+        
+        if (isStreamMode && currentStream) {
+            // Indicate we are preparing the Gemini stream before it becomes active
+            try { setStatus('Preparing Gemini stream...', 'processing'); } catch {}
+            // Start Gemini streaming if not already started
+            await startGeminiStreaming();
+        } else if (!isStreamMode && geminiStreamingClient) {
+            // Stop Gemini streaming
+            await stopGeminiStreaming();
+        }
+    } catch (error) {
+        console.error('Error updating stream mode visibility:', error);
+    }
+}
+
+async function startGeminiStreaming() {
+    try {
+        if (geminiStreamingClient) {
+            await stopGeminiStreaming();
+        }
+        
+        // Create Gemini streaming client
+        geminiStreamingClient = createGeminiStreamingClient();
+        
+        geminiStreamingClient.onTranscript((text: string) => {
+            if (streamResults) {
+                streamResults.value += text + ' ';
+                streamResults.scrollTop = streamResults.scrollHeight;
+                // enable send button when there is text
+                try {
+                    const btn = btnSendStream as HTMLButtonElement | null;
+                    if (btn) btn.disabled = !(streamResults.value.trim().length > 0);
+                } catch {}
+            }
+        });
+        
+        geminiStreamingClient.onError((error: string) => {
+            console.error('Gemini streaming error:', error);
+            setStatus('Gemini error: ' + error, 'error');
+        });
+        
+        if (currentStream) {
+            await geminiStreamingClient.startStreaming(currentStream);
+            setStatus('Gemini streaming active', 'processing');
+        }
+    } catch (error) {
+        console.error('Failed to start Gemini streaming:', error);
+        setStatus('Failed to start Gemini streaming', 'error');
+    }
+}
+
+async function stopGeminiStreaming() {
+    try {
+        if (geminiStreamingClient) {
+            await geminiStreamingClient.stopStreaming();
+            geminiStreamingClient = null;
+        }
+        try {
+            if (geminiLiveSession) {
+                geminiLiveSession.close?.();
+            }
+        } catch {}
+        // Ensure preload live session is stopped as well
+        try { (window as any).api?.gemini?.stopLive?.(); } catch {}
+        geminiLiveSession = null;
+    } catch (error) {
+        console.error('Error stopping Gemini streaming:', error);
+    }
+}
+
+async function handleStreamTextSend() {
+    if (!streamResults || !streamResults.value.trim()) return;
+    
+    const text = streamResults.value.trim();
+    streamResults.value = '';
+    
+    await handleTextSend(text);
+}
+
+function createGeminiStreamingClient() {
+    return {
+        onTranscript: (callback: (text: string) => void) => {
+            // Store callback for later use
+            (window as any).geminiTranscriptCallback = callback;
+        },
+        onError: (callback: (error: string) => void) => {
+            // Store callback for later use
+            (window as any).geminiErrorCallback = callback;
+        },
+        startStreaming: async (stream: MediaStream) => {
+            try {
+                // Get Gemini API key from settings
+                const settings = await window.api.settings.get();
+                const apiKey = settings.geminiApiKey;
+                
+                if (!apiKey) {
+                    throw new Error('Gemini API key not configured');
+                }
+                
+                // Initialize Gemini Live session via preload bridge
+                const responseQueue: any[] = [];
+
+                function handleMessage(message: any) {
+                    try {
+                        // Prefer explicit transcriptions if present
+                        const inputTx = message?.serverContent?.inputTranscription?.text;
+                        const outputTx = message?.serverContent?.outputTranscription?.text;
+                        const plainText = message?.text;
+                        const text = inputTx || outputTx || plainText;
+                        if (text && typeof text === 'string') {
+                            (window as any).geminiTranscriptCallback?.(text);
+                        }
+                    } catch {}
+                }
+                await (window as any).api.gemini.startLive({
+                    apiKey,
+                    response: 'TEXT',
+                    transcribeInput: true,
+                    transcribeOutput: false,
+                });
+                (window as any).api.gemini.onMessage((message: any) => {
+                    responseQueue.push(message);
+                    handleMessage(message);
+                });
+                (window as any).api.gemini.onError((msg: string) => {
+                    (window as any).geminiErrorCallback?.(msg || 'Unknown Gemini error');
+                });
+
+                // Create audio context for streaming
+                const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                let audioBuffer: Float32Array[] = [];
+                
+                processor.onaudioprocess = (event) => {
+                    const inputBuffer = event.inputBuffer;
+                    const inputData = inputBuffer.getChannelData(0);
+                    audioBuffer.push(new Float32Array(inputData));
+                    
+                    // Send ~2 seconds of audio per chunk
+                    if (audioBuffer.length >= 20) {
+                        processAudioChunk(audioBuffer, audioContext.sampleRate).catch((e) => {
+                            try { console.error('Gemini chunk error', e); } catch {}
+                        });
+                        audioBuffer = [];
+                    }
+                };
+                
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                
+                // Store references for cleanup
+                (window as any).geminiAudioContext = audioContext;
+                (window as any).geminiProcessor = processor;
+                (window as any).geminiSource = source;
+                
+            } catch (error) {
+                console.error('Failed to start Gemini streaming:', error);
+                (window as any).geminiErrorCallback?.(`Failed to start streaming: ${error}`);
+            }
+        },
+        stopStreaming: async () => {
+            try {
+                const audioContext = (window as any).geminiAudioContext;
+                const processor = (window as any).geminiProcessor;
+                const source = (window as any).geminiSource;
+                
+                if (processor) processor.disconnect();
+                if (source) source.disconnect();
+                if (audioContext) await audioContext.close();
+                
+                (window as any).geminiAudioContext = null;
+                (window as any).geminiProcessor = null;
+                (window as any).geminiSource = null;
+
+                try { geminiLiveSession?.close?.(); } catch {}
+                geminiLiveSession = null;
+            } catch (error) {
+                console.error('Error stopping Gemini streaming:', error);
+            }
+        }
+    };
+}
+
+async function processAudioChunk(audioBuffer: Float32Array[], sampleRate: number) {
+    try {
+        // Combine audio buffers
+        const totalLength = audioBuffer.reduce((sum, buffer) => sum + buffer.length, 0);
+        const combinedBuffer = new Float32Array(totalLength);
+        let offset = 0;
+        
+        for (const buffer of audioBuffer) {
+            combinedBuffer.set(buffer, offset);
+            offset += buffer.length;
+        }
+        // Resample mono to 16k PCM16 and convert to base64 (closer to Live API expectations)
+        const pcm16 = float32ToPCM16Resampled(combinedBuffer, Math.max(8000, Math.floor(sampleRate || 16000)), 16000);
+        const audioBase64 = bytesToBase64(new Uint8Array(pcm16.buffer));
+        // Send audio chunk to Live session
+        (window as any).api.gemini.sendAudioChunk({
+            data: audioBase64,
+            mime: 'audio/pcm;rate=16000',
+        });
+        
+    } catch (error) {
+        console.error('Error processing audio chunk:', error);
+        (window as any).geminiErrorCallback?.(`Error processing audio: ${error}`);
+    }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const sub = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+        binary += String.fromCharCode.apply(null, Array.from(sub) as unknown as number[]);
+    }
+    return btoa(binary);
+}
+
+function float32ToPCM16Resampled(input: Float32Array, inRate: number, outRate: number): Int16Array {
+    const clampedInRate = Math.max(8000, Math.floor(inRate || 16000));
+    const targetRate = Math.max(8000, Math.floor(outRate || 16000));
+    if (clampedInRate === targetRate) {
+        const out = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i] || 0));
+            out[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7fff);
+        }
+        return out;
+    }
+    const ratio = targetRate / clampedInRate;
+    const outLen = Math.max(1, Math.floor(input.length * ratio));
+    const out = new Int16Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+        const t = i / ratio;
+        const i0 = Math.floor(t);
+        const i1 = Math.min(input.length - 1, i0 + 1);
+        const frac = t - i0;
+        const s0 = input[i0] || 0;
+        const s1 = input[i1] || 0;
+        const s = s0 + (s1 - s0) * frac;
+        const ss = Math.max(-1, Math.min(1, s));
+        out[i] = ss < 0 ? Math.round(ss * 0x8000) : Math.round(ss * 0x7fff);
+    }
+    return out;
 }
 
 async function rebuildRecorderWithStream(stream: MediaStream) {
@@ -92,41 +387,125 @@ async function rebuildAudioGraph(stream: MediaStream) {
     } catch {}
 }
 
-async function switchAudioInput(newType: 'microphone' | 'system') {
+async function switchAudioInput(newType: 'microphone' | 'system', opts?: { preStream?: MediaStream; gesture?: boolean }) {
     logger.info('audio', 'Switch input requested', { newType });
+
+    // Update in-memory value immediately
+    currentAudioInputType = newType;
+
+    const isRecording = state.isRecording;
+    let stream: MediaStream | null = null;
+
+    // If recording, try to acquire the new stream first (critical for system audio gesture)
+    if (isRecording) {
+        if (newType === 'system') {
+            if (opts?.preStream) {
+                stream = opts.preStream;
+            } else {
+                // If we don't have a user gesture, avoid calling getDisplayMedia to prevent InvalidStateError
+                if (opts?.gesture === false) {
+                    setStatus('Click MIC/SYS to capture system audio', 'error');
+                    // Revert in-memory type to previous known to avoid confusion
+                    try {
+                        const s = await window.api.settings.get();
+                        currentAudioInputType = (s.audioInputType || 'microphone') as 'microphone' | 'system';
+                    } catch {}
+                    return;
+                }
+                try {
+                    // Must be called within user gesture
+                    const disp = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+                    const audioTracks = disp.getAudioTracks();
+                    stream = new MediaStream(audioTracks);
+                    disp.getVideoTracks().forEach((t) => t.stop());
+                } catch (error) {
+                    console.error('Error acquiring system audio stream:', error);
+                    setStatus('System audio capture failed. Staying on microphone', 'error');
+                    // Revert memory value and bail
+                    currentAudioInputType = 'microphone';
+                    return;
+                }
+            }
+        } else {
+            // Microphone path
+            try {
+                let deviceId: string | undefined;
+                try { deviceId = (await window.api.settings.get()).audioInputDeviceId; } catch {}
+                if (deviceId) {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } as any });
+                } else {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                }
+            } catch (error) {
+                console.error('Error acquiring microphone:', error);
+                setStatus('Microphone capture failed', 'error');
+                return;
+            }
+        }
+    }
+
+    // Persist settings after we have a stream (so we don't save a broken state)
     try { await window.api.settings.setAudioInputType(newType); } catch {}
     await updateToggleButtonLabel();
 
-    // Если запись не идёт — выходим
-    if (!state.isRecording) return;
+    if (!isRecording) return;
 
-    // Простая и стабильная стратегия: перезапустить цикл
-    await stopRecording();
-    setStatus('Ready', 'ready');
-    setProcessing(false);
-    updateButtonsState();
-    await startRecording();
+    // Rebuild pipeline using the newly acquired stream
+    if (stream) {
+        try {
+            await rebuildRecorderWithStream(stream);
+            await rebuildAudioGraph(stream);
+            if (waveCanvas) {
+                if (!visualizer) visualizer = new AudioVisualizer();
+                visualizer.start(stream, waveCanvas, { bars: 72, smoothing: 0.75 });
+            }
+            if (newType === 'system') {
+                try { await window.api.loopback.enable(); } catch {}
+            } else {
+                try { await window.api.loopback.disable(); } catch {}
+            }
+        } catch (e) {
+            console.error('Failed to rebuild audio pipeline after input switch', e);
+            setStatus('Failed to switch audio input', 'error');
+            return;
+        }
+
+        // Restart Gemini streaming if needed
+        try {
+            const s = await window.api.settings.get();
+            if ((s.streamMode || 'base') === 'stream') {
+                try { setStatus('Preparing Gemini stream...', 'processing'); } catch {}
+                await startGeminiStreaming();
+            } else {
+                setStatus('Recording...', 'recording');
+            }
+        } catch {}
+    }
 }
 
 async function getSystemAudioStream(): Promise<MediaStream> {
     try {
-        const settings = await window.api.settings.get();
-        const audioInputType = settings.audioInputType || 'microphone';
+        const audioInputType = currentAudioInputType || 'microphone';
 
         if (audioInputType === 'system') {
             try {
-                await window.api.loopback.enable();
+                // Hint OS to prepare loopback before requesting capture (do not await to keep gesture)
+                try { (window as any).api?.loopback?.enable?.(); } catch {}
+                // Call getDisplayMedia first to satisfy transient activation requirement
                 const disp = await navigator.mediaDevices.getDisplayMedia({audio: true, video: true});
                 const audioTracks = disp.getAudioTracks();
                 const stream = new MediaStream(audioTracks);
                 disp.getVideoTracks().forEach((t) => t.stop());
+                // Ensure loopback is enabled
+                try { await window.api.loopback.enable(); } catch {}
                 return stream;
             } catch (error) {
                 console.error('Error getting system audio:', error);
                 return navigator.mediaDevices.getUserMedia({audio: true});
             }
         } else {
-            const deviceId = settings.audioInputDeviceId;
+            let deviceId: string | undefined;
+            try { deviceId = (await window.api.settings.get()).audioInputDeviceId; } catch {}
 
             if (deviceId) {
                 return navigator.mediaDevices.getUserMedia({
@@ -195,6 +574,9 @@ async function startRecording() {
         }
     });
     media.start(timeslice);
+    
+    // Update stream mode visibility after starting recording
+    await updateStreamModeVisibility();
 }
 
 async function stopRecording() {
@@ -227,10 +609,19 @@ async function stopRecording() {
     } catch (error) {
         console.error('Error disabling loopback audio:', error);
     }
+    
+    // Stop Gemini streaming if active
+    await stopGeminiStreaming();
 }
 
 async function handleAskWindow(seconds: number) {
     logger.info('ui', 'Handle ask window', { seconds });
+    
+    // In stream mode, ignore duration buttons
+    if (isStreamMode) {
+        return;
+    }
+    
     if (!pcmRing) {
         setStatus('No audio', 'error');
         return;
@@ -425,6 +816,22 @@ async function main() {
     // Add wheel event listener for font size control
     document.addEventListener('wheel', handleFontSizeWheel, { passive: false });
     
+    // Initialize stream mode elements
+    streamModeContainer = document.getElementById('streamResultsSection');
+    streamResults = document.getElementById('streamResultsTextarea') as HTMLTextAreaElement | null;
+    btnSendStream = document.getElementById('btnSendStreamText') as HTMLButtonElement | null;
+
+    // Enable/disable send button based on textarea content
+    try {
+        if (streamResults && btnSendStream) {
+            const updateStreamSendState = () => {
+                btnSendStream!.disabled = !(streamResults!.value.trim().length > 0) || state.isProcessing;
+            };
+            streamResults.addEventListener('input', updateStreamSendState);
+            updateStreamSendState();
+        }
+    } catch {}
+    
     // Load logo
     const logoElement = document.getElementById('logo') as HTMLImageElement;
     if (logoElement) {
@@ -476,7 +883,22 @@ async function main() {
                     const s = await window.api.settings.get();
                     const cur = (s.audioInputType || 'microphone') as 'microphone' | 'system';
                     const next: 'microphone' | 'system' = cur === 'microphone' ? 'system' : 'microphone';
-                    await switchAudioInput(next);
+                    let preStream: MediaStream | undefined;
+                    if (state.isRecording && next === 'system') {
+                        try {
+                            // Hint OS to prepare loopback before capture (do not await)
+                            try { (window as any).api?.loopback?.enable?.(); } catch {}
+                            const disp = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+                            const audioTracks = disp.getAudioTracks();
+                            preStream = new MediaStream(audioTracks);
+                            disp.getVideoTracks().forEach((t) => t.stop());
+                        } catch (err) {
+                            console.error('System audio capture cancelled/failed', err);
+                            setStatus('System audio requires a user selection', 'error');
+                            return;
+                        }
+                    }
+                    await switchAudioInput(next, { preStream, gesture: true });
                 } catch (e) {
                     console.error('Toggle input failed', e);
                 }
@@ -520,7 +942,7 @@ async function main() {
                 const s = await window.api.settings.get();
                 const cur = (s.audioInputType || 'microphone') as 'microphone' | 'system';
                 const next: 'microphone' | 'system' = cur === 'microphone' ? 'system' : 'microphone';
-                await switchAudioInput(next);
+                await switchAudioInput(next, { gesture: false });
             } catch (e) {
                 console.error('Toggle input via hotkey failed', e);
             }
@@ -544,6 +966,53 @@ async function main() {
             }
         });
     }
+
+    // Stream mode event handlers
+    if (btnSendStream) {
+        btnSendStream.addEventListener('click', async () => {
+            await handleStreamTextSend();
+        });
+    }
+
+    // Stream send hotkey (dynamic)
+    try {
+        const settings = await window.api.settings.get();
+        currentStreamSendHotkey = settings.streamSendHotkey || '~';
+    } catch (error) {
+        console.error('Error reading initial stream send hotkey:', error);
+    }
+
+    // Single keydown listener that uses a mutable hotkey value
+    document.addEventListener('keydown', async (e) => {
+        try {
+            // Compare case-insensitively for letters; keep symbols as-is
+            const pressed = String(e.key || '').toLowerCase();
+            const targetKey = String(currentStreamSendHotkey || '~').toLowerCase();
+            if (e.ctrlKey && pressed === targetKey && isStreamMode) {
+                e.preventDefault();
+                await handleStreamTextSend();
+            }
+        } catch {}
+    });
+
+    // React to settings changes dispatched from SettingsPanel
+    window.addEventListener('xexamai:settings-changed' as any, async (ev: any) => {
+        try {
+            const { key, value } = ev?.detail || {};
+            if (key === 'streamSendHotkey') {
+                currentStreamSendHotkey = value || '~';
+            }
+            if (key === 'streamMode') {
+                await updateStreamModeVisibility();
+            }
+            if (key === 'audioInputType') {
+                currentAudioInputType = (value === 'system' ? 'system' : 'microphone');
+            }
+        } catch {}
+    });
+
+    // Initialize stream mode visibility after all elements are ready
+    await updateStreamModeVisibility();
 
     // Initialize settings panels for each tab
     const settingsGeneralPanel = document.getElementById('settingsGeneralPanel');
@@ -599,12 +1068,22 @@ async function main() {
                     }
                 });
             },
+            onSettingsChange: async () => {
+                // Update stream mode visibility when settings change
+                await updateStreamModeVisibility();
+            }
         });
     }
 
     // Initialize other settings panels
     if (settingsAiPanel) {
-        new SettingsPanel(settingsAiPanel, { panelType: 'ai' });
+        new SettingsPanel(settingsAiPanel, { 
+            panelType: 'ai',
+            onSettingsChange: async () => {
+                // Update stream mode visibility when settings change
+                await updateStreamModeVisibility();
+            }
+        });
     }
     if (settingsAudioPanel) {
         new SettingsPanel(settingsAudioPanel, { panelType: 'audio' });

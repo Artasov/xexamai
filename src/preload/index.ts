@@ -2,6 +2,15 @@ import {contextBridge, ipcRenderer} from 'electron';
 import {marked} from 'marked';
 import {AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, LlmHost, WhisperModel, LocalDevice} from '../main/shared/types';
 import type {AssistantAPI} from '../renderer/types';
+// Load google genai dynamically to avoid bundling/ESM issues
+let GoogleGenAIClass: any = null;
+let GenaiModality: any = null;
+async function ensureGenAI() {
+    if (GoogleGenAIClass && GenaiModality) return;
+    const mod = await import('@google/genai');
+    GoogleGenAIClass = mod.GoogleGenAI || (mod as any).default?.GoogleGenAI || mod;
+    GenaiModality = mod.Modality;
+}
 
 export const api: AssistantAPI = {
     assistant: {
@@ -88,6 +97,76 @@ export const api: AssistantAPI = {
             ipcRenderer.removeAllListeners(IPCChannels.AssistantStreamError);
         },
     },
+    gemini: (() => {
+        let liveSession: any = null;
+        let onMessageCb: ((message: any) => void) | null = null;
+        let onErrorCb: ((error: string) => void) | null = null;
+
+        async function startLive(opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) {
+            if (liveSession) {
+                try { liveSession.close?.(); } catch {}
+                liveSession = null;
+            }
+            await ensureGenAI();
+            const ai = new GoogleGenAIClass({ apiKey: opts.apiKey });
+            const model = 'gemini-live-2.5-flash-preview';
+            const config: any = {
+                responseModalities: [opts.response === 'AUDIO' ? GenaiModality.AUDIO : GenaiModality.TEXT],
+            };
+            if (opts.transcribeInput) config.inputAudioTranscription = {};
+            if (opts.transcribeOutput) config.outputAudioTranscription = {};
+
+            liveSession = await ai.live.connect({
+                model,
+                config,
+                callbacks: {
+                    onopen: function () {
+                        // no-op
+                    },
+                    onmessage: function (message: any) {
+                        try { onMessageCb?.(message); } catch {}
+                    },
+                    onerror: function (e: any) {
+                        try { onErrorCb?.(e?.message || 'Gemini error'); } catch {}
+                    },
+                    onclose: function () {
+                        // no-op
+                    },
+                },
+            });
+        }
+
+        function sendAudioChunk(params: { data: string; mime: string }) {
+            if (!liveSession) throw new Error('Gemini Live session not started');
+            liveSession.sendRealtimeInput({
+                audio: {
+                    data: params.data,
+                    mimeType: params.mime,
+                },
+            });
+        }
+
+        function stopLive() {
+            try { liveSession?.close?.(); } catch {}
+            liveSession = null;
+        }
+
+        function onMessage(cb: (message: any) => void) {
+            onMessageCb = cb;
+        }
+
+        function onError(cb: (error: string) => void) {
+            onErrorCb = cb;
+        }
+
+        return {
+            startLive,
+            sendAudioChunk,
+            stopLive,
+            onMessage,
+            onError,
+        };
+    })(),
     settings: {
         get: async () => ipcRenderer.invoke(IPCChannels.GetSettings),
         setOpenaiApiKey: (key: string) => ipcRenderer.invoke(IPCChannels.SetOpenaiApiKey, key),
@@ -126,6 +205,10 @@ export const api: AssistantAPI = {
             }
         },
         openConfigFolder: () => ipcRenderer.invoke(IPCChannels.OpenConfigFolder),
+        // New Gemini settings
+        setGeminiApiKey: (key: string) => ipcRenderer.invoke(IPCChannels.SetGeminiApiKey, key),
+        setStreamMode: (mode: 'base' | 'stream') => ipcRenderer.invoke(IPCChannels.SetStreamMode, mode),
+        setStreamSendHotkey: (key: string) => ipcRenderer.invoke(IPCChannels.SetStreamSendHotkey, key),
     },
     hotkeys: {
         onDuration: (cb) => {
