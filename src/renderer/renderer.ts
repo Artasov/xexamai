@@ -27,6 +27,10 @@ let pcmRing: PcmRingBuffer | null = null;
 let currentRequestId: string | null = null;
 let btnStop: HTMLButtonElement | null = null;
 let activeOpId: number = 0;
+// Stream event handlers - store references for proper cleanup
+let currentStreamDeltaHandler: any = null;
+let currentStreamDoneHandler: any = null;
+let currentStreamErrorHandler: any = null;
 // Stream mode variables
 let streamModeContainer: HTMLElement | null = null;
 let streamResults: HTMLTextAreaElement | null = null;
@@ -34,6 +38,20 @@ let btnSendStream: HTMLButtonElement | null = null;
 let isStreamMode: boolean = false;
 let geminiStreamingClient: any = null;
 let geminiLiveSession: any = null; // kept only as flag; real session is in preload
+
+// Fallback: ensure UI resets if stream completion event is missed
+function finalizeStreamIfActive(localRequestId?: string) {
+    try {
+        if (!currentRequestId) return;
+        if (localRequestId && currentRequestId !== localRequestId) return;
+        currentRequestId = null;
+        try { setStatus('Done', 'ready'); } catch {}
+        setProcessing(false);
+        hideStopButton();
+        updateButtonsState();
+        removeStreamHandlers();
+    } catch {}
+}
 // Current stream send hotkey (updated live from settings)
 let currentStreamSendHotkey: string = '~';
 // Current audio input type (kept in-memory to avoid async before getDisplayMedia)
@@ -46,6 +64,39 @@ const FONT_SIZE_KEY = 'xexamai-answer-font-size';
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 24;
 const DEFAULT_FONT_SIZE = 14;
+
+// Helper to get Stop button reliably
+function getStopButton(): HTMLButtonElement | null {
+    return btnStop || (document.getElementById('btnStopStream') as HTMLButtonElement | null);
+}
+
+// Helper to show Stop button
+function showStopButton() {
+    try {
+        getStopButton()?.classList.remove('hidden');
+    } catch {}
+}
+
+// Helper to hide Stop button
+function hideStopButton() {
+    try {
+        getStopButton()?.classList.add('hidden');
+    } catch {}
+}
+
+// Helper to remove old stream event handlers
+function removeStreamHandlers() {
+    try {
+        (window.api.assistant as any).offStreamTranscript?.();
+        (window.api.assistant as any).offStreamDelta?.();
+        (window.api.assistant as any).offStreamDone?.();
+        (window.api.assistant as any).offStreamError?.();
+    } catch {}
+    // Clear handler references
+    currentStreamDeltaHandler = null;
+    currentStreamDoneHandler = null;
+    currentStreamErrorHandler = null;
+}
 
 async function updateToggleButtonLabel() {
     try {
@@ -673,7 +724,8 @@ async function handleAskWindow(seconds: number) {
     if (currentRequestId) {
         try { await window.api.assistant.stopStream({ requestId: currentRequestId }); } catch {}
         currentRequestId = null;
-        if (btnStop) btnStop.classList.add('hidden');
+        removeStreamHandlers();
+        hideStopButton();
         setStatus('Ready', 'ready');
         setProcessing(false);
         updateButtonsState();
@@ -728,31 +780,30 @@ async function handleAskWindow(seconds: number) {
 
         setStatus('Sending to LLM...', 'sending');
 
-        try {
-            (window.api.assistant as any).offStreamTranscript?.();
-            (window.api.assistant as any).offStreamDelta?.();
-            (window.api.assistant as any).offStreamDone?.();
-            (window.api.assistant as any).offStreamError?.();
-        } catch {
-        }
+        // Remove old handlers before adding new ones
+        removeStreamHandlers();
 
         let acc = '';
-        window.api.assistant.onStreamDelta((_e: unknown, p: { requestId?: string; delta: string }) => {
-            if (!p || (p.requestId && p.requestId !== requestId)) return;
+        currentStreamDeltaHandler = (_e: unknown, p: { requestId?: string; delta: string }) => {
+            if (!p || (p.requestId && p.requestId !== requestId) || currentRequestId !== requestId) return;
             acc += p.delta || '';
             showAnswer(acc);
             setStatus('Responding...', 'processing');
-        });
-        window.api.assistant.onStreamDone((_e: unknown, p: { requestId?: string; full: string }) => {
+            showStopButton();
+        };
+        currentStreamDoneHandler = (_e: unknown, p: { requestId?: string; full: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
+            logger.info('stream', 'Stream done handler called', { requestId: p.requestId });
+            currentRequestId = null;
             setStatus('Done', 'ready');
             setProcessing(false);
+            hideStopButton();
             updateButtonsState();
-            if (btnStop) btnStop.classList.add('hidden');
-            currentRequestId = null;
-        });
-        window.api.assistant.onStreamError((_e: unknown, p: { requestId?: string; error: string }) => {
+        };
+        currentStreamErrorHandler = (_e: unknown, p: { requestId?: string; error: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
+            logger.info('stream', 'Stream error handler called', { requestId: p.requestId, error: p.error });
+            currentRequestId = null;
             const msg = (p.error || '').toString();
             if (msg.toLowerCase().includes('aborted')) {
                 setStatus('Done', 'ready');
@@ -761,18 +812,26 @@ async function handleAskWindow(seconds: number) {
                 showAnswer('Error: ' + p.error);
             }
             setProcessing(false);
+            hideStopButton();
             updateButtonsState();
-            if (btnStop) btnStop.classList.add('hidden');
-            currentRequestId = null;
-        });
+        };
 
-        if (btnStop) btnStop.classList.remove('hidden');
+        window.api.assistant.onStreamDelta(currentStreamDeltaHandler);
+        window.api.assistant.onStreamDone(currentStreamDoneHandler);
+        window.api.assistant.onStreamError(currentStreamErrorHandler);
+
+        // Show Stop button before starting streaming request
+        showStopButton();
         await window.api.assistant.askChat({ text, requestId });
+        // Fallback cleanup in case Done event was missed
+        finalizeStreamIfActive(requestId);
 
     } catch (error) {
         setStatus('Error', 'error');
         showAnswer('Error: ' + (error as any)?.message || String(error));
         setProcessing(false);
+        currentRequestId = null;
+        hideStopButton();
         updateButtonsState();
     }
 }
@@ -799,31 +858,30 @@ async function handleTextSend(text: string) {
     try {
         setStatus('Sending to LLM...', 'sending');
 
-        try {
-            (window.api.assistant as any).offStreamTranscript?.();
-            (window.api.assistant as any).offStreamDelta?.();
-            (window.api.assistant as any).offStreamDone?.();
-            (window.api.assistant as any).offStreamError?.();
-        } catch {
-        }
+        // Remove old handlers before adding new ones
+        removeStreamHandlers();
 
         let acc = '';
-        window.api.assistant.onStreamDelta((_e: unknown, p: { requestId?: string; delta: string }) => {
-            if (!p || (p.requestId && p.requestId !== requestId)) return;
+        currentStreamDeltaHandler = (_e: unknown, p: { requestId?: string; delta: string }) => {
+            if (!p || (p.requestId && p.requestId !== requestId) || currentRequestId !== requestId) return;
             acc += p.delta || '';
             showAnswer(acc);
             setStatus('Responding...', 'processing');
-        });
-        window.api.assistant.onStreamDone((_e: unknown, p: { requestId?: string; full: string }) => {
+            showStopButton();
+        };
+        currentStreamDoneHandler = (_e: unknown, p: { requestId?: string; full: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
+            logger.info('stream', 'Stream done handler called', { requestId: p.requestId });
+            currentRequestId = null;
             setStatus('Done', 'ready');
             setProcessing(false);
+            hideStopButton();
             updateButtonsState();
-            if (btnStop) btnStop.classList.add('hidden');
-            currentRequestId = null;
-        });
-        window.api.assistant.onStreamError((_e: unknown, p: { requestId?: string; error: string }) => {
+        };
+        currentStreamErrorHandler = (_e: unknown, p: { requestId?: string; error: string }) => {
             if (!p || (p.requestId && p.requestId !== requestId)) return;
+            logger.info('stream', 'Stream error handler called', { requestId: p.requestId, error: p.error });
+            currentRequestId = null;
             const msg = (p.error || '').toString();
             if (msg.toLowerCase().includes('aborted')) {
                 setStatus('Done', 'ready');
@@ -832,21 +890,29 @@ async function handleTextSend(text: string) {
                 showAnswer('Error: ' + p.error);
             }
             setProcessing(false);
+            hideStopButton();
             updateButtonsState();
-            if (btnStop) btnStop.classList.add('hidden');
-            currentRequestId = null;
-        });
+        };
 
-        if (btnStop) btnStop.classList.remove('hidden');
+        window.api.assistant.onStreamDelta(currentStreamDeltaHandler);
+        window.api.assistant.onStreamDone(currentStreamDoneHandler);
+        window.api.assistant.onStreamError(currentStreamErrorHandler);
+
+        // Show Stop button before starting streaming request
+        showStopButton();
         await window.api.assistant.askChat({
             text,
             requestId,
         });
+        // Fallback cleanup in case Done event was missed
+        finalizeStreamIfActive(requestId);
 
     } catch (error) {
         setStatus('Error', 'error');
         showAnswer('Error: ' + (error as any)?.message || String(error));
         setProcessing(false);
+        currentRequestId = null;
+        hideStopButton();
         updateButtonsState();
     }
 }
@@ -1042,17 +1108,22 @@ async function main() {
     btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
     if (btnStop) {
         btnStop.addEventListener('click', async () => {
-            if (!currentRequestId) { btnStop?.classList.add('hidden'); return; }
+            if (!currentRequestId) { 
+                hideStopButton(); 
+                return; 
+            }
+            logger.info('ui', 'Stop button clicked', { requestId: currentRequestId });
             try {
                 await window.api.assistant.stopStream({ requestId: currentRequestId });
             } catch (e) {
                 console.error('Stop stream error', e);
             } finally {
+                currentRequestId = null;
+                removeStreamHandlers();
                 setStatus('Ready', 'ready');
                 setProcessing(false);
+                hideStopButton();
                 updateButtonsState();
-                btnStop?.classList.add('hidden');
-                currentRequestId = null;
             }
         });
     }

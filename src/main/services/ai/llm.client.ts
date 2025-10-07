@@ -123,8 +123,6 @@ async function askChatStreamGemini(
             model: cfg.chatModel,
             chunkCount,
         });
-
-        if (onDone) onDone();
     } catch (error) {
         logger.error('gemini', 'Gemini chat stream error', { error });
         throw error;
@@ -246,7 +244,6 @@ async function askChatStreamLocal(
             }
         }
     } finally {
-        if (onDone) onDone();
         logger.info('gpt-oss', 'Local chat stream completed', {model: cfg.chatModel});
     }
 }
@@ -341,25 +338,31 @@ export async function askChatStream(
     
     if (isGeminiModel(cfg.chatModel)) {
         if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
-        return withRetry(
+        await withRetry(
             async () => {
-                await askChatStreamGemini(prompt, onDelta, onDone, options);
+                await askChatStreamGemini(prompt, onDelta, undefined, options);
             },
             cfg.retryConfig,
             'Gemini streaming',
             cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
         );
+        // Call onDone only after successful completion of all retries
+        onDone?.();
+        return;
     }
 
     if (isLocalModel(cfg.chatModel)) {
-        return withRetry(
+        await withRetry(
             async () => {
-                await askChatStreamLocal(prompt, onDelta, onDone, options);
+                await askChatStreamLocal(prompt, onDelta, undefined, options);
             },
             cfg.retryConfig,
             'Local GPT-OSS streaming',
             LOCAL_LLM_TIMEOUT_MS
         );
+        // Call onDone only after successful completion of all retries
+        onDone?.();
+        return;
     }
     
     if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
@@ -372,7 +375,7 @@ export async function askChatStream(
         baseUrl: cfg.openaiBaseUrl || 'https://api.openai.com'
     });
 
-    return withRetry(
+    await withRetry(
         async () => {
             const systemMessage = cfg.llmPrompt;
             
@@ -420,12 +423,13 @@ export async function askChatStream(
                 chunkCount,
                 responseTime: Date.now()
             });
-            
-            if (onDone) onDone();
         },
         cfg.retryConfig,
         'ChatGPT streaming',
         cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
     );
+    
+    // Call onDone only after successful completion of all retries
+    onDone?.();
 }
 
