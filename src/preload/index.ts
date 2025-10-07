@@ -1,4 +1,4 @@
-import {contextBridge, ipcRenderer} from 'electron';
+import {contextBridge, ipcRenderer, desktopCapturer} from 'electron';
 import {marked} from 'marked';
 import {AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, LlmHost, WhisperModel, LocalDevice} from '../main/shared/types';
 import type {AssistantAPI} from '../renderer/types';
@@ -232,6 +232,23 @@ export const api: AssistantAPI = {
         enable: () => ipcRenderer.invoke('enable-loopback-audio'),
         disable: () => ipcRenderer.invoke('disable-loopback-audio'),
     },
+    media: {
+        getPrimaryDisplaySourceId: async () => {
+            try {
+                // Guard: desktopCapturer may be unavailable in some builds/envs
+                const dc: any = (desktopCapturer as any);
+                if (!dc || typeof dc.getSources !== 'function') {
+                    return null;
+                }
+                const sources = await dc.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } as any });
+                const primary = sources.find((s: any) => s.display_id === '0') || sources[0];
+                return primary?.id || null;
+            } catch (e) {
+                console.error('Error getting primary display source id:', e);
+                return null;
+            }
+        },
+    },
     // capture removed: using standard getDisplayMedia in renderer
     log: (entry: LogEntry) => ipcRenderer.invoke(IPCChannels.Log, entry),
 };
@@ -255,4 +272,3 @@ contextBridge.exposeInMainWorld('api', api);
 contextBridge.exposeInMainWorld('marked', {
     parse: (text: string) => marked.parse(text) as string
 });
-

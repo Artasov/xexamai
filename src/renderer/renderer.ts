@@ -38,6 +38,8 @@ let geminiLiveSession: any = null; // kept only as flag; real session is in prel
 let currentStreamSendHotkey: string = '~';
 // Current audio input type (kept in-memory to avoid async before getDisplayMedia)
 let currentAudioInputType: 'microphone' | 'system' = 'microphone';
+// Persisted system-audio track captured under a user gesture for reuse via hotkey
+let persistentSystemAudioTrack: MediaStreamTrack | null = null;
 
 // Font size management constants
 const FONT_SIZE_KEY = 'xexamai-answer-font-size';
@@ -494,13 +496,53 @@ async function getSystemAudioStream(): Promise<MediaStream> {
                 // Call getDisplayMedia first to satisfy transient activation requirement
                 const disp = await navigator.mediaDevices.getDisplayMedia({audio: true, video: true});
                 const audioTracks = disp.getAudioTracks();
-                const stream = new MediaStream(audioTracks);
+                const sysTrack = audioTracks[0] || null;
+                let stream: MediaStream;
+                if (sysTrack) {
+                    // Persist original system audio track and return a clone for recording
+                    try { if (persistentSystemAudioTrack && persistentSystemAudioTrack !== sysTrack) persistentSystemAudioTrack.stop(); } catch {}
+                    persistentSystemAudioTrack = sysTrack;
+                    try { persistentSystemAudioTrack.onended = () => { persistentSystemAudioTrack = null; }; } catch {}
+                    const clone = sysTrack.clone();
+                    stream = new MediaStream([clone]);
+                } else {
+                    stream = new MediaStream(audioTracks);
+                }
                 disp.getVideoTracks().forEach((t) => t.stop());
                 // Ensure loopback is enabled
                 try { await window.api.loopback.enable(); } catch {}
                 return stream;
             } catch (error) {
                 console.error('Error getting system audio:', error);
+                // Fallback: try Electron desktopCapturer-based capture without gesture
+                try {
+                    const sourceId = await (window as any).api?.media?.getPrimaryDisplaySourceId?.();
+                    const gumConstraints: any = sourceId ? {
+                        audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+                        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+                    } : {
+                        audio: { mandatory: { chromeMediaSource: 'desktop' } },
+                        video: { mandatory: { chromeMediaSource: 'desktop' } },
+                    };
+                    const stream = await navigator.mediaDevices.getUserMedia(gumConstraints as any);
+                    const audioTracks = stream.getAudioTracks();
+                    const sysTrack = audioTracks[0] || null;
+                    let out: MediaStream;
+                    if (sysTrack) {
+                        try { if (persistentSystemAudioTrack && persistentSystemAudioTrack !== sysTrack) persistentSystemAudioTrack.stop(); } catch {}
+                        persistentSystemAudioTrack = sysTrack;
+                        try { persistentSystemAudioTrack.onended = () => { persistentSystemAudioTrack = null; }; } catch {}
+                        const clone = sysTrack.clone();
+                        out = new MediaStream([clone]);
+                    } else {
+                        out = new MediaStream(audioTracks);
+                    }
+                    try { stream.getVideoTracks().forEach(t => t.stop()); } catch {}
+                    try { await window.api.loopback.enable(); } catch {}
+                    return out;
+                } catch (e) {
+                    console.error('desktopCapturer fallback failed', e);
+                }
                 return navigator.mediaDevices.getUserMedia({audio: true});
             }
         } else {
@@ -890,7 +932,18 @@ async function main() {
                             try { (window as any).api?.loopback?.enable?.(); } catch {}
                             const disp = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
                             const audioTracks = disp.getAudioTracks();
-                            preStream = new MediaStream(audioTracks);
+                            const sysTrack = audioTracks[0];
+                            if (sysTrack) {
+                                // Keep original system track alive for future hotkey reuse
+                                try { if (persistentSystemAudioTrack && persistentSystemAudioTrack !== sysTrack) persistentSystemAudioTrack.stop(); } catch {}
+                                persistentSystemAudioTrack = sysTrack;
+                                try { persistentSystemAudioTrack.onended = () => { persistentSystemAudioTrack = null; }; } catch {}
+                                // Use a clone for the active recorder, so stopping recording won't kill the persisted one
+                                const clone = sysTrack.clone();
+                                preStream = new MediaStream([clone]);
+                            } else {
+                                preStream = new MediaStream(audioTracks);
+                            }
                             disp.getVideoTracks().forEach((t) => t.stop());
                         } catch (err) {
                             console.error('System audio capture cancelled/failed', err);
@@ -942,7 +995,44 @@ async function main() {
                 const s = await window.api.settings.get();
                 const cur = (s.audioInputType || 'microphone') as 'microphone' | 'system';
                 const next: 'microphone' | 'system' = cur === 'microphone' ? 'system' : 'microphone';
-                await switchAudioInput(next, { gesture: false });
+                let preStream: MediaStream | undefined;
+                // If we have a persisted system track from a previous user gesture, reuse it without prompting
+                if (state.isRecording && next === 'system' && persistentSystemAudioTrack && persistentSystemAudioTrack.readyState === 'live') {
+                    try {
+                        // Enable loopback in background
+                        try { (window as any).api?.loopback?.enable?.(); } catch {}
+                        const clone = persistentSystemAudioTrack.clone();
+                        preStream = new MediaStream([clone]);
+                    } catch {}
+                }
+                // Fallback: try Electron desktopCapturer-based capture without gesture
+                if (state.isRecording && next === 'system' && !preStream) {
+                    try {
+                        const sourceId = await (window as any).api?.media?.getPrimaryDisplaySourceId?.();
+                        const gumConstraints: any = sourceId ? {
+                            audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+                            video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+                        } : {
+                            audio: { mandatory: { chromeMediaSource: 'desktop' } },
+                            video: { mandatory: { chromeMediaSource: 'desktop' } },
+                        };
+                        const stream = await navigator.mediaDevices.getUserMedia(gumConstraints);
+                        const audioTracks = stream.getAudioTracks();
+                        const sysTrack = audioTracks[0] || null;
+                        if (sysTrack) {
+                            try { if (persistentSystemAudioTrack && persistentSystemAudioTrack !== sysTrack) persistentSystemAudioTrack.stop(); } catch {}
+                            persistentSystemAudioTrack = sysTrack;
+                            try { persistentSystemAudioTrack.onended = () => { persistentSystemAudioTrack = null; }; } catch {}
+                            const clone = sysTrack.clone();
+                            preStream = new MediaStream([clone]);
+                        }
+                        // Stop video tracks immediately
+                        try { stream.getVideoTracks().forEach(t => t.stop()); } catch {}
+                    } catch (e) {
+                        console.error('desktopCapturer getUserMedia fallback failed', e);
+                    }
+                }
+                await switchAudioInput(next, { preStream, gesture: false });
             } catch (e) {
                 console.error('Toggle input via hotkey failed', e);
             }
@@ -982,12 +1072,25 @@ async function main() {
         console.error('Error reading initial stream send hotkey:', error);
     }
 
+    // Helper to make tilde/backquote robust across layouts
+    function normalizeConfigHotkeyKey(k: string): string {
+        const lower = String(k || '').toLowerCase();
+        if (lower === '~' || lower === '`') return 'backquote';
+        return lower;
+    }
+    function eventKeyId(e: KeyboardEvent): string {
+        const code = (e.code || '');
+        const key = String(e.key || '').toLowerCase();
+        if (code === 'Backquote') return 'backquote';
+        if (key === 'dead' && code === 'Backquote') return 'backquote';
+        return key;
+    }
+
     // Single keydown listener that uses a mutable hotkey value
     document.addEventListener('keydown', async (e) => {
         try {
-            // Compare case-insensitively for letters; keep symbols as-is
-            const pressed = String(e.key || '').toLowerCase();
-            const targetKey = String(currentStreamSendHotkey || '~').toLowerCase();
+            const pressed = eventKeyId(e);
+            const targetKey = normalizeConfigHotkeyKey(currentStreamSendHotkey || '~');
             if (e.ctrlKey && pressed === targetKey && isStreamMode) {
                 e.preventDefault();
                 await handleStreamTextSend();

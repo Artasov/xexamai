@@ -202,25 +202,29 @@ export class SettingsPanel {
         return `
                 <div class="settings-section">
                     <h3 class="settings-title">API Keys</h3>
-                    <div class="input-group">
-                        <input 
-                            type="password" 
-                            id="openaiApiKey" 
-                            class="input-field" 
-                            placeholder="Enter your OpenAI API key"
-                            value="${this.settings.openaiApiKey || ''}"
-                        />
-                        <button id="saveApiKey" class="btn btn-sm">Save</button>
-                    </div>
-                    <div class="input-group">
-                        <input 
-                            type="password" 
-                            id="geminiApiKey" 
-                            class="input-field" 
-                            placeholder="Enter your Gemini API key"
-                            value="${this.settings.geminiApiKey || ''}"
-                        />
-                        <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
+                    <div class="fr flex-wrap gap-2">
+                        <div class="input-group fc flex-grow">
+                            <span class="text-xs text-gray-400">OpenAI</span>
+                            <input 
+                                type="password" 
+                                id="openaiApiKey" 
+                                class="input-field" 
+                                placeholder="Enter your OpenAI API key"
+                                value="${this.settings.openaiApiKey || ''}"
+                            />
+                            <button id="saveApiKey" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="input-group fc flex-grow">
+                            <span class="text-xs text-gray-400">Gemeni</span>
+                            <input 
+                                type="password" 
+                                id="geminiApiKey" 
+                                class="input-field" 
+                                placeholder="Enter your Gemini API key"
+                                value="${this.settings.geminiApiKey || ''}"
+                            />
+                            <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
+                        </div>
                     </div>
                 </div>
 
@@ -265,10 +269,10 @@ export class SettingsPanel {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section fc gap-2">
                     <h3 class="settings-title">Window size on startup</h3>
-                    <div class="fc gap-2">
-                        <div class="fc gap-1">
+                    <div class="fr flex-wrap gap-2">
+                        <div class="fc gap-1 flex-grow">
                             <label for="windowWidth" class="text-xs text-gray-400">Width (min 400)</label>
                             <input 
                                 type="number" 
@@ -278,7 +282,7 @@ export class SettingsPanel {
                                 value="${Math.max(400, this.settings.windowWidth || 420)}"
                             />
                         </div>
-                        <div class="fc gap-1">
+                        <div class="fc gap-1 flex-grow">
                             <label for="windowHeight" class="text-xs text-gray-400">Height (min 700)</label>
                             <input 
                                 type="number" 
@@ -288,8 +292,8 @@ export class SettingsPanel {
                                 value="${Math.max(700, this.settings.windowHeight || 780)}"
                             />
                         </div>
-                        <button id="saveWindowSize" class="btn btn-sm">Save</button>
                     </div>
+                    <button id="saveWindowSize" class="btn btn-sm">Save</button>
                 </div>
 
                 <div class="settings-section">

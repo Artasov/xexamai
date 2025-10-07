@@ -149,6 +149,9 @@ export type AssistantAPI = {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
     };
+    media?: {
+        getPrimaryDisplaySourceId: () => Promise<string | null>;
+    };
     log: (entry: LogEntry) => Promise<void>;
 };
 
