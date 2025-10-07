@@ -732,6 +732,11 @@ export class SettingsPanel {
                 { value: 'gpt-4', label: 'GPT-4 (Classic High Quality)' },
                 { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo (Legacy - Fast)' },
                 { value: 'gpt-3.5-turbo-16k', label: 'GPT-3.5 Turbo 16K (Extended Context)' },
+                { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Google - Fast)' },
+                { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Google - Advanced)' },
+                { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Google - Experimental)' },
+                { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (Google - Stable)' },
+                { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (Google - Efficient)' },
             ];
             // Определяем начальное значение для API модели
             const currentModel = this.settings.llmModel || 'gpt-4.1-nano';

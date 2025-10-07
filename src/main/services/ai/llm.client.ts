@@ -3,6 +3,7 @@ import {getConfig} from '../config.service';
 import {withRetry} from '../retry.service';
 import {DefaultTimeoutConfig} from '../timeout.config';
 import {logger} from '../logger.service';
+import {GoogleGenAI} from '@google/genai';
 
 let client: OpenAI | null = null;
 
@@ -35,7 +36,100 @@ function isLocalModel(model?: string): boolean {
     return typeof model === 'string' && ALLOWED_LOCAL_MODELS.has(model);
 }
 
+function isGeminiModel(model?: string): boolean {
+    return typeof model === 'string' && model.startsWith('gemini-');
+}
+
 const LOCAL_LLM_TIMEOUT_MS = 600000; // 600s only for local LLM
+
+async function askChatGemini(prompt: string): Promise<string> {
+    const cfg = getConfig();
+    if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+
+    logger.info('gemini', 'Starting Gemini chat completion', {
+        promptLength: prompt.length,
+        model: cfg.chatModel,
+        apiKey: cfg.geminiApiKey ? `${cfg.geminiApiKey.substring(0, 8)}...` : null,
+    });
+
+    const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+    const systemMessage = cfg.llmPrompt;
+
+    const response = await ai.models.generateContent({
+        model: cfg.chatModel,
+        contents: prompt,
+        config: {
+            systemInstruction: systemMessage,
+            temperature: 0.3,
+        },
+    });
+
+    const msg = response.text || '';
+
+    logger.info('gemini', 'Gemini chat completion finished', {
+        responseLength: msg.length,
+        model: cfg.chatModel,
+    });
+
+    return msg;
+}
+
+async function askChatStreamGemini(
+    prompt: string,
+    onDelta: (delta: string) => void,
+    onDone?: () => void,
+    options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
+): Promise<void> {
+    const cfg = getConfig();
+    if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+
+    logger.info('gemini', 'Starting Gemini chat stream', {
+        promptLength: prompt.length,
+        model: cfg.chatModel,
+    });
+
+    const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+    const systemMessage = cfg.llmPrompt;
+
+    const stream = await ai.models.generateContentStream({
+        model: cfg.chatModel,
+        contents: prompt,
+        config: {
+            systemInstruction: systemMessage,
+            temperature: 0.3,
+        },
+    });
+
+    try {
+        let totalLength = 0;
+        let chunkCount = 0;
+
+        for await (const chunk of stream) {
+            if (options?.shouldCancel?.()) break;
+            try {
+                const delta = chunk.text;
+                if (typeof delta === 'string' && delta.length > 0) {
+                    totalLength += delta.length;
+                    chunkCount++;
+                    onDelta(delta);
+                }
+            } catch (e) {
+                // Ignore chunk parsing errors
+            }
+        }
+
+        logger.info('gemini', 'Gemini chat stream completed', {
+            totalResponseLength: totalLength,
+            model: cfg.chatModel,
+            chunkCount,
+        });
+
+        if (onDone) onDone();
+    } catch (error) {
+        logger.error('gemini', 'Gemini chat stream error', { error });
+        throw error;
+    }
+}
 
 async function askChatLocal(prompt: string): Promise<string> {
     const cfg = getConfig();
@@ -159,7 +253,16 @@ async function askChatStreamLocal(
 
 export async function askChat(prompt: string): Promise<string> {
     const cfg = getConfig();
-    if (!isLocalModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
+    
+    if (isGeminiModel(cfg.chatModel)) {
+        if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+        return withRetry(
+            async () => askChatGemini(prompt),
+            cfg.retryConfig,
+            'Gemini completion',
+            cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
+        );
+    }
 
     if (isLocalModel(cfg.chatModel)) {
         return withRetry(
@@ -169,6 +272,8 @@ export async function askChat(prompt: string): Promise<string> {
             LOCAL_LLM_TIMEOUT_MS
         );
     }
+    
+    if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
     logger.info('chatgpt', 'Starting OpenAI chat completion', { 
         promptLength: prompt.length,
@@ -233,7 +338,18 @@ export async function askChatStream(
     options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
 ): Promise<void> {
     const cfg = getConfig();
-    if (!isLocalModel(cfg.chatModel) && !cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
+    
+    if (isGeminiModel(cfg.chatModel)) {
+        if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+        return withRetry(
+            async () => {
+                await askChatStreamGemini(prompt, onDelta, onDone, options);
+            },
+            cfg.retryConfig,
+            'Gemini streaming',
+            cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
+        );
+    }
 
     if (isLocalModel(cfg.chatModel)) {
         return withRetry(
@@ -245,6 +361,8 @@ export async function askChatStream(
             LOCAL_LLM_TIMEOUT_MS
         );
     }
+    
+    if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
     logger.info('chatgpt', 'Starting OpenAI chat stream', { 
         promptLength: prompt.length,
