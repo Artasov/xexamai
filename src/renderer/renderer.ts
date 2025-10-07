@@ -538,7 +538,6 @@ async function main() {
     const settingsAiPanel = document.getElementById('settingsAiPanel');
     const settingsAudioPanel = document.getElementById('settingsAudioPanel');
     const settingsHotkeysPanel = document.getElementById('settingsHotkeysPanel');
-    const settingsAdvancedPanel = document.getElementById('settingsAdvancedPanel');
 
     if (settingsGeneralPanel) {
         new SettingsPanel(settingsGeneralPanel, {
@@ -601,25 +600,21 @@ async function main() {
     if (settingsHotkeysPanel) {
         new SettingsPanel(settingsHotkeysPanel, { panelType: 'hotkeys' });
     }
-    if (settingsAdvancedPanel) {
-        new SettingsPanel(settingsAdvancedPanel, { panelType: 'advanced' });
-    }
 
     // Settings sub-tabs navigation
     const settingsGeneralTab = document.getElementById('settingsGeneralTab');
     const settingsAiTab = document.getElementById('settingsAiTab');
     const settingsAudioTab = document.getElementById('settingsAudioTab');
     const settingsHotkeysTab = document.getElementById('settingsHotkeysTab');
-    const settingsAdvancedTab = document.getElementById('settingsAdvancedTab');
 
     function switchSettingsTab(activeTab: string) {
         // Hide all panels
-        [settingsGeneralPanel, settingsAiPanel, settingsAudioPanel, settingsHotkeysPanel, settingsAdvancedPanel].forEach(panel => {
+        [settingsGeneralPanel, settingsAiPanel, settingsAudioPanel, settingsHotkeysPanel].forEach(panel => {
             if (panel) panel.classList.add('hidden');
         });
         
         // Remove active class from all tabs
-        [settingsGeneralTab, settingsAiTab, settingsAudioTab, settingsHotkeysTab, settingsAdvancedTab].forEach(tab => {
+        [settingsGeneralTab, settingsAiTab, settingsAudioTab, settingsHotkeysTab].forEach(tab => {
             if (tab) tab.classList.remove('active');
         });
 
@@ -642,9 +637,6 @@ async function main() {
     }
     if (settingsHotkeysTab) {
         settingsHotkeysTab.addEventListener('click', () => switchSettingsTab('Hotkeys'));
-    }
-    if (settingsAdvancedTab) {
-        settingsAdvancedTab.addEventListener('click', () => switchSettingsTab('Advanced'));
     }
 
     const mainTab = document.getElementById('mainTab');

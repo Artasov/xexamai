@@ -136,7 +136,7 @@ export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;
     onDurationsChange?: (durations: number[]) => void;
     onHotkeysChange?: (map: Record<number, string>) => void;
-    panelType?: 'general' | 'ai' | 'audio' | 'hotkeys' | 'advanced';
+    panelType?: 'general' | 'ai' | 'audio' | 'hotkeys';
 }
 
 export class SettingsPanel {
@@ -146,7 +146,7 @@ export class SettingsPanel {
         durations: [5, 10, 15, 20, 30, 60],
         windowOpacity: 100,
     };
-    private panelType: 'general' | 'ai' | 'audio' | 'hotkeys' | 'advanced' = 'general';
+    private panelType: 'general' | 'ai' | 'audio' | 'hotkeys' = 'general';
 
     // Custom select instances
     private csTranscriptionMode?: CustomSelect;
@@ -189,7 +189,6 @@ export class SettingsPanel {
                 ${this.renderAiSections()}
                 ${this.renderAudioSections()}
                 ${this.renderHotkeysSections()}
-                ${this.renderAdvancedSections()}
             </div>
         `;
 
@@ -300,7 +299,7 @@ export class SettingsPanel {
         
         return `
                 <div class="settings-section fc">
-                    <h3 class="settings-title">AI Mode</h3>
+                    <h3 class="settings-title">Mode</h3>
                     <div class="fr gap-1">
                         <div class="fc gap-1">
                             <h3 class="text-xs text-gray-400">Transcription</h3>
@@ -314,7 +313,7 @@ export class SettingsPanel {
                 </div>
                 
                 <div class="settings-section fc">
-                    <h3 class="settings-title">AI Model</h3>
+                    <h3 class="settings-title">Model</h3>
                     
                     <div class="fr gap-2 flex-wrap">
                         <div class="fc gap-1">
@@ -349,8 +348,56 @@ export class SettingsPanel {
                     </div>
                     
                 </div>
-              
+                
+                <div class="settings-section fc">
+                    <h3 class="settings-title">Promt</h3>
+                    
+                    <div class="fr gap-2 flex-wrap">
+                        <div class="fc gap-1 flex-grow">
+                            <h3 class="text-xs text-gray-400">Transcription</h3>
+                            <div class="fc gap-2">
+                                <textarea 
+                                    id="transcriptionPrompt" 
+                                    class="input-field prompt-textarea" 
+                                    placeholder="Enter transcription prompt (leave empty to disable prompt)..."
+                                    rows="4"
+                                >${this.settings.transcriptionPrompt || ''}</textarea>
+                                <button id="saveTranscriptionPrompt" class="btn btn-sm">Save Prompt</button>
+                            </div>
+                        </div>
+        
+                        <div class="fc gap-1 flex-grow">
+                            <h3 class="text-xs text-gray-400">LLM</h3>
+                            <div class="fc gap-2">
+                                <textarea 
+                                    id="llmPrompt" 
+                                    class="input-field prompt-textarea" 
+                                    placeholder="Enter LLM system prompt (leave empty to use default)..."
+                                    rows="4"
+                                >${this.settings.llmPrompt || ''}</textarea>
+                                <button id="saveLlmPrompt" class="btn btn-sm">Save Prompt</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
 
+
+                <div class="settings-section">
+                    <h3 class="settings-title">API timeouts</h3>
+                    <div class="frbc gap-2">
+                        <div class="fc gap-1" style="width:48%">
+                            <label class="text-xs text-gray-400">Transcription (ms)</label>
+                            <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
+                            <button id="saveApiSttTimeout" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="fc gap-1" style="width:48%">
+                            <label class="text-xs text-gray-400">LLM (ms)</label>
+                            <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
+                            <button id="saveApiLlmTimeout" class="btn btn-sm">Save</button>
+                        </div>
+                    </div>
+                </div>
         `;
     }
 
@@ -409,53 +456,6 @@ export class SettingsPanel {
         `;
     }
 
-    private renderAdvancedSections(): string {
-        if (this.panelType !== 'advanced') return '';
-        
-        return `
-                <div class="settings-section">
-                    <h3 class="settings-title">Transcription prompt</h3>
-                    <div class="fc gap-2">
-                        <textarea 
-                            id="transcriptionPrompt" 
-                            class="input-field prompt-textarea" 
-                            placeholder="Enter transcription prompt (leave empty to disable prompt)..."
-                            rows="4"
-                        >${this.settings.transcriptionPrompt || ''}</textarea>
-                        <button id="saveTranscriptionPrompt" class="btn btn-sm">Save Prompt</button>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">LLM Prompt</h3>
-                    <div class="fc gap-2">
-                        <textarea 
-                            id="llmPrompt" 
-                            class="input-field prompt-textarea" 
-                            placeholder="Enter LLM system prompt (leave empty to use default)..."
-                            rows="4"
-                        >${this.settings.llmPrompt || ''}</textarea>
-                        <button id="saveLlmPrompt" class="btn btn-sm">Save Prompt</button>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">API Timeouts</h3>
-                    <div class="frbc gap-2">
-                        <div class="fc gap-1" style="width:48%">
-                            <label class="text-xs text-gray-400">Transcription API timeout (ms)</label>
-                            <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
-                            <button id="saveApiSttTimeout" class="btn btn-sm">Save</button>
-                        </div>
-                        <div class="fc gap-1" style="width:48%">
-                            <label class="text-xs text-gray-400">LLM API timeout (ms)</label>
-                            <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
-                            <button id="saveApiLlmTimeout" class="btn btn-sm">Save</button>
-                        </div>
-                    </div>
-                </div>
-        `;
-    }
 
     private updateAudioTypeVisibility() {
         const microphoneSection = this.container.querySelector('#microphoneSection') as HTMLElement;
