@@ -18,6 +18,8 @@ export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'lar
 
 export type TranscriptionMode = 'api' | 'local';
 
+export type LlmHost = 'api' | 'local';
+
 export type LocalDevice = 'cpu' | 'gpu';
 
 export type AppSettings = {
@@ -37,6 +39,7 @@ export type AppSettings = {
     llmModel?: string;
     llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
+    llmHost?: LlmHost;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
@@ -51,6 +54,7 @@ export const DefaultSettings: AppSettings = {
     windowOpacity: 100,
     alwaysOnTop: false,
     transcriptionMode: 'api',
+    llmHost: 'api',
     localWhisperModel: 'base',
     localDevice: 'cpu',
 };
@@ -83,6 +87,7 @@ export const IPCChannels = {
     SetLlmModel: 'settings:set:llm-model',
     SetLlmPrompt: 'settings:set:llm-prompt',
     SetTranscriptionMode: 'settings:set:transcription-mode',
+    SetLlmHost: 'settings:set:llm-host',
     SetLocalWhisperModel: 'settings:set:local-whisper-model',
     SetLocalDevice: 'settings:set:local-device',
     SetApiSttTimeoutMs: 'settings:set:api-stt-timeout-ms',
@@ -177,6 +182,7 @@ export type AssistantAPI = {
         setLlmModel: (model: string) => Promise<void>;
         setLlmPrompt: (prompt: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
+        setLlmHost: (host: LlmHost) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         setLocalDevice: (device: LocalDevice) => Promise<void>;
         setApiSttTimeoutMs: (timeoutMs: number) => Promise<void>;

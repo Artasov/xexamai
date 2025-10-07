@@ -2,6 +2,8 @@ export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'lar
 
 export type TranscriptionMode = 'api' | 'local';
 
+export type LlmHost = 'api' | 'local';
+
 export type LocalDevice = 'cpu' | 'gpu';
 
 export type AppSettings = {
@@ -21,6 +23,7 @@ export type AppSettings = {
     llmModel?: string;
     llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
+    llmHost?: LlmHost;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
@@ -109,6 +112,7 @@ export type AssistantAPI = {
         setLlmModel: (model: string) => Promise<void>;
         setLlmPrompt: (prompt: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
+        setLlmHost: (host: LlmHost) => Promise<void>;
         setLocalWhisperModel: (model: WhisperModel) => Promise<void>;
         setLocalDevice: (device: LocalDevice) => Promise<void>;
         setApiSttTimeoutMs: (timeoutMs: number) => Promise<void>;

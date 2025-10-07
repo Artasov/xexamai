@@ -1,6 +1,6 @@
 import {contextBridge, ipcRenderer} from 'electron';
 import {marked} from 'marked';
-import {AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, WhisperModel, LocalDevice} from '../main/shared/types';
+import {AssistantResponse, IPCChannels, LogEntry, TranscriptionMode, LlmHost, WhisperModel, LocalDevice} from '../main/shared/types';
 import type {AssistantAPI} from '../renderer/types';
 
 export const api: AssistantAPI = {
@@ -105,6 +105,7 @@ export const api: AssistantAPI = {
         setLlmModel: (model: string) => ipcRenderer.invoke(IPCChannels.SetLlmModel, model),
         setLlmPrompt: (prompt: string) => ipcRenderer.invoke(IPCChannels.SetLlmPrompt, prompt),
         setTranscriptionMode: (mode: TranscriptionMode) => ipcRenderer.invoke(IPCChannels.SetTranscriptionMode, mode),
+        setLlmHost: (host: LlmHost) => ipcRenderer.invoke(IPCChannels.SetLlmHost, host),
         setLocalWhisperModel: (model: WhisperModel) => ipcRenderer.invoke(IPCChannels.SetLocalWhisperModel, model),
         setLocalDevice: (device: LocalDevice) => ipcRenderer.invoke(IPCChannels.SetLocalDevice, device),
         setApiSttTimeoutMs: (timeoutMs: number) => ipcRenderer.invoke(IPCChannels.SetApiSttTimeoutMs, timeoutMs),

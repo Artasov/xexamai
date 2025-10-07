@@ -151,7 +151,9 @@ export class SettingsPanel {
     private csTranscriptionModel?: CustomSelect;
     private csLocalWhisperModel?: CustomSelect;
     private csLocalDevice?: CustomSelect;
+    private csLlmHost?: CustomSelect;
     private csLlmModel?: CustomSelect;
+    private csLocalLlmModel?: CustomSelect;
     private csAudioInputType?: CustomSelect;
     private csAudioInputDevice?: CustomSelect;
 
@@ -174,6 +176,7 @@ export class SettingsPanel {
         await this.loadAudioDevices();
         this.updateAudioTypeVisibility();
         this.updateTranscriptionModeVisibility();
+        this.updateLlmHostVisibility();
     }
 
     private render() {
@@ -190,21 +193,6 @@ export class SettingsPanel {
                             value="${this.settings.openaiApiKey || ''}"
                         />
                         <button id="saveApiKey" class="btn btn-sm">Save</button>
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <h3 class="settings-title">Window Opacity</h3>
-                    <div class="opacity-control">
-                        <input 
-                            type="range" 
-                            id="windowOpacity" 
-                            class="opacity-slider" 
-                            min="5" 
-                            max="100" 
-                            value="${this.settings.windowOpacity || 100}"
-                        />
-                        <span id="opacityValue" class="opacity-value">${this.settings.windowOpacity || 100}%</span>
                     </div>
                 </div>
 
@@ -231,6 +219,21 @@ export class SettingsPanel {
                             />
                             <span class="checkbox-text">Hide app from screen recording</span>
                         </label>
+                    </div>
+
+                    <div class="frsc gap-2">
+                        <span class="checkbox-text">Window Opacity</span>
+                        <div class="opacity-control">
+                            <input 
+                                type="range" 
+                                id="windowOpacity" 
+                                class="opacity-slider" 
+                                min="5" 
+                                max="100" 
+                                value="${this.settings.windowOpacity || 100}"
+                            />
+                            <span id="opacityValue" class="opacity-value">${this.settings.windowOpacity || 100}%</span>
+                        </div>
                     </div>
                 </div>
 
@@ -268,15 +271,22 @@ export class SettingsPanel {
                     </div>
                 </div>
 
+                <div class="settings-section">
+                    <h3 class="settings-title">LLM Mode</h3>
+                    <div class="input-group">
+                        <div id="llmHost" class="input-field"></div>
+                    </div>
+                </div>
+                
                 <div class="settings-section" id="apiTranscriptionSection">
-                    <h3 class="settings-title">API Transcription Model</h3>
+                    <h3 class="settings-title">Transcription Model</h3>
                     <div class="input-group">
                         <div id="transcriptionModel" class="input-field"></div>
                     </div>
                 </div>
 
                 <div class="settings-section" id="localTranscriptionSection" style="display: none;">
-                    <h3 class="settings-title">Local Whisper Model</h3>
+                    <h3 class="settings-title">Transcription Model</h3>
                     <div class="input-group">
                         <div id="localWhisperModel" class="input-field"></div>
                     </div>
@@ -289,10 +299,18 @@ export class SettingsPanel {
                     </div>
                 </div>
 
-                <div class="settings-section">
+
+                <div class="settings-section" id="apiLlmSection">
                     <h3 class="settings-title">LLM Model</h3>
                     <div class="input-group">
                         <div id="llmModel" class="input-field"></div>
+                    </div>
+                </div>
+
+                <div class="settings-section" id="localLlmSection" style="display: none;">
+                    <h3 class="settings-title">LLM Model</h3>
+                    <div class="input-group">
+                        <div id="localLlmModel" class="input-field"></div>
                     </div>
                 </div>
 
@@ -418,6 +436,17 @@ export class SettingsPanel {
             apiSection.style.display = isLocal ? 'none' : 'block';
             localSection.style.display = isLocal ? 'block' : 'none';
             localDeviceSection.style.display = isLocal ? 'block' : 'none';
+        }
+    }
+
+    private updateLlmHostVisibility() {
+        const apiSection = this.container.querySelector('#apiLlmSection') as HTMLElement;
+        const localSection = this.container.querySelector('#localLlmSection') as HTMLElement;
+        if (apiSection && localSection) {
+            const hostVal = this.csLlmHost?.getValue() || this.settings.llmHost || 'api';
+            const isLocal = hostVal === 'local';
+            apiSection.style.display = isLocal ? 'none' : 'block';
+            localSection.style.display = isLocal ? 'block' : 'none';
         }
     }
 
@@ -582,7 +611,46 @@ export class SettingsPanel {
             );
         }
 
-        // LLM Model
+        // LLM Host
+        const llmHostEl = this.container.querySelector('#llmHost') as HTMLElement | null;
+        if (llmHostEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'api', label: 'API' },
+                { value: 'local', label: 'Local' },
+            ];
+            this.csLlmHost = new CustomSelect(
+                llmHostEl,
+                opts,
+                this.settings.llmHost || 'api',
+                async (val) => {
+                    const host = (val as 'api' | 'local');
+                    logger.info('settings', 'LLM host changed', { host });
+                    try {
+                        await window.api.settings.setLlmHost(host);
+                        this.settings.llmHost = host;
+                        this.updateLlmHostVisibility();
+                        
+                        // Автоматически переключаем на подходящую модель по умолчанию
+                        const defaultModel = host === 'api' ? 'gpt-4.1-nano' : 'gpt-oss:20b';
+                        await window.api.settings.setLlmModel(defaultModel);
+                        this.settings.llmModel = defaultModel;
+                        
+                        // Обновляем значения в селектах
+                        if (host === 'api' && this.csLlmModel) {
+                            this.csLlmModel.setValue(defaultModel);
+                        } else if (host === 'local' && this.csLocalLlmModel) {
+                            this.csLocalLlmModel.setValue(defaultModel);
+                        }
+                        
+                        this.showNotification(`LLM host changed to ${host === 'api' ? 'API' : 'Local'}. Model set to ${defaultModel}`);
+                    } catch (error) {
+                        this.showNotification('Error saving LLM host', 'error');
+                    }
+                }
+            );
+        }
+
+        // API LLM Model
         const llmEl = this.container.querySelector('#llmModel') as HTMLElement | null;
         if (llmEl) {
             const opts: CustomSelectOption[] = [
@@ -593,6 +661,34 @@ export class SettingsPanel {
                 { value: 'gpt-4', label: 'GPT-4 (Classic High Quality)' },
                 { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo (Legacy - Fast)' },
                 { value: 'gpt-3.5-turbo-16k', label: 'GPT-3.5 Turbo 16K (Extended Context)' },
+            ];
+            // Определяем начальное значение для API модели
+            const currentModel = this.settings.llmModel || 'gpt-4.1-nano';
+            const isApiModel = opts.some(opt => opt.value === currentModel);
+            const initialValue = isApiModel ? currentModel : 'gpt-4.1-nano';
+            
+            this.csLlmModel = new CustomSelect(
+                llmEl,
+                opts,
+                initialValue,
+                async (val) => {
+                    const model = val;
+                    logger.info('settings', 'API LLM model changed', { model });
+                    try {
+                        await window.api.settings.setLlmModel(model);
+                        this.settings.llmModel = model;
+                        this.showNotification(`API LLM model changed to ${model}`);
+                    } catch (error) {
+                        this.showNotification('Error saving API LLM model', 'error');
+                    }
+                }
+            );
+        }
+
+        // Local LLM Model
+        const localLlmEl = this.container.querySelector('#localLlmModel') as HTMLElement | null;
+        if (localLlmEl) {
+            const opts: CustomSelectOption[] = [
                 { value: 'gpt-oss:120b', label: 'GPT-OSS 120B (Local)' },
                 { value: 'gpt-oss:20b', label: 'GPT-OSS 20B (Local)' },
                 { value: 'gemma3:27b', label: 'Gemma 3 27B (Local)' },
@@ -605,19 +701,24 @@ export class SettingsPanel {
                 { value: 'qwen3:8b', label: 'Qwen3 8B (Local)' },
                 { value: 'qwen3:4b', label: 'Qwen3 4B (Local)' },
             ];
-            this.csLlmModel = new CustomSelect(
-                llmEl,
+            // Определяем начальное значение для локальной модели
+            const currentModel = this.settings.llmModel || 'gpt-oss:20b';
+            const isLocalModel = opts.some(opt => opt.value === currentModel);
+            const initialValue = isLocalModel ? currentModel : 'gpt-oss:20b';
+            
+            this.csLocalLlmModel = new CustomSelect(
+                localLlmEl,
                 opts,
-                this.settings.llmModel || 'gpt-4.1-nano',
+                initialValue,
                 async (val) => {
                     const model = val;
-                    logger.info('settings', 'LLM model changed', { model });
+                    logger.info('settings', 'Local LLM model changed', { model });
                     try {
                         await window.api.settings.setLlmModel(model);
                         this.settings.llmModel = model;
-                        this.showNotification(`LLM model changed to ${model}`);
+                        this.showNotification(`Local LLM model changed to ${model}`);
                     } catch (error) {
-                        this.showNotification('Error saving LLM model', 'error');
+                        this.showNotification('Error saving Local LLM model', 'error');
                     }
                 }
             );

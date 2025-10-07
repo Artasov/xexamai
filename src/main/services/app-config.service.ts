@@ -2,7 +2,7 @@ import {app} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {logger} from './logger.service';
-import {WhisperModel, TranscriptionMode, LocalDevice, DEFAULT_LLM_PROMPT} from '../shared/types';
+import {WhisperModel, TranscriptionMode, LlmHost, LocalDevice, DEFAULT_LLM_PROMPT} from '../shared/types';
 
 export interface AppConfigData {
     openaiApiKey?: string;
@@ -19,6 +19,7 @@ export interface AppConfigData {
     llmModel?: string;
     llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
+    llmHost?: LlmHost;
     localWhisperModel?: WhisperModel;
     localDevice?: LocalDevice;
     // window size
@@ -68,6 +69,7 @@ export class AppConfigService {
                     transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
                     llmPrompt: DEFAULT_LLM_PROMPT,
                     transcriptionMode: 'api',
+                    llmHost: 'api',
                     localWhisperModel: 'base',
                     localDevice: 'cpu',
                     windowWidth: 420,
@@ -95,6 +97,7 @@ export class AppConfigService {
                 transcriptionPrompt: 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
                 llmPrompt: DEFAULT_LLM_PROMPT,
                 transcriptionMode: 'api',
+                llmHost: 'api',
                 localWhisperModel: 'base',
                 localDevice: 'cpu',
                 windowWidth: 420,
@@ -311,6 +314,20 @@ export class AppConfigService {
 
     public getTranscriptionMode(): TranscriptionMode {
         return this.configData.transcriptionMode || 'api';
+    }
+
+    public setLlmHost(host: LlmHost): void {
+        const oldHost = this.configData.llmHost;
+        this.configData.llmHost = host;
+        this.saveConfig();
+        logger.info('settings', 'LLM host changed', { 
+            oldHost, 
+            newHost: host 
+        });
+    }
+
+    public getLlmHost(): LlmHost {
+        return this.configData.llmHost || 'api';
     }
 
     public setLocalWhisperModel(model: WhisperModel): void {

@@ -1,5 +1,5 @@
 import {BrowserWindow, ipcMain, shell} from 'electron';
-import {AppSettings, DefaultSettings, IPCChannels, LocalDevice, TranscriptionMode, WhisperModel, DEFAULT_LLM_PROMPT} from '../shared/types';
+import {AppSettings, DefaultSettings, IPCChannels, LocalDevice, LlmHost, TranscriptionMode, WhisperModel, DEFAULT_LLM_PROMPT} from '../shared/types';
 import {appConfigService} from '../services/app-config.service';
 import {logger} from '../services/logger.service';
 import {hotkeysService} from '../services/hotkeys.service';
@@ -25,6 +25,7 @@ export function registerSettingsIpc() {
             llmModel: config.llmModel,
             llmPrompt: config.llmPrompt !== undefined ? config.llmPrompt : DEFAULT_LLM_PROMPT,
             transcriptionMode: config.transcriptionMode || DefaultSettings.transcriptionMode,
+            llmHost: config.llmHost || DefaultSettings.llmHost,
             localWhisperModel: config.localWhisperModel || DefaultSettings.localWhisperModel,
             localDevice: config.localDevice || DefaultSettings.localDevice,
             apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),
@@ -177,6 +178,10 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetTranscriptionMode, async (_, mode: TranscriptionMode): Promise<void> => {
         appConfigService.setTranscriptionMode(mode);
+    });
+
+    ipcMain.handle(IPCChannels.SetLlmHost, async (_, host: LlmHost): Promise<void> => {
+        appConfigService.setLlmHost(host);
     });
 
     ipcMain.handle(IPCChannels.SetLocalWhisperModel, async (_, model: WhisperModel): Promise<void> => {

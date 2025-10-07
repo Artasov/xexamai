@@ -287,7 +287,7 @@ async function handleAskWindow(seconds: number) {
 
         showText(text);
 
-        setStatus('Sending to ChatGPT...', 'sending');
+        setStatus('Sending to LLM...', 'sending');
 
         try {
             (window.api.assistant as any).offStreamTranscript?.();
@@ -358,7 +358,7 @@ async function handleTextSend(text: string) {
     currentRequestId = requestId;
 
     try {
-        setStatus('Sending to ChatGPT...', 'sending');
+        setStatus('Sending to LLM...', 'sending');
 
         try {
             (window.api.assistant as any).offStreamTranscript?.();
