@@ -75,6 +75,7 @@
 
 ## How to Use Locally
 The examples below are implemented and tested on `Windows 11`. Steps may differ on other systems.
+> Local streaming as in gemeni is not available, but this is not scary
 
 ### The assistant works in two stages:
 1. #### Audio transcription
