@@ -7,12 +7,22 @@ export function showText(text: string) {
 
 export function showAnswer(text: string) {
     if (answerOut) {
+        // Сохраняем текущую позицию скролла
+        const currentScrollTop = answerOut.scrollTop;
+        const currentScrollHeight = answerOut.scrollHeight;
+        const isAtBottom = currentScrollTop + answerOut.clientHeight >= currentScrollHeight - 5; // 5px tolerance
+        
         if (text) {
             // Рендерим Markdown через глобальный marked
             const html = (window as any).marked.parse(text);
             answerOut.innerHTML = html;
         } else {
             answerOut.innerHTML = '';
+        }
+        
+        // Восстанавливаем позицию скролла только если пользователь не был внизу
+        if (!isAtBottom) {
+            answerOut.scrollTop = currentScrollTop;
         }
     }
 }
