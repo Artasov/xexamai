@@ -131,7 +131,7 @@ Minimum recommended configuration:
 
 2. In `xexamai` settings choose one of `Model -> Transcription`
 
-3. In Settings choose `Local transcription device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
+3. In `xexamai` settings choose `Local transcription device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
 
 4. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
    > It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is running
@@ -143,7 +143,7 @@ Minimum recommended configuration:
 - This application is intended for educational purposes
 - Ensure that AI assistance is allowed in your situation
 - Follow honesty and academic integrity rules
-- OpenAI API key is stored locally and not shared with third parties
+- API keys are stored locally and not shared with third parties
 
 ## 🔧 For Developers
 
