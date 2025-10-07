@@ -96,6 +96,9 @@ async function switchAudioInput(newType: 'microphone' | 'system') {
 
     // Простая и стабильная стратегия: перезапустить цикл
     await stopRecording();
+    setStatus('Ready', 'ready');
+    setProcessing(false);
+    updateButtonsState();
     await startRecording();
 }
 
@@ -232,6 +235,9 @@ async function handleAskWindow(seconds: number) {
         try { await window.api.assistant.stopStream({ requestId: currentRequestId }); } catch {}
         currentRequestId = null;
         if (btnStop) btnStop.classList.add('hidden');
+        setStatus('Ready', 'ready');
+        setProcessing(false);
+        updateButtonsState();
     }
 
     // Operation guard to ignore stale results from previous requests
@@ -265,6 +271,9 @@ async function handleAskWindow(seconds: number) {
         });
         // If a newer operation started while transcribing, ignore this result
         if (opId !== activeOpId) {
+            setStatus('Ready', 'ready');
+            setProcessing(false);
+            updateButtonsState();
             return;
         }
         if (!transcribeRes.ok) {
@@ -515,7 +524,11 @@ async function main() {
             } catch (e) {
                 console.error('Stop stream error', e);
             } finally {
+                setStatus('Ready', 'ready');
+                setProcessing(false);
+                updateButtonsState();
                 btnStop?.classList.add('hidden');
+                currentRequestId = null;
             }
         });
     }
