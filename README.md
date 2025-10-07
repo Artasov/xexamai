@@ -22,10 +22,10 @@
 
 ## 🚀 Key Features
 
+- **FREE USAGE** - no subscription required, no limits for local   
 - **Complete invisibility** - stays hidden during screen sharing in Zoom, Google Meet, Teams and other platforms
-- **Adjustable transparency** - customize the interface to your needs
 - **Advanced AI models** - uses cutting-edge speech recognition and AI generation
-- **Local AI models** - use freely for free
+- **Local AI models** - use local AI models for faster processing
 - **Privacy & Security** - all data processed locally, audio is not stored
 - **Flexible audio settings** - choose between system sound and microphone
 - **Cross-platform** - works on Windows, macOS and Linux
@@ -40,11 +40,14 @@
 
 1. Open `xexamai` application
 2. Go to `Settings` tab
-3. Enter your `OpenAI API key` (get it from [platform.openai.com](https://platform.openai.com))
-4. Choose **audio input device**:
+3. Enter api key:
+   * `OpenAI API key` (get it from [platform.openai.com](https://platform.openai.com))
+   * `Google AI API key` (get it from [console.cloud.google.com](https://aistudio.google.com/api-keys))
+4. Choose one `LLM Model` of the models suitable for your key 
+5. Choose **audio input device**:
     - `System Audio` - for recording sound from applications (Zoom, Teams, etc.)
     - `Microphone` - for recording your voice
-5. **Configure transcription settings**:
+6. **Configure transcription settings**:
     - **Transcription Model** - choose from:
         - `Whisper-1` (Default) - balanced speed and accuracy
         - `GPT-4o Transcribe` (High Quality) - maximum accuracy for complex audio
@@ -60,6 +63,8 @@
 2. Click `Start Audio Loop` - the app will start recording audio in the background
 3. When needed, click `Send Last X Seconds` to get an AI response
 4. Get instant answers to help you during interviews or exams
+5. If you use `Google AI`, then you can switch `Transcription Type` to `Stream` and then `Gemeni` will show you a recognized text that you can send to receive an answer at the right time.
+6. See what settings are in different sections (`Hotkeys`, `API timeout for retry`, `always on top`, `opacity`)
 
 ### 3. Usage Tips
 
@@ -71,11 +76,11 @@
 ## How to Use Locally
 The examples below are implemented and tested on `Windows 11`. Steps may differ on other systems.
 
-The assistant works in two stages:
-1. Audio transcription
-2. Getting an answer from the LLM
+### The assistant works in two stages:
+1. #### Audio transcription
+2. #### Getting an answer from the LLM
 
-Each stage can be run locally.
+### Each stage can be run locally.
 
 
 1. #### Install CUDA
@@ -89,7 +94,6 @@ Each stage can be run locally.
    > Or the path where cuDNN was installed
 
 4. #### Restart the PC
-   > If you use local speech recognition, then install python from the step below, if you don't have it yet.
 
 
 ### Local LLM Processing
@@ -99,11 +103,10 @@ Minimum recommended configuration:
 - GPU - 6 GB VRAM
 - RAM - 16 GB
 
-1. 
-   * In `xexamai` Settings choose `Transcription Mode` = `Local`
-   * In `xexamai` Settings choose a `LLM Model` from the available models:
-     * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
-       > Choose a smaller model if your PC is low-spec
+1. * In `xexamai` settings select an `Mode -> LLM` = `Local`.
+   * In `xexamai` settings choose a `Model ->LLM` from the available models:
+      * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
+         > Choose a smaller model if your PC is low-spec
 
 2. #### Install Ollama
    https://ollama.com/
@@ -124,15 +127,16 @@ Minimum recommended configuration:
 
 
 ### Local Speech Recognition
-1. In `xexamai` settings select an `Transcription Mode` = `Local`.
+1. In `xexamai` settings select an `Mode -> Transcription` = `Local`.
 
-2. Same choose one of `Local Whisper Model`
+2. In `xexamai` settings choose one of `Model -> Transcription`
 
-3. In Settings choose `Local Device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
+3. In Settings choose `Local transcription device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
 
 4. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
-   It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is running
+   > It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is running
 
+### The first use after the opening of the program will be slower, since with local use of the AI models will be loaded in GPU or RAM, which takes time. Before the interview, do the 1st question and get the answer so that the subsequent calls are faster.
 
 ## Important Notes
 

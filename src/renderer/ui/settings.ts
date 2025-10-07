@@ -325,7 +325,7 @@ export class SettingsPanel {
                             <div id="llmHost" class="min-w-[100px]"></div>
                         </div>
                         <div class="fc gap-1">
-                            <h3 class="text-xs text-gray-400">Stream Mode</h3>
+                            <h3 class="text-xs text-gray-400">Transcription type</h3>
                             <div id="streamMode" class="min-w-[100px]"></div>
                         </div>
                     </div>
@@ -355,12 +355,12 @@ export class SettingsPanel {
                         <div class="fr gap-1">
                             <div class="fc gap-1" id="apiLlmSection">
                                 <div class="fc gap-1">
-                                    <h3 class="text-xs text-gray-400">LLM Model</h3>
+                                    <h3 class="text-xs text-gray-400">LLM</h3>
                                     <div id="llmModel"></div>
                                 </div>
                             </div>
                             <div class="fc gap-1" id="localLlmSection" style="display: none;">
-                                <h3 class="text-xs text-gray-400">LLM Model</h3>
+                                <h3 class="text-xs text-gray-400">LLM</h3>
                                 <div id="localLlmModel"></div>
                             </div>
                         </div>
