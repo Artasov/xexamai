@@ -1,5 +1,5 @@
-import {transcribeAudio} from './openai/transcription.client';
-import {askChat, askChatStream} from './openai/chatgpt.client';
+import {transcribeAudio} from './ai/transcription.client';
+import {askChat, askChatStream} from './ai/llm.client';
 import {logger} from './logger.service';
 
 export type AssistantResult = {
