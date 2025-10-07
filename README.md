@@ -89,7 +89,7 @@ Each stage can be run locally.
    > Or the path where cuDNN was installed
 
 4. #### Restart the PC
-   > If you will use local speech recognition, then install python from the step below, if you don't have it yet.
+   > If you use local speech recognition, then install python from the step below, if you don't have it yet.
 
 
 ### Local LLM Processing
