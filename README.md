@@ -15,14 +15,14 @@
 - [Key Features](#-key-features)
 - [How to Use](#-how-to-use)
 - [How to Use Locally FREE](#how-to-use-locally)
-  - [Local LLM Processing](#local-llm-processing)
-  - [Local Speech Recognition](#local-speech-recognition)
+    - [Local LLM Processing](#local-llm-processing)
+    - [Local Speech Recognition](#local-speech-recognition)
 - [Important Notes](#important-notes)
 - [For Developers](#-for-developers)
 
 ## 🚀 Key Features
 
-- **FREE USAGE** - no subscription required, no limits for local   
+- **FREE USAGE** - no subscription required, no limits for local
 - **Complete invisibility** - stays hidden during screen sharing in Zoom, Google Meet, Teams and other platforms
 - **Advanced AI models** - uses cutting-edge speech recognition and AI generation
 - **Local AI models** - use local AI models for faster processing
@@ -41,9 +41,9 @@
 1. Open `xexamai` application
 2. Go to `Settings` tab
 3. Enter api key:
-   * `OpenAI API key` (get it from [platform.openai.com](https://platform.openai.com))
-   * `Google AI API key` (get it from [console.cloud.google.com](https://aistudio.google.com/api-keys))
-4. Choose one `LLM Model` of the models suitable for your key 
+    * `OpenAI API key` (get it from [platform.openai.com](https://platform.openai.com))
+    * `Google AI API key` (get it from [console.cloud.google.com](https://aistudio.google.com/api-keys))
+4. Choose one `LLM Model` of the models suitable for your key
 5. Choose **audio input device**:
     - `System Audio` - for recording sound from applications (Zoom, Teams, etc.)
     - `Microphone` - for recording your voice
@@ -63,7 +63,8 @@
 2. Click `Start Audio Loop` - the app will start recording audio in the background
 3. When needed, click `Send Last X Seconds` to get an AI response
 4. Get instant answers to help you during interviews or exams
-5. If you use `Google AI`, then you can switch `Transcription Type` to `Stream` and then `Gemeni` will show you a recognized text that you can send to receive an answer at the right time.
+5. If you use `Google AI`, then you can switch `Transcription Type` to `Stream` and then `Gemeni` will show you a
+   recognized text that you can send to receive an answer at the right time.
 6. See what settings are in different sections (`Hotkeys`, `API timeout for retry`, `always on top`, `opacity`)
 
 ### 3. Usage Tips
@@ -74,15 +75,17 @@
 - Practice before important events
 
 ## How to Use Locally
+
 The examples below are implemented and tested on `Windows 11`. Steps may differ on other systems.
 > Local streaming as in gemeni is not available, but this is not scary
 
 ### The assistant works in two stages:
+
 1. #### Audio transcription
+
 2. #### Getting an answer from the LLM
 
 ### Each stage can be run locally.
-
 
 1. #### Install CUDA
    https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
@@ -96,27 +99,28 @@ The examples below are implemented and tested on `Windows 11`. Steps may differ 
 
 4. #### Restart the PC
 
-
 ### Local LLM Processing
 
 Minimum recommended configuration:
+
 - CPU - 4 cores / 8 threads
 - GPU - 6 GB VRAM
 - RAM - 16 GB
 
-1. * In `xexamai` settings select an `Mode -> LLM` = `Local`.
-   * In `xexamai` settings choose a `Model -> LLM` from the available models:
-      * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
-         > Choose a smaller model if your PC is low-spec
+1.
+    * In `xexamai` settings select an `Mode -> LLM` = `Local`.
+    * In `xexamai` settings choose a `Model -> LLM` from the available models:
+        * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
+          > Choose a smaller model if your PC is low-spec
 
 2. #### Install Ollama
    https://ollama.com/
 
 3. #### (Optional) Change the default models location
-   * Remove the original models directory
-     `Remove-Item -Recurse -Force "C:\\Users\\xl\\.ollama\\models"`
-   * Then create a junction
-     `New-Item -ItemType Junction -Path "C:\\Users\\xl\\.ollama\\models" -Target "F:\\ollama_models\\models"`
+    * Remove the original models directory
+      `Remove-Item -Recurse -Force "C:\\Users\\xl\\.ollama\\models"`
+    * Then create a junction
+      `New-Item -ItemType Junction -Path "C:\\Users\\xl\\.ollama\\models" -Target "F:\\ollama_models\\models"`
 4. #### Download the model chosen earlier
    ```shell
    ollama pull qwen3:4b
@@ -126,8 +130,8 @@ Minimum recommended configuration:
    ollama serve
    ```
 
-
 ### Local Speech Recognition
+
 1. In `xexamai` settings select an `Mode -> Transcription` = `Local`.
 
 2. In `xexamai` settings choose one of `Model -> Transcription`
@@ -135,7 +139,8 @@ Minimum recommended configuration:
 3. In `xexamai` settings choose `Local transcription device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
 
 4. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
-   > It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is running
+   > It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is
+   running
 
 ### The first use after the opening of the program will be slower, since with local use of the AI models will be loaded in GPU or RAM, which takes time. Before the interview, do the 1st question and get the answer so that the subsequent calls are faster.
 
