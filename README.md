@@ -6,7 +6,16 @@
 </div>
 <div align="center">
   <a href="https://github.com/Artasov/xexamai/releases/latest">
-    <img src="https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github" alt="Download Latest Release">
+    <img src="https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge" alt="Download Latest Release">
+  </a>
+</div>
+
+<div align="center">
+  <a href="https://github.com/Artasov/xexamai/blob/main/README.md">
+    <img src="https://img.shields.io/badge/English-blue?style=for-the-badge" alt="English">
+  </a>
+  <a href="https://github.com/Artasov/xexamai/blob/main/README_RU.md">
+    <img src="https://img.shields.io/badge/Русский-red?style=for-the-badge" alt="Русский">
   </a>
 </div>
 
