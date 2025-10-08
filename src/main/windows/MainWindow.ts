@@ -64,6 +64,39 @@ export function createMainWindow(): BrowserWindow {
         win.setSkipTaskbar(hideApp);
 
         win.show();
+
+        // On some Windows 11 setups, the initial always-on-top flag can be
+        // lost during first paint/show. Re-assert it a few times after show.
+        if (alwaysOnTop) {
+            try {
+                // Immediate re-assert
+                win.setAlwaysOnTop(true);
+                win.focus();
+
+                // Staggered retries to survive z-order races on startup
+                setTimeout(() => {
+                    try {
+                        win.setAlwaysOnTop(true);
+                    } catch {}
+                }, 100);
+
+                setTimeout(() => {
+                    try {
+                        // Use highest practical level where supported
+                        // (level parameter is a no-op on some platforms)
+                        // @ts-ignore optional level for best-effort behavior
+                        win.setAlwaysOnTop(true, 'screen-saver');
+                        win.focus();
+                    } catch {}
+                }, 500);
+
+                setTimeout(() => {
+                    try {
+                        win.setAlwaysOnTop(true);
+                    } catch {}
+                }, 1500);
+            } catch {}
+        }
     });
 
     win.webContents.once('did-finish-load', () => {
