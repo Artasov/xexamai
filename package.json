@@ -1,6 +1,6 @@
 {
   "name": "xexamai",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Exam/Interview assistant: record last N seconds, Whisper -> ChatGPT.",
   "main": "build/main/app.js",
   "type": "commonjs",
