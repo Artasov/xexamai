@@ -17,7 +17,7 @@ class CustomSelect {
         this.onChange = onChange;
         this.button = document.createElement('button');
         this.button.type = 'button';
-        this.button.className = 'input-field frbc gap-2 relative';
+        this.button.className = 'input-field frbc gap-2 relative w-full';
         this.button.setAttribute('aria-haspopup', 'listbox');
         this.button.setAttribute('aria-expanded', 'false');
 
@@ -221,111 +221,117 @@ export class SettingsPanel {
         if (this.panelType !== 'general') return '';
         
         return `
-                <div class="settings-section card">
-                    <h3 class="settings-title">API Keys</h3>
-                    <div class="fr flex-wrap gap-2">
-                        <div class="input-group fc flex-grow">
-                            <span class="text-xs text-gray-400">OpenAI</span>
-                            <input 
-                                type="password" 
-                                id="openaiApiKey" 
-                                class="input-field" 
-                                placeholder="Enter your OpenAI API key"
-                                value="${this.settings.openaiApiKey || ''}"
-                            />
-                            <button id="saveApiKey" class="btn btn-sm">Save</button>
-                        </div>
-                        <div class="input-group fc flex-grow">
-                            <span class="text-xs text-gray-400">Gemeni</span>
-                            <input 
-                                type="password" 
-                                id="geminiApiKey" 
-                                class="input-field" 
-                                placeholder="Enter your Gemini API key"
-                                value="${this.settings.geminiApiKey || ''}"
-                            />
-                            <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
+                <div class="fr gap-2 flex-wrap">
+                
+                    <div class="settings-section card flex-grow">
+                        <h3 class="settings-title">API Keys</h3>
+                        <div class="fr flex-wrap gap-2">
+                            <div class="input-group fc flex-grow">
+                                <span class="text-xs text-gray-400">OpenAI</span>
+                                <input 
+                                    type="password" 
+                                    id="openaiApiKey" 
+                                    class="input-field" 
+                                    placeholder="Enter your OpenAI API key"
+                                    value="${this.settings.openaiApiKey || ''}"
+                                />
+                                <button id="saveApiKey" class="btn btn-sm">Save</button>
+                            </div>
+                            <div class="input-group fc flex-grow">
+                                <span class="text-xs text-gray-400">Gemeni</span>
+                                <input 
+                                    type="password" 
+                                    id="geminiApiKey" 
+                                    class="input-field" 
+                                    placeholder="Enter your Gemini API key"
+                                    value="${this.settings.geminiApiKey || ''}"
+                                />
+                                <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
+                            </div>
                         </div>
                     </div>
-                </div>
+    
+                    <div class="settings-section card flex-grow">
+                        <h3 class="settings-title">Window behavior</h3>
+                        <div class="fc gap-1">
+                            <div class="checkbox-control">
+                                <label class="checkbox-label">
+                                    <input 
+                                        type="checkbox" 
+                                        id="alwaysOnTop" 
+                                        class="checkbox-input"
+                                        ${this.settings.alwaysOnTop ? 'checked' : ''}
+                                    />
+                                    <span class="checkbox-text">Always on top</span>
+                                </label>
+                            </div>
+                            <div class="checkbox-control">
+                                <label class="checkbox-label">
+                                    <input 
+                                        type="checkbox" 
+                                        id="hideApp" 
+                                        class="checkbox-input"
+                                        ${this.settings.hideApp ? 'checked' : ''}
+                                    />
+                                    <span class="checkbox-text">Hide app from screen recording</span>
+                                </label>
+                            </div>
+        
+                            <div class="frsc gap-2">
+                                <span class="checkbox-text">Window opacity</span>
+                                <div class="opacity-control">
+                                    <input 
+                                        type="range" 
+                                        id="windowOpacity" 
+                                        class="opacity-slider" 
+                                        min="5" 
+                                        max="100" 
+                                        value="${this.settings.windowOpacity || 100}"
+                                    />
+                                    <span id="opacityValue" class="opacity-value">${this.settings.windowOpacity || 100}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-                <div class="settings-section card">
-                    <h3 class="settings-title">Window behavior</h3>
-                    <div class="checkbox-control">
-                        <label class="checkbox-label">
-                            <input 
-                                type="checkbox" 
-                                id="alwaysOnTop" 
-                                class="checkbox-input"
-                                ${this.settings.alwaysOnTop ? 'checked' : ''}
-                            />
-                            <span class="checkbox-text">Always on top</span>
-                        </label>
-                    </div>
-                    <div class="checkbox-control">
-                        <label class="checkbox-label">
-                            <input 
-                                type="checkbox" 
-                                id="hideApp" 
-                                class="checkbox-input"
-                                ${this.settings.hideApp ? 'checked' : ''}
-                            />
-                            <span class="checkbox-text">Hide app from screen recording</span>
-                        </label>
+                    <div class="settings-section card fc gap-2 flex-grow">
+                        <h3 class="settings-title">Window size on startup</h3>
+                        <div class="fr flex-wrap gap-2">
+                            <div class="fc gap-1 flex-grow">
+                                <label for="windowWidth" class="text-xs text-gray-400">Width (min 400)</label>
+                                <input 
+                                    type="number" 
+                                    id="windowWidth" 
+                                    class="input-field" 
+                                    min="400" 
+                                    value="${Math.max(400, this.settings.windowWidth || 420)}"
+                                />
+                            </div>
+                            <div class="fc gap-1 flex-grow">
+                                <label for="windowHeight" class="text-xs text-gray-400">Height (min 700)</label>
+                                <input 
+                                    type="number" 
+                                    id="windowHeight" 
+                                    class="input-field" 
+                                    min="700" 
+                                    value="${Math.max(700, this.settings.windowHeight || 780)}"
+                                />
+                            </div>
+                        </div>
+                        <button id="saveWindowSize" class="btn btn-sm">Save</button>
                     </div>
 
-                    <div class="frsc gap-2">
-                        <span class="checkbox-text">Window opacity</span>
-                        <div class="opacity-control">
-                            <input 
-                                type="range" 
-                                id="windowOpacity" 
-                                class="opacity-slider" 
-                                min="5" 
-                                max="100" 
-                                value="${this.settings.windowOpacity || 100}"
-                            />
-                            <span id="opacityValue" class="opacity-value">${this.settings.windowOpacity || 100}%</span>
-                        </div>
+                    <div class="settings-section card">
+                        <h3 class="settings-title">Config Folder</h3>
+                        <button id="openConfigFolder" class="btn frsc gap-2">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 7v10a2 2 0 002 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
+                                <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>
+                            </svg>
+                            Open Config Folder
+                        </button>
                     </div>
-                </div>
-
-                <div class="settings-section card fc gap-2">
-                    <h3 class="settings-title">Window size on startup</h3>
-                    <div class="fr flex-wrap gap-2">
-                        <div class="fc gap-1 flex-grow">
-                            <label for="windowWidth" class="text-xs text-gray-400">Width (min 400)</label>
-                            <input 
-                                type="number" 
-                                id="windowWidth" 
-                                class="input-field" 
-                                min="400" 
-                                value="${Math.max(400, this.settings.windowWidth || 420)}"
-                            />
-                        </div>
-                        <div class="fc gap-1 flex-grow">
-                            <label for="windowHeight" class="text-xs text-gray-400">Height (min 700)</label>
-                            <input 
-                                type="number" 
-                                id="windowHeight" 
-                                class="input-field" 
-                                min="700" 
-                                value="${Math.max(700, this.settings.windowHeight || 780)}"
-                            />
-                        </div>
-                    </div>
-                    <button id="saveWindowSize" class="btn btn-sm">Save</button>
-                </div>
-
-                <div class="settings-section card">
-                    <h3 class="settings-title">Config Folder</h3>
-                    <button id="openConfigFolder" class="btn fr gap-2">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
-                            <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>
-                        </svg>
-                        Open Config Folder
-                    </button>
+                    
                 </div>
         `;
     }
@@ -336,16 +342,16 @@ export class SettingsPanel {
         return `
                 <div class="settings-section card fc">
                     <h3 class="settings-title">Mode</h3>
-                    <div class="fr gap-1">
-                        <div class="fc gap-1">
+                    <div class="fr gap-1 flex-wrap">
+                        <div class="fc gap-1 flex-grow">
                             <h3 class="text-xs text-gray-400">Transcription</h3>
                             <div id="transcriptionMode" class="min-w-[100px]"></div>
                         </div>
-                        <div class="fc gap-1">
+                        <div class="fc gap-1 flex-grow">
                             <h3 class="text-xs text-gray-400">LLM</h3>
                             <div id="llmHost" class="min-w-[100px]"></div>
                         </div>
-                        <div class="fc gap-1">
+                        <div class="fc gap-1 flex-grow">
                             <h3 class="text-xs text-gray-400">Transcription type</h3>
                             <div id="streamMode" class="min-w-[100px]"></div>
                         </div>
@@ -445,16 +451,18 @@ export class SettingsPanel {
         if (this.panelType !== 'audio') return '';
         
         return `
-                <div class="settings-section card">
-                    <h3 class="settings-title">Audio input</h3>
-                    <div id="audioInputType"></div>
-                </div>
-
-                <div class="settings-section card fc" id="microphoneSection">
-                    <h3 class="settings-title">Microphone device</h3>
-                    <div class="fc gap-1">
-                        <div id="audioInputDevice"></div>
-                        <button id="refreshDevices" class="btn btn-sm">Refresh</button>
+                <div class="fr gap-2 flex-wrap">
+                    <div class="settings-section card">
+                        <h3 class="settings-title">Audio input</h3>
+                        <div id="audioInputType"></div>
+                    </div>
+    
+                    <div class="settings-section card fc flex-grow" id="microphoneSection">
+                        <h3 class="settings-title">Microphone device</h3>
+                        <div class="fc gap-1">
+                            <div id="audioInputDevice"></div>
+                            <button id="refreshDevices" class="btn btn-sm">Refresh</button>
+                        </div>
                     </div>
                 </div>
         `;

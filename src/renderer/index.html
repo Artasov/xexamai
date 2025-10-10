@@ -74,8 +74,8 @@
 
         <!-- Main content area -->
         <div id="mainContent" class="content-area fc overflow-auto">
-            <section class="overflow-auto grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="control-panel h-min min-w-[280px] card md:col-span-1">
+            <section class="overflow-auto flex flex-col md:flex-row flex-wrap gap-4">
+                <div class="control-panel h-min md:max-w-[320px] flex-grow card">
                     <div id="send-last-container" class="send-last-container">
                         <div class="label mb-2">Send the last:</div>
                         <div id="durations" class="flex gap-2 flex-wrap"></div>
@@ -98,7 +98,7 @@
                             />
                             <button
                                     id="btnSendText"
-                                    class="btn btn-primary self-start"
+                                    class="btn btn-primary self-start h-full"
                                     disabled
                             >
                                 Send
@@ -127,7 +127,7 @@
                     </div>
                 </div>
 
-                <div class="result-panel fc overflow-y-auto card md:col-span-2">
+                <div class="result-panel fc overflow-y-auto card flex-grow">
                     <div class="label mb-1">Recognized</div>
                     <div id="textOut"></div>
                     <div class="fr gap-2 mt-4 mb-1">

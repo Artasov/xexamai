@@ -61,7 +61,7 @@ button:focus-visible {
 /* Custom scrollbar styles */
 .overflow-auto {
     scrollbar-width: thin;
-    scrollbar-color: #eaeaea22 #111111;
+    scrollbar-color: #eaeaea22 #00000005;
 }
 
 .overflow-auto::-webkit-scrollbar {
@@ -69,7 +69,7 @@ button:focus-visible {
 }
 
 .overflow-auto::-webkit-scrollbar-track {
-    background: #111111;
+    background: #00000005;
     border-radius: 4px;
 }
 
@@ -88,7 +88,7 @@ button:focus-visible {
 }
 
 .overflow-auto::-webkit-scrollbar-corner {
-    background: #111111;
+    background: #00000005;
 }
 
 /* Custom dropdown scrollbars */
@@ -353,7 +353,7 @@ button:focus-visible {
 .checkbox-input {
     @apply w-4 h-4 rounded cursor-pointer;
     background: #0001;
-    border: 1px solid #ffffff06;
+    border: 1px solid #ffffff15;
     appearance: none;
     position: relative;
     transition: all 0.3s var(--ease-out);
@@ -388,41 +388,36 @@ button:focus-visible {
 
 .opacity-slider {
     @apply flex-1 h-2 rounded-lg appearance-none cursor-pointer;
-    background: #0001;
-    border: 1px solid #ffffff06;
+    background: #fff1;
+    border: 1px solid #ffffff02;
     transition: all 0.3s var(--ease-out);
 }
 
 .opacity-slider:hover {
     border-color: #ffffff15;
-    background: #0003;
+    background: #fff2;
 }
 
 .opacity-slider:focus {
     border-color: #ffffff20;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
-    background: #0004;
+    background: #fff2;
 }
 
 .opacity-slider::-webkit-slider-thumb {
     @apply appearance-none w-4 h-4 rounded-full cursor-pointer;
     background: #e5e7eb;
-    border: 2px solid #d1d5db;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+    border: 1px solid #d1d5db;
     transition: all 0.3s var(--ease-out);
 }
 
 .opacity-slider::-webkit-slider-thumb:hover {
     background: #f9fafb;
     border-color: #e5e7eb;
-    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 
 .opacity-slider::-moz-range-thumb {
     @apply w-4 h-4 rounded-full cursor-pointer border-0;
     background: #e5e7eb;
-    border: 2px solid #d1d5db;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
     transition: all 0.3s var(--ease-out);
 }
 
@@ -445,7 +440,9 @@ button:focus-visible {
 }
 
 .duration-item {
-    @apply flex items-center justify-between rounded-md gap-2 w-min;
+    @apply flex items-center justify-between rounded-md gap-2;
+    max-width: 185px;
+    width: 100%;
 }
 
 .duration-value {
@@ -771,13 +768,11 @@ body {
 
 /* Buttons */
 .btn {
-    @apply px-3 py-2 rounded-md font-medium text-white disabled:opacity-75 disabled:cursor-not-allowed;
+    @apply px-2 py-1 rounded-md font-medium text-white disabled:opacity-75 disabled:cursor-not-allowed;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-    border: 1px solid rgba(255, 255, 255, 0.03);
     position: relative;
-    transition: transform 0.2s var(--ease-out), box-shadow 0.3s var(--ease-out);
-    will-change: transform, box-shadow, opacity;
-    transform: translateZ(0);
+    transition: box-shadow 0.3s var(--ease-out);
+    will-change: box-shadow, opacity;
     overflow: hidden;
     box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
@@ -813,7 +808,6 @@ body {
 }
 
 .btn:hover {
-    transform: translateY(-1px);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1);
 }
 
@@ -826,7 +820,6 @@ body {
 }
 
 .btn:active {
-    transform: translateY(0);
     transition: transform 0.1s var(--ease-out);
 }
 
