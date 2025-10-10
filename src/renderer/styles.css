@@ -876,3 +876,13 @@ body {
 .logo-container.final-state {
     z-index: -1;
 }
+
+/* Toggle input button icon styles */
+#toggleInputIcon {
+    filter: brightness(0.9);
+    transition: filter 0.3s var(--ease-out);
+}
+
+#btnToggleInput:hover #toggleInputIcon {
+    filter: brightness(1.1);
+}

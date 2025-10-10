@@ -101,11 +101,13 @@ function removeStreamHandlers() {
 async function updateToggleButtonLabel() {
     try {
         const btn = document.getElementById('btnToggleInput') as HTMLButtonElement | null;
-        if (!btn) return;
+        const icon = document.getElementById('toggleInputIcon') as HTMLImageElement | null;
+        if (!btn || !icon) return;
         const settings = await window.api.settings.get();
         const t = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
         currentAudioInputType = t;
-        btn.textContent = t === 'microphone' ? 'MIC' : 'SYS';
+        icon.src = t === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
+        icon.alt = t === 'microphone' ? 'MIC' : 'SYS';
         btn.title = t === 'microphone' ? 'Using Microphone' : 'Using System Audio';
     } catch {}
 }

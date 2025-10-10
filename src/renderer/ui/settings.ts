@@ -452,7 +452,7 @@ export class SettingsPanel {
         
         return `
                 <div class="fr gap-2 flex-wrap">
-                    <div class="settings-section card">
+                    <div class="settings-section card min-w-[200px]">
                         <h3 class="settings-title">Audio input</h3>
                         <div id="audioInputType"></div>
                     </div>

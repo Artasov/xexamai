@@ -11,7 +11,8 @@
 <body class="bg-gray-900 text-gray-100">
 <div class="h-screen flex flex-col min-w-[330px] relative app-grid">
     <div class="rainbow" style="position: absolute; top: 20%; right: 20%; width: 500px; height: 500px"></div>
-    <div class="fccc logo-container pointer-events-none" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2">
+    <div class="fccc logo-container pointer-events-none"
+         style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2">
         <img id="main-logo" alt="xexamai"
              style="width: 70vmin"/>
     </div>
@@ -82,27 +83,33 @@
                     </div>
                     <div class="flex items-center gap-4">
                         <button id="btnRecord" class="btn" data-state="idle">Start Audio Loop</button>
-                        <button id="btnToggleInput" class="btn btn-secondary !px-1 !py-0 text-xs"
-                                title="Toggle audio input">MIC
+                        <button id="btnToggleInput"
+                                title="Toggle audio input">
+                            <img id="toggleInputIcon" src="img/icons/mic.png" alt="MIC"
+                                 class="w-5 h-5" style="filter: invert(1); opacity: 80%">
                         </button>
                         <div id="waveform-container" class="flex-1"></div>
                     </div>
-                    <div class="mt-2">
+                    <div class="fc mt-2 ">
                         <div class="label mb-2">Direct text input:</div>
-                        <div class="flex gap-2">
-                            <input
-                                    id="textInput"
-                                    placeholder="Type your question here..."
-                                    class="input-field flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-gray-100 placeholder-gray-400 resize-none"
+                        <div class="flex gap-2 items-stretch" style="height: 42px">
+                            <div class="h-full">
+                                <input
+                                        id="textInput"
+                                        placeholder="Type your question here..."
+                                        class="input-field flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-gray-100 placeholder-gray-400 resize-none"
 
-                            />
-                            <button
-                                    id="btnSendText"
-                                    class="btn btn-primary self-start h-full"
-                                    disabled
-                            >
-                                Send
-                            </button>
+                                />
+                            </div>
+                            <div class="h-full flex-grow">
+                                <button
+                                        id="btnSendText"
+                                        class="btn btn-primary self-start h-full w-full"
+                                        disabled
+                                >
+                                    Send
+                                </button>
+                            </div>
                         </div>
                     </div>
 
