@@ -861,6 +861,12 @@ body {
     filter: blur(0);
     z-index: -1;
 }
+/* Для экранов менее 600px */
+@media (max-width: 600px) {
+  #main-logo.logo-final-state {
+    opacity: 0.008;
+  }
+}
 
 /* Logo container animation */
 .logo-container {
