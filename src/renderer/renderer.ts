@@ -940,25 +940,34 @@ async function main() {
         }
     } catch {}
     
-    // Load logo
-    const logoElement = document.getElementById('logo') as HTMLImageElement;
-    if (logoElement) {
-        try {
-            // Try to load logo from brand folder
-            logoElement.src = '../../brand/logo.png';
-            logoElement.onerror = () => {
-                // Fallback: try alternative path
-                logoElement.src = 'brand/logo.png';
+    // Load logos
+    const loadLogo = (logoElement: HTMLImageElement) => {
+        if (logoElement) {
+            try {
+                // Try to load logo from brand folder
+                logoElement.src = '../../brand/logo.png';
                 logoElement.onerror = () => {
-                    // Final fallback: hide logo if not found
-                    logoElement.style.display = 'none';
+                    // Fallback: try alternative path
+                    logoElement.src = 'brand/logo.png';
+                    logoElement.onerror = () => {
+                        // Final fallback: hide logo if not found
+                        logoElement.style.display = 'none';
+                    };
                 };
-            };
-        } catch (error) {
-            console.warn('Could not load logo:', error);
-            logoElement.style.display = 'none';
+            } catch (error) {
+                console.warn('Could not load logo:', error);
+                logoElement.style.display = 'none';
+            }
         }
-    }
+    };
+
+    // Load main logo
+    const mainLogoElement = document.getElementById('main-logo') as HTMLImageElement;
+    loadLogo(mainLogoElement);
+
+    // Load header logo
+    const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement;
+    loadLogo(headerLogoElement);
 
     const {durations, durationHotkeys} = await window.api.settings.get();
     if (Array.isArray(durations) && durations.length) {
