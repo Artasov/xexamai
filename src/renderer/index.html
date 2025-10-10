@@ -9,21 +9,52 @@
     <link rel="stylesheet" href="./wide-classes.min.css"/>
 </head>
 <body class="bg-gray-900 text-gray-100">
-<div class="h-screen flex flex-col min-w-[330px]">
+<div class="h-screen flex flex-col min-w-[330px] relative app-grid">
+    <div class="rainbow" style="position: absolute; top: 20%; right: 20%; width: 500px; height: 500px"></div>
+    <div class="fccc" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2">
+        <img id="logo" alt="xexamai"
+             style="width: 70vmin"/>
+    </div>
     <!-- Custom title bar -->
-    <header class="bg-gray-800 border-b border-gray-700 flex items-center justify-between px-3 py-2 drag-region">
+    <header class="frbc px-3 py-2 drag-region app-header">
+        <style>
+            .rainbow {
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                background: conic-gradient(
+                        red, orange, yellow, green, cyan, blue, violet, red
+                );
+                filter: blur(calc((20vh + 50vw) / 1.9));
+                animation: spin 10s linear infinite;
+            }
+
+            @keyframes spin {
+                from {
+                    transform: rotate(0deg);
+                }
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
         <div class="flex items-center gap-3">
-            <img id="logo" alt="xexamai" class="w-6 h-6"/>
+            <div class="relative" style="width: 32px; height: 32px">
+                <img id="logo" alt="xexamai"
+                     style="width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2"/>
+                <div class="rainbow"
+                     style="position: absolute; top: 0; left: 0; filter: blur(25px) saturate(1.5);"></div>
+            </div>
             <h1 class="text-lg font-semibold text-gray-100">xexamai</h1>
             <div id="status" class="status-badge ready">Ready</div>
         </div>
         <div class="window-controls no-drag -mr-1">
-<!--            <button id="minimizeBtn" class="window-control-btn minimize" title="Minimize">-->
-<!--                <svg width="12" height="12" viewBox="0 0 12 12">-->
-<!--                    <rect x="2" y="5" width="8" height="1" fill="currentColor"/>-->
-<!--                </svg>-->
-<!--            </button>-->
-            <button id="closeBtn" class="window-control-btn close" title="Close">
+            <!--            <button id="minimizeBtn" class="window-control-btn minimize" title="Minimize">-->
+            <!--                <svg width="12" height="12" viewBox="0 0 12 12">-->
+            <!--                    <rect x="2" y="5" width="8" height="1" fill="currentColor"/>-->
+            <!--                </svg>-->
+            <!--            </button>-->
+            <button id="closeBtn" class="close mr-2" title="Close">
                 <svg width="12" height="12" viewBox="0 0 12 12">
                     <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/>
                 </svg>
@@ -51,7 +82,9 @@
                     </div>
                     <div class="flex items-center gap-4">
                         <button id="btnRecord" class="btn" data-state="idle">Start Audio Loop</button>
-                        <button id="btnToggleInput" class="btn btn-secondary !px-1 !py-0 text-xs" title="Toggle audio input">MIC</button>
+                        <button id="btnToggleInput" class="btn btn-secondary !px-1 !py-0 text-xs"
+                                title="Toggle audio input">MIC
+                        </button>
                         <div id="waveform-container" class="flex-1"></div>
                     </div>
                     <div class="mt-2">
@@ -72,7 +105,7 @@
                             </button>
                         </div>
                     </div>
-                    
+
                     <!-- Stream Results Section (only visible in stream mode) -->
                     <div id="streamResultsSection" class="mt-2 hidden">
                         <div class="label mb-2">Stream Results:</div>
@@ -117,7 +150,7 @@
                     <button id="settingsHotkeysTab" class="settings-tab">Hotkeys</button>
                 </div>
             </div>
-            
+
             <!-- Settings content panels -->
             <div id="settingsGeneralPanel" class="settings-panel-content w-full overflow-auto pr-1"></div>
             <div id="settingsAiPanel" class="settings-panel-content w-full overflow-auto pr-1 hidden"></div>

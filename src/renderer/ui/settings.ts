@@ -26,7 +26,10 @@ class CustomSelect {
         chevron.className = 'text-gray-400';
 
         this.list = document.createElement('div');
-        this.list.className = 'bg-gray-800 border border-gray-700 rounded shadow-lg';
+        this.list.className = 'rounded shadow-lg';
+        this.list.style.background = '#111111';
+        this.list.style.border = '1px solid #1a1a1a';
+        this.list.style.boxShadow = '0 8px 32px rgba(0,0,0,.6), 0 0 0 1px rgba(139, 92, 246, 0.1)';
         this.list.setAttribute('role', 'listbox');
         // Render as portal to body to avoid clipping and stacking issues
         this.list.style.position = 'fixed';
@@ -36,6 +39,13 @@ class CustomSelect {
         this.list.style.overflow = 'auto';
         this.list.style.zIndex = '2147483647';
         this.list.style.display = 'none';
+        
+        // Custom scrollbar styles for dropdown
+        this.list.style.scrollbarWidth = 'thin';
+        this.list.style.scrollbarColor = '#8b5cf6 #111111';
+        
+        // Add webkit scrollbar styles via CSS class
+        this.list.classList.add('custom-dropdown-scrollbar');
 
         const wrap = document.createElement('div');
         wrap.className = 'relative w-full';
@@ -60,11 +70,22 @@ class CustomSelect {
         this.list.innerHTML = '';
         this.options.forEach((opt) => {
             const item = document.createElement('div');
-            item.className = 'px-3 py-2 hover:bg-gray-700 cursor-pointer';
+            item.className = 'px-3 py-2 cursor-pointer transition-colors';
+            item.style.color = '#ffffff';
             item.textContent = opt.label;
             if (opt.title) item.title = opt.title;
             item.setAttribute('role', 'option');
             item.dataset.value = opt.value;
+            
+            // Hover effect
+            item.addEventListener('mouseenter', () => {
+                item.style.background = '#1a1a1a';
+                item.style.color = '#8b5cf6';
+            });
+            item.addEventListener('mouseleave', () => {
+                item.style.background = 'transparent';
+                item.style.color = '#ffffff';
+            });
             item.addEventListener('click', () => {
                 this.setValue(opt.value);
                 this.onChange?.(opt.value);
@@ -200,7 +221,7 @@ export class SettingsPanel {
         if (this.panelType !== 'general') return '';
         
         return `
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">API Keys</h3>
                     <div class="fr flex-wrap gap-2">
                         <div class="input-group fc flex-grow">
@@ -228,7 +249,7 @@ export class SettingsPanel {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">Window behavior</h3>
                     <div class="checkbox-control">
                         <label class="checkbox-label">
@@ -269,7 +290,7 @@ export class SettingsPanel {
                     </div>
                 </div>
 
-                <div class="settings-section fc gap-2">
+                <div class="settings-section card fc gap-2">
                     <h3 class="settings-title">Window size on startup</h3>
                     <div class="fr flex-wrap gap-2">
                         <div class="fc gap-1 flex-grow">
@@ -296,7 +317,7 @@ export class SettingsPanel {
                     <button id="saveWindowSize" class="btn btn-sm">Save</button>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">Config Folder</h3>
                     <button id="openConfigFolder" class="btn btn-secondary fr gap-2">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -313,7 +334,7 @@ export class SettingsPanel {
         if (this.panelType !== 'ai') return '';
         
         return `
-                <div class="settings-section fc">
+                <div class="settings-section card fc">
                     <h3 class="settings-title">Mode</h3>
                     <div class="fr gap-1">
                         <div class="fc gap-1">
@@ -331,7 +352,7 @@ export class SettingsPanel {
                     </div>
                 </div>
                 
-                <div class="settings-section fc">
+                <div class="settings-section card fc">
                     <h3 class="settings-title">Model</h3>
                     
                     <div class="fr gap-2 flex-wrap">
@@ -368,7 +389,7 @@ export class SettingsPanel {
                     
                 </div>
                 
-                <div class="settings-section fc">
+                <div class="settings-section card fc">
                     <h3 class="settings-title">Promt</h3>
                     
                     <div class="fr gap-2 flex-wrap">
@@ -402,7 +423,7 @@ export class SettingsPanel {
                 </div>
 
 
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">API timeouts</h3>
                     <div class="frbc gap-2">
                         <div class="fc gap-1" style="width:48%">
@@ -424,12 +445,12 @@ export class SettingsPanel {
         if (this.panelType !== 'audio') return '';
         
         return `
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">Audio input</h3>
                     <div id="audioInputType"></div>
                 </div>
 
-                <div class="settings-section fc" id="microphoneSection">
+                <div class="settings-section card fc" id="microphoneSection">
                     <h3 class="settings-title">Microphone device</h3>
                     <div class="fr gap-2">
                         <div id="audioInputDevice"></div>
@@ -443,7 +464,7 @@ export class SettingsPanel {
         if (this.panelType !== 'hotkeys') return '';
         
         return `
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">Recording durations</h3>
                     <div class="durations-control">
                         <div id="durationsList" class="durations-list"></div>
@@ -461,7 +482,7 @@ export class SettingsPanel {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">Hotkey: toggle audio input</h3>
                     <div class="fc gap-2">
                         <div class="frsc gap-2">
@@ -473,7 +494,7 @@ export class SettingsPanel {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="settings-section card">
                     <h3 class="settings-title">Hotkey: send from stream textarea</h3>
                     <div class="fc gap-2">
                         <div class="frsc gap-2">
