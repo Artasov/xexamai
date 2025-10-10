@@ -655,19 +655,27 @@ body {
     box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
 }
 
+/* Убираем подсказку с кнопки Close при фокусе */
+.window-control-btn.close:focus {
+    outline: none;
+}
+
+.window-control-btn.close:focus-visible {
+    outline: none;
+}
+
 /* Buttons */
 .btn {
     @apply px-3 py-2 rounded-md font-medium text-white disabled:opacity-75 disabled:cursor-not-allowed;
     background: linear-gradient(90deg, #ffffff07, #ffffff11);
     border: none;
-    box-shadow: 0 0 0 var(--purple-glow);
     transition: all 0.6s var(--ease-out);
-    will-change: background, box-shadow, transform;
+    will-change: transform, backdrop-filter;
+    backdrop-filter: saturate(1) blur(0);
 }
 
 .btn:hover {
-    background: var(--purple-500);
-    box-shadow: 0 6px 24px var(--purple-glow);
+    backdrop-filter: saturate(3) blur(15px);
 }
 
 .btn:active {
@@ -705,4 +713,34 @@ body {
 .h-screen {
     overflow: hidden;
     position: relative;
+}
+
+/* Logo animation styles */
+#main-logo {
+    opacity: 0;
+    transform: scale(0);
+    filter: blur(100px);
+    transition: opacity 0.8s ease-in-out, transform 0.8s ease-in-out, filter 0.8s ease-in-out, z-index 0s;
+}
+
+#main-logo.logo-fade-in {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+}
+
+#main-logo.logo-final-state {
+    opacity: 0.005;
+    transform: scale(1);
+    filter: blur(0);
+    z-index: -1;
+}
+
+/* Logo container animation */
+.logo-container {
+    transition: z-index 0s;
+}
+
+.logo-container.final-state {
+    z-index: -1;
 }

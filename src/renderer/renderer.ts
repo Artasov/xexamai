@@ -963,7 +963,13 @@ async function main() {
 
     // Load main logo
     const mainLogoElement = document.getElementById('main-logo') as HTMLImageElement;
+    const logoContainer = document.querySelector('.logo-container') as HTMLElement;
     loadLogo(mainLogoElement);
+
+    // Start logo animation sequence
+    if (mainLogoElement && logoContainer) {
+        startLogoAnimation(mainLogoElement, logoContainer);
+    }
 
     // Load header logo
     const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement;
@@ -1347,6 +1353,40 @@ async function main() {
         closeBtn.addEventListener('click', () => {
             window.api.window.close();
         });
+        
+        // Убираем фокус с кнопки Close при загрузке, чтобы не показывалась подсказка
+        closeBtn.blur();
+        
+        // Дополнительная защита: убираем фокус при получении фокуса
+        closeBtn.addEventListener('focus', () => {
+            closeBtn.blur();
+        });
+    }
+}
+
+function startLogoAnimation(logoElement: HTMLImageElement, container: HTMLElement) {
+    // Wait for logo to load, then start animation
+    const startAnimation = () => {
+        // Phase 1: Fade in (0.1 seconds)
+        setTimeout(() => {
+            logoElement.classList.add('logo-fade-in');
+        }, 100);
+
+        // Phase 2: Transition to final state (after 2.5 seconds total)
+        setTimeout(() => {
+            logoElement.classList.remove('logo-fade-in');
+            logoElement.classList.add('logo-final-state');
+            container.classList.add('final-state');
+        }, 2500);
+    };
+
+    // Check if logo is already loaded
+    if (logoElement.complete && logoElement.naturalHeight !== 0) {
+        startAnimation();
+    } else {
+        logoElement.addEventListener('load', startAnimation);
+        // Fallback: start animation even if load event doesn't fire
+        setTimeout(startAnimation, 1000);
     }
 }
 
