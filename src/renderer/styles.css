@@ -353,21 +353,15 @@ button:focus-visible {
 .checkbox-input {
     @apply w-4 h-4 rounded cursor-pointer;
     background: #0001;
-    border: 1px solid #ffffff15;
+    border: 1px solid #ffffff35;
     appearance: none;
     position: relative;
     transition: all 0.3s var(--ease-out);
 }
 
 .checkbox-input:hover:not(:checked) {
-    border-color: #ffffff15;
+    border-color: #ffffff35;
     background: #0003;
-}
-
-.checkbox-input:checked {
-    background: #8b5cf6;
-    border-color: #7c3aed;
-    box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
 }
 
 .checkbox-input:checked::after {

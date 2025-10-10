@@ -75,13 +75,13 @@
 
         <!-- Main content area -->
         <div id="mainContent" class="content-area fc overflow-auto">
-            <section class="overflow-auto flex flex-col md:flex-row flex-wrap gap-4">
+            <section class="overflow-auto flex flex-col md:flex-row gap-4">
                 <div class="control-panel h-min md:max-w-[320px] flex-grow card">
                     <div id="send-last-container" class="send-last-container">
                         <div class="label mb-2">Send the last:</div>
                         <div id="durations" class="flex gap-2 flex-wrap"></div>
                     </div>
-                    <div class="flex items-center gap-4">
+                    <div class="frsc gap-4">
                         <button id="btnRecord" class="btn" data-state="idle">Start Audio Loop</button>
                         <button id="btnToggleInput"
                                 title="Toggle audio input">
@@ -91,7 +91,6 @@
                         <div id="waveform-container" class="flex-1"></div>
                     </div>
                     <div class="fc mt-2 ">
-                        <div class="label mb-1">Direct text input:</div>
                         <div class="flex gap-2 items-stretch" style="height: 42px">
                             <div class="h-full">
                                 <input

@@ -168,6 +168,7 @@ export class SettingsPanel {
         windowOpacity: 100,
     };
     private panelType: 'general' | 'ai' | 'audio' | 'hotkeys' = 'general';
+    private initialWindowScale: number | undefined;
 
     // Custom select instances
     private csTranscriptionMode?: CustomSelect;
@@ -194,6 +195,8 @@ export class SettingsPanel {
         } catch (error) {
             console.error('Error loading settings:', error);
         }
+
+        this.initialWindowScale = this.settings.windowScale || 1.0;
 
         this.render();
         this.initCustomSelects();
@@ -307,8 +310,8 @@ export class SettingsPanel {
                                     <span id="scaleValue" class="opacity-value">${this.settings.windowScale || 1.0}x</span>
                                 </div>
                             </div>
-                            <div class="text-xs text-gray-400 mt-1">
-                                ⚠️ Изменение масштаба требует перезапуска приложения
+                            <div id="scaleRestartNote" class="text-xs text-gray-400 mt-1" style="display:none;">
+                                ⚠️ Changing the scale requires restarting the application
                             </div>
                         </div>
                     </div>
@@ -989,6 +992,7 @@ export class SettingsPanel {
 
         const scaleSlider = this.container.querySelector('#windowScale') as HTMLInputElement;
         const scaleValue = this.container.querySelector('#scaleValue');
+        const scaleRestartNote = this.container.querySelector('#scaleRestartNote') as HTMLElement | null;
 
         if (scaleSlider && scaleValue) {
             scaleSlider.addEventListener('input', async (e) => {
@@ -1000,7 +1004,10 @@ export class SettingsPanel {
                 try {
                     await window.api.settings.setWindowScale(value);
                     this.settings.windowScale = value;
-                    this.showNotification('Window scale saved. Please restart the application to apply changes.', 'success');
+                    if (scaleRestartNote) {
+                        const changed = Math.abs((this.initialWindowScale || 1.0) - value) > 1e-9;
+                        scaleRestartNote.style.display = changed ? 'block' : 'none';
+                    }
                 } catch (error) {
                     console.error('Error setting window scale:', error);
                     this.showNotification('Error saving window scale', 'error');

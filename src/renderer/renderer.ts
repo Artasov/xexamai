@@ -1055,7 +1055,7 @@ async function main() {
                     const old = btn.querySelector('.hk');
                     if (old) old.remove();
                     const label = document.createElement('span');
-                    label.className = 'hk text-xs text-gray-400';
+                    label.className = 'hk text-xs text-gray-400 font-extralight';
                     label.textContent = `Ctrl-${String(key).toUpperCase()}`;
                     btn.appendChild(label);
                 }
@@ -1234,7 +1234,7 @@ async function main() {
                             const key = (s.durationHotkeys as any)?.[sec];
                             if (key) {
                                 const label = document.createElement('span');
-                                label.className = 'hk text-xs text-gray-400';
+                                label.className = 'hk text-xs text-gray-400 font-extralight';
                                 label.textContent = `Ctrl-${String(key).toUpperCase()}`;
                                 btn.appendChild(label);
                             }
@@ -1253,7 +1253,7 @@ async function main() {
                     const key = (map as any)[sec];
                     if (key) {
                         const label = document.createElement('span');
-                        label.className = 'hk text-xs text-gray-400';
+                        label.className = 'hk text-xs text-gray-400 font-extralight';
                         label.textContent = `Ctrl-${String(key).toUpperCase()}`;
                         btn.appendChild(label);
                     }
