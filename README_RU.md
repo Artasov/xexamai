@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="brand/logo.png" alt="xexamai Logo" width="200" height="200">
+  <img src="brand/logo.png" alt="xexamai Logo" width="250" height="250">
   <h1>XEXAMAI</h1>
   <h3><strong>Ваш умный бесплатный помощник для собеседований и экзаменов</strong></h3>
   <h3>⭐ <strong>Поставьте звезду репозиторию, если он вам помог!</strong> ⭐</h3>

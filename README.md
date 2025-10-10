@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="brand/logo.png" alt="xexamai Logo" width="200" height="200">
+  <img src="brand/logo.png" alt="xexamai Logo" width="250" height="250">
   <h1>XEXAMAI</h1>
   <h3><strong>Your smart free assistant for interviews and exams</strong></h3>
   <h3>⭐ <strong>Star this repository if it helped you!</strong> ⭐</h3>
