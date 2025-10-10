@@ -319,7 +319,7 @@ export class SettingsPanel {
 
                 <div class="settings-section card">
                     <h3 class="settings-title">Config Folder</h3>
-                    <button id="openConfigFolder" class="btn btn-secondary fr gap-2">
+                    <button id="openConfigFolder" class="btn fr gap-2">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M3 7v10a2 2 0 002 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
                             <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>

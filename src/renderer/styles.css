@@ -341,24 +341,95 @@ button:focus-visible {
     @apply flex items-center gap-4;
 }
 
+/* Checkbox styles */
+.checkbox-control {
+    @apply flex items-center gap-2;
+}
+
+.checkbox-label {
+    @apply flex items-center gap-2 cursor-pointer;
+}
+
+.checkbox-input {
+    @apply w-4 h-4 rounded cursor-pointer;
+    background: #0001;
+    border: 1px solid #ffffff06;
+    appearance: none;
+    position: relative;
+    transition: all 0.3s var(--ease-out);
+}
+
+.checkbox-input:hover:not(:checked) {
+    border-color: #ffffff15;
+    background: #0003;
+}
+
+.checkbox-input:checked {
+    background: #8b5cf6;
+    border-color: #7c3aed;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+}
+
+.checkbox-input:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.checkbox-text {
+    @apply text-gray-200 text-sm;
+}
+
 .opacity-slider {
     @apply flex-1 h-2 rounded-lg appearance-none cursor-pointer;
-    background: #111111;
-    border: 1px solid #1a1a1a;
+    background: #0001;
+    border: 1px solid #ffffff06;
+    transition: all 0.3s var(--ease-out);
+}
+
+.opacity-slider:hover {
+    border-color: #ffffff15;
+    background: #0003;
+}
+
+.opacity-slider:focus {
+    border-color: #ffffff20;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+    background: #0004;
 }
 
 .opacity-slider::-webkit-slider-thumb {
     @apply appearance-none w-4 h-4 rounded-full cursor-pointer;
-    background: #8b5cf6;
-    border: 2px solid #7c3aed;
-    box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+    background: #e5e7eb;
+    border: 2px solid #d1d5db;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+    transition: all 0.3s var(--ease-out);
+}
+
+.opacity-slider::-webkit-slider-thumb:hover {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 
 .opacity-slider::-moz-range-thumb {
     @apply w-4 h-4 rounded-full cursor-pointer border-0;
-    background: #8b5cf6;
-    border: 2px solid #7c3aed;
-    box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+    background: #e5e7eb;
+    border: 2px solid #d1d5db;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+    transition: all 0.3s var(--ease-out);
+}
+
+.opacity-slider::-moz-range-thumb:hover {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 
 .opacity-value {
@@ -374,7 +445,7 @@ button:focus-visible {
 }
 
 .duration-item {
-    @apply flex items-center justify-between p-2 bg-gray-700 rounded-md gap-2 w-min;
+    @apply flex items-center justify-between rounded-md gap-2 w-min;
 }
 
 .duration-value {
@@ -383,10 +454,6 @@ button:focus-visible {
 
 .duration-input-group {
     @apply flex gap-2 min-w-[250px] w-min;
-}
-
-.btn-secondary {
-    @apply flex items-center;
 }
 
 /* Notifications */
@@ -612,7 +679,8 @@ body {
     --glass-blur: 12px;
     --ring: 0 0 0 2px var(--purple-500);
     --glow: 0 0 20px var(--purple-glow);
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* Gentler easing for smooth hover/unhover */
+    --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body {
@@ -642,19 +710,54 @@ body {
 .window-control-btn {
     background: var(--bg-elev-2);
     border: 1px solid var(--border-default);
-    transition: all 0.2s var(--ease-out);
+    transition: transform 0.2s var(--ease-out), box-shadow 0.3s var(--ease-out), background-color 0.3s var(--ease-out), border-color 0.3s var(--ease-out);
+    position: relative;
+    overflow: hidden;
+}
+
+.window-control-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.05));
+    opacity: 0;
+    transition: opacity 0.3s var(--ease-out);
+    z-index: 0; /* render above background, below content */
+    pointer-events: none;
 }
 
 .window-control-btn:hover {
     background: var(--bg-elev-1);
     border-color: var(--purple-500);
     box-shadow: var(--glow);
+    transform: translateY(-1px);
+}
+
+.window-control-btn:hover::before {
+    opacity: 1;
 }
 
 .window-control-btn.close:hover {
     background: #1a0a0a;
     border-color: #dc2626;
     box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
+}
+
+.window-control-btn.close::before {
+    /* keep red overlay defined outside :hover to avoid mid-fade color swap */
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(185, 28, 28, 0.05));
+}
+
+.window-control-btn.close:hover::before {
+    opacity: 1;
+}
+
+.window-control-btn:active {
+    transform: translateY(0);
+    transition: transform 0.1s var(--ease-out);
 }
 
 /* Убираем подсказку с кнопки Close при фокусе */
@@ -672,8 +775,9 @@ body {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
     border: 1px solid rgba(255, 255, 255, 0.03);
     position: relative;
-    transition: all 0.5s var(--ease-out);
-    will-change: transform, box-shadow;
+    transition: transform 0.2s var(--ease-out), box-shadow 0.3s var(--ease-out);
+    will-change: transform, box-shadow, opacity;
+    transform: translateZ(0);
     overflow: hidden;
     box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
@@ -685,10 +789,12 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.05));
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.08));
     opacity: 0;
-    transition: opacity 0.5s var(--ease-out);
-    z-index: -1;
+    transition: opacity 0.3s var(--ease-out);
+    will-change: opacity;
+    z-index: 0; /* render above background, below content */
+    pointer-events: none;
 }
 
 .btn::after {
@@ -698,16 +804,17 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.12) 0%, transparent 70%);
     opacity: 0;
-    transition: opacity 0.5s var(--ease-out);
-    z-index: -1;
+    transition: opacity 0.3s var(--ease-out);
+    will-change: opacity;
+    z-index: 0; /* render above background, below content */
+    pointer-events: none;
 }
 
 .btn:hover {
-    /* Убираем резкое изменение основного фона, используем только псевдоэлементы */
-    backdrop-filter: blur(10px) saturate(1.5);
-    -webkit-backdrop-filter: blur(10px) saturate(1.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1);
 }
 
 .btn:hover::before {
@@ -720,24 +827,14 @@ body {
 
 .btn:active {
     transform: translateY(0);
+    transition: transform 0.1s var(--ease-out);
 }
 
 .btn:disabled {
     background: var(--bg-elev-1);
     box-shadow: none;
     opacity: .5;
-}
-
-.btn-secondary {
-    background: var(--bg-elev-2);
-    border: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
-    transition: all 0.3s var(--ease-out);
-}
-
-.btn-secondary:hover {
-    background: var(--bg-elev-1);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
+    transform: none;
 }
 
 .btn-danger {
