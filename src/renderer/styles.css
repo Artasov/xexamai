@@ -667,15 +667,54 @@ body {
 /* Buttons */
 .btn {
     @apply px-3 py-2 rounded-md font-medium text-white disabled:opacity-75 disabled:cursor-not-allowed;
-    background: linear-gradient(90deg, #ffffff07, #ffffff11);
-    border: none;
-    transition: all 0.6s var(--ease-out);
-    will-change: transform, backdrop-filter;
-    backdrop-filter: saturate(1) blur(0);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    position: relative;
+    transition: all 0.5s var(--ease-out);
+    will-change: transform, background, box-shadow;
+    overflow: hidden;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.05));
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out);
+    z-index: -1;
+}
+
+.btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out);
+    z-index: -1;
 }
 
 .btn:hover {
-    backdrop-filter: saturate(3) blur(15px);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+    /* Дополнительный эффект для браузеров с поддержкой backdrop-filter */
+    backdrop-filter: blur(10px) saturate(1.5);
+    -webkit-backdrop-filter: blur(10px) saturate(1.5);
+}
+
+.btn:hover::before {
+    opacity: 1;
+}
+
+.btn:hover::after {
+    opacity: 1;
 }
 
 .btn:active {
