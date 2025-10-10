@@ -11,7 +11,7 @@ export function ensureWave(): { wrap: HTMLDivElement; canvas: HTMLCanvasElement 
     const wrap = document.createElement('div');
     wrap.id = 'waveWrap';
     wrap.className = 'hidden h-10 overflow-hidden flex-1 rounded-md';
-    wrap.style.background = '#111111';
+    wrap.style.background = '#0001';
     wrap.style.border = '1px solid #1a1a1a';
     wrap.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,.02)';
 

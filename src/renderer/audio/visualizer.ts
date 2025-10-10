@@ -125,7 +125,7 @@ export class AudioVisualizer {
         ctx.lineTo(width, mid);
         ctx.stroke();
 
-        ctx.fillStyle = '#60a5fa';
+        ctx.fillStyle = 'rgba(147, 51, 234, 0.7)';
         const totalBarWidth = n * (barW + gap) - gap;
         const startX = Math.max(0, (width - totalBarWidth) / 2);
 
