@@ -452,7 +452,7 @@ export class SettingsPanel {
 
                 <div class="settings-section card fc" id="microphoneSection">
                     <h3 class="settings-title">Microphone device</h3>
-                    <div class="fr gap-2">
+                    <div class="fc gap-1">
                         <div id="audioInputDevice"></div>
                         <button id="refreshDevices" class="btn btn-sm">Refresh</button>
                     </div>

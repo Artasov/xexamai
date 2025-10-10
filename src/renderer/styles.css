@@ -193,20 +193,21 @@ button:focus-visible {
 }
 
 .tab {
-    @apply px-4 py-2 text-sm font-medium text-gray-300 transition-colors relative;
+    @apply px-4 py-2 text-sm font-medium text-gray-300 relative;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
+    transition: all 0.3s var(--ease-out);
 }
 
 .tab.active {
     color: white;
-    border-bottom-color: var(--purple-500);
+    border-bottom-color: #ffffff30;
 }
 
 .tab:hover:not(.active) {
     color: var(--text-primary);
-    border-bottom-color: var(--purple-600);
+    border-bottom-color: #ffffff20;
 }
 
 /* Settings sub-tabs */
@@ -222,20 +223,21 @@ button:focus-visible {
 }
 
 .settings-tab {
-    @apply px-3 py-2 text-sm font-medium text-gray-300 transition-colors relative;
+    @apply px-3 py-2 text-sm font-medium text-gray-300 relative;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
+    transition: all 0.3s var(--ease-out);
 }
 
 .settings-tab.active {
     color: white;
-    border-bottom-color: var(--purple-500);
+    border-bottom-color: #ffffff30;
 }
 
 .settings-tab:hover:not(.active) {
     color: var(--text-primary);
-    border-bottom-color: var(--purple-600);
+    border-bottom-color: #ffffff20;
 }
 
 .settings-panel-content {
@@ -296,13 +298,13 @@ button:focus-visible {
 }
 
 .input-field:focus {
-    border-color: var(--purple-500);
-    box-shadow: var(--ring);
+    border-color: #ffffff20;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
     background: #0004;
 }
 
 .input-field:hover:not(:focus) {
-    border-color: var(--purple-600);
+    border-color: #ffffff15;
     background: #0003;
 }
 
@@ -671,7 +673,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.03);
     position: relative;
     transition: all 0.5s var(--ease-out);
-    will-change: transform, background, box-shadow;
+    will-change: transform, box-shadow;
     overflow: hidden;
     box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
@@ -703,8 +705,7 @@ body {
 }
 
 .btn:hover {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
-    /* Дополнительный эффект для браузеров с поддержкой backdrop-filter */
+    /* Убираем резкое изменение основного фона, используем только псевдоэлементы */
     backdrop-filter: blur(10px) saturate(1.5);
     -webkit-backdrop-filter: blur(10px) saturate(1.5);
 }
@@ -731,6 +732,7 @@ body {
     background: var(--bg-elev-2);
     border: none;
     box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+    transition: all 0.3s var(--ease-out);
 }
 
 .btn-secondary:hover {
@@ -742,6 +744,7 @@ body {
     background: #dc2626;
     border: none;
     box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
+    transition: all 0.3s var(--ease-out);
 }
 
 .btn-danger:hover {
