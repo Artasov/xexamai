@@ -32,6 +32,7 @@ export type AppSettings = {
     hideApp?: boolean;
     windowWidth?: number;
     windowHeight?: number;
+    windowScale?: number; // window scale factor (default: 1)
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -81,6 +82,7 @@ export const IPCChannels = {
     SetAlwaysOnTop: 'settings:set:always-on-top',
     SetHideApp: 'settings:set:hide-app',
     SetWindowSize: 'settings:set:window-size',
+    SetWindowScale: 'settings:set:window-scale',
     SetDurations: 'settings:set:durations',
     SetDurationHotkeys: 'settings:set:duration-hotkeys',
     SetToggleInputHotkey: 'settings:set:toggle-input-hotkey',

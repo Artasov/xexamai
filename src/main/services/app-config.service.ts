@@ -25,6 +25,7 @@ export interface AppConfigData {
     // window size
     windowWidth?: number;
     windowHeight?: number;
+    windowScale?: number; // window scale factor (default: 1)
     // timeouts (ms)
     apiSttTimeoutMs?: number; // OpenAI transcription API timeout
     apiLlmTimeoutMs?: number; // OpenAI chat completion timeout
@@ -414,6 +415,21 @@ export class AppConfigService {
     public getWindowHeight(): number {
         const h = this.configData.windowHeight || 780;
         return Math.max(700, h);
+    }
+
+    public setWindowScale(scale: number): void {
+        const oldScale = this.configData.windowScale;
+        const validScale = Math.max(0.5, Math.min(3.0, Math.round(scale * 10) / 10)); // Ограничиваем от 0.5 до 3.0 с шагом 0.1
+        this.configData.windowScale = validScale;
+        this.saveConfig();
+        logger.info('settings', 'Window scale changed', {
+            oldScale,
+            newScale: validScale,
+        });
+    }
+
+    public getWindowScale(): number {
+        return this.configData.windowScale || 1.0;
     }
 
     public setApiSttTimeoutMs(timeoutMs: number): void {

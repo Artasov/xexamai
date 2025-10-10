@@ -16,6 +16,7 @@ export type AppSettings = {
     hideApp?: boolean;
     windowWidth?: number;
     windowHeight?: number;
+    windowScale?: number; // window scale factor (default: 1)
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -113,6 +114,7 @@ export type AssistantAPI = {
         setAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>;
         setHideApp: (hideApp: boolean) => Promise<void>;
         setWindowSize: (size: { width: number; height: number }) => Promise<void>;
+        setWindowScale: (scale: number) => Promise<void>;
         setDurations: (durations: number[]) => Promise<void>;
         setDurationHotkeys: (map: Record<number, string>) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;

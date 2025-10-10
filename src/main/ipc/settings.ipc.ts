@@ -18,6 +18,7 @@ export function registerSettingsIpc() {
             hideApp: appConfigService.getHideApp(),
             windowWidth: config.windowWidth || 420,
             windowHeight: config.windowHeight || 780,
+            windowScale: appConfigService.getWindowScale(),
             audioInputDeviceId: config.audioInputDeviceId,
             audioInputType: config.audioInputType,
             transcriptionModel: config.transcriptionModel,
@@ -129,6 +130,10 @@ export function registerSettingsIpc() {
                 mainWindow.setSize(width, height);
             } catch {}
         }
+    });
+
+    ipcMain.handle(IPCChannels.SetWindowScale, async (_, scale: number): Promise<void> => {
+        appConfigService.setWindowScale(scale);
     });
 
     ipcMain.handle(IPCChannels.SetDurations, async (_, durations: number[]): Promise<void> => {

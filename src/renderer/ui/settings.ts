@@ -291,6 +291,25 @@ export class SettingsPanel {
                                     <span id="opacityValue" class="opacity-value">${this.settings.windowOpacity || 100}%</span>
                                 </div>
                             </div>
+                            
+                            <div class="frsc gap-2">
+                                <span class="checkbox-text">Window scale</span>
+                                <div class="opacity-control">
+                                    <input 
+                                        type="range" 
+                                        id="windowScale" 
+                                        class="opacity-slider" 
+                                        min="0.5" 
+                                        max="3.0" 
+                                        step="0.1"
+                                        value="${this.settings.windowScale || 1.0}"
+                                    />
+                                    <span id="scaleValue" class="opacity-value">${this.settings.windowScale || 1.0}x</span>
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1">
+                                ⚠️ Изменение масштаба требует перезапуска приложения
+                            </div>
                         </div>
                     </div>
 
@@ -964,6 +983,27 @@ export class SettingsPanel {
                     this.settings.windowOpacity = value;
                 } catch (error) {
                     console.error('Error setting window opacity:', error);
+                }
+            });
+        }
+
+        const scaleSlider = this.container.querySelector('#windowScale') as HTMLInputElement;
+        const scaleValue = this.container.querySelector('#scaleValue');
+
+        if (scaleSlider && scaleValue) {
+            scaleSlider.addEventListener('input', async (e) => {
+                const target = e.target as HTMLInputElement;
+                const value = parseFloat(target.value);
+                scaleValue.textContent = `${value}x`;
+                logger.info('settings', 'Window scale changed', { scale: value });
+
+                try {
+                    await window.api.settings.setWindowScale(value);
+                    this.settings.windowScale = value;
+                    this.showNotification('Window scale saved. Please restart the application to apply changes.', 'success');
+                } catch (error) {
+                    console.error('Error setting window scale:', error);
+                    this.showNotification('Error saving window scale', 'error');
                 }
             });
         }

@@ -12,8 +12,26 @@ try {
     app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer,UseDawnBackendForWebGPU');
 } catch {}
 
+// Enable high DPI support
+try {
+    app.commandLine.appendSwitch('high-dpi-support', '1');
+} catch {}
+
 loadEnv();
 initMain();
+
+// Apply window scale from settings BEFORE creating any windows
+try {
+    const {appConfigService} = require('./services/app-config.service');
+    const windowScale = appConfigService.getWindowScale();
+    if (windowScale !== 1.0) {
+        app.commandLine.appendSwitch('force-device-scale-factor', windowScale.toString());
+        const {logger} = require('./services/logger.service');
+        logger.info('app', 'Window scale applied at startup', { scale: windowScale });
+    }
+} catch (error) {
+    console.error('Failed to apply window scale:', error);
+}
 
 const isSingleInstance = app.requestSingleInstanceLock();
 if (!isSingleInstance) {
@@ -33,6 +51,7 @@ function onReady() {
         nodeVersion: process.version,
         electronVersion: process.versions.electron
     });
+    
     mainWindow = createMainWindow();
     registerSttIpc();
     registerSettingsIpc();
