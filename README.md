@@ -83,6 +83,9 @@
 - Adjust transparency for maximum stealth
 - Practice before important events
 
+
+## Support the project on https://pump.fun/coin/D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG or contact with me for other creds
+
 ## How to Use Locally
 
 The examples below are implemented and tested on `Windows 11`. Steps may differ on other systems.
