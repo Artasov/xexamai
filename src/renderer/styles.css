@@ -544,8 +544,10 @@ body {
 
 /* Code */
 #answerOut code {
-    @apply bg-gray-800 text-gray-100 px-1.5 py-0.5 rounded text-sm font-mono border border-gray-700;
+    @apply text-gray-100 px-1.5 py-0.5 rounded text-sm font-mono;
     font-size: calc(var(--answer-font-size, 14px) * 0.9);
+    border: 1px solid #ffffff0c;
+    background-color: #ffffff0c;
 }
 
 #answerOut pre {
