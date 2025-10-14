@@ -50,7 +50,7 @@
   "build": {
     "appId": "com.xexamai.app",
     "productName": "xexamai",
-    "icon": "brand/logo.png",
+    "icon": "brand/logo_white.png",
     "directories": {
       "output": "dist"
     },
@@ -88,7 +88,7 @@
           ]
         }
       ],
-      "icon": "brand/logo.png",
+      "icon": "brand/logo_white.png",
       "category": "public.app-category.productivity",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -110,7 +110,7 @@
           ]
         }
       ],
-      "icon": "brand/logo.png",
+      "icon": "brand/logo_white.png",
       "category": "Office"
     },
     "portable": {

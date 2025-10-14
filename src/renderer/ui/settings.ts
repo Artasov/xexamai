@@ -613,7 +613,7 @@ export class SettingsPanel {
                     placeholder="Key"
                     value="${(hotkeys as any)[duration] ? String((hotkeys as any)[duration]).toUpperCase() : ''}"
                     style="width:60px;text-transform:uppercase;"
-                    title="Укажите символ для Ctrl-<ключ>"
+                    title="Specify a character for Ctrl-<key>"
                 />
                 <button class="btn btn-sm save-hotkey" data-duration="${duration}">Save</button>
                 <button class="btn btn-sm btn-danger remove-duration !px-1 !py-1" data-duration="${duration}">
@@ -682,13 +682,13 @@ export class SettingsPanel {
         const lwmEl = this.container.querySelector('#localWhisperModel') as HTMLElement | null;
         if (lwmEl) {
             const opts: CustomSelectOption[] = [
-                { value: 'tiny', label: 'Tiny (~39 MB) - Быстрая, но менее точная' },
-                { value: 'base', label: 'Base (~74 MB) - Баланс скорости и точности' },
-                { value: 'small', label: 'Small (~244 MB) - Хорошая точность' },
-                { value: 'medium', label: 'Medium (~769 MB) - Высокая точность' },
-                { value: 'large', label: 'Large (~1550 MB) - Очень высокая точность' },
-                { value: 'large-v2', label: 'Large V2 (~1550 MB) - Улучшенная версия Large' },
-                { value: 'large-v3', label: 'Large V3 (~1550 MB) - Последняя версия Large' },
+                { value: 'tiny', label: 'Tiny (~39 MB) - Fast, less accurate' },
+                { value: 'base', label: 'Base (~74 MB) - Balanced speed and accuracy' },
+                { value: 'small', label: 'Small (~244 MB) - Good accuracy' },
+                { value: 'medium', label: 'Medium (~769 MB) - High accuracy' },
+                { value: 'large', label: 'Large (~1550 MB) - Very high accuracy' },
+                { value: 'large-v2', label: 'Large V2 (~1550 MB) - Improved version of Large' },
+                { value: 'large-v3', label: 'Large V3 (~1550 MB) - Latest version of Large' },
             ];
             this.csLocalWhisperModel = new CustomSelect(
                 lwmEl,
@@ -712,8 +712,8 @@ export class SettingsPanel {
         const ldevEl = this.container.querySelector('#localDevice') as HTMLElement | null;
         if (ldevEl) {
             const opts: CustomSelectOption[] = [
-                { value: 'cpu', label: 'CPU - Стабильная работа, медленнее' },
-                { value: 'gpu', label: 'GPU - Быстрее, требует CUDA/OpenCL' },
+                { value: 'cpu', label: 'CPU - Stable, slower' },
+                { value: 'gpu', label: 'GPU - Faster, requires CUDA/OpenCL' },
             ];
             this.csLocalDevice = new CustomSelect(
                 ldevEl,

@@ -551,7 +551,7 @@ body {
 }
 
 #answerOut pre {
-    @apply bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4;
+    @apply rounded-lg p-4 mb-4;
     font-size: calc(var(--answer-font-size, 14px) * 0.9);
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -560,6 +560,8 @@ body {
     max-height: none;
     min-height: auto;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+    border: 1px solid #ffffff0c;
+    background-color: #ffffff0c;
 }
 
 #answerOut pre code {

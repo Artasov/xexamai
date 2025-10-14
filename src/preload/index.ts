@@ -24,7 +24,7 @@ export const api: AssistantAPI = {
                     console.warn('[preload.processAudio] empty arrayBuffer, skip invoke');
                 } catch {
                 }
-                return {ok: false, error: 'Пустое аудио'} as AssistantResponse;
+                return {ok: false, error: 'Empty audio'} as AssistantResponse;
             }
             const buffer = Buffer.from(new Uint8Array(args.arrayBuffer));
             try {
@@ -39,7 +39,7 @@ export const api: AssistantAPI = {
         },
         processAudioStream: async (args): Promise<AssistantResponse> => {
             if (!(args.arrayBuffer instanceof ArrayBuffer) || args.arrayBuffer.byteLength === 0) {
-                return {ok: false, error: 'Пустое аудио'} as AssistantResponse;
+                return {ok: false, error: 'Empty audio'} as AssistantResponse;
             }
             const buffer = Buffer.from(new Uint8Array(args.arrayBuffer));
             return ipcRenderer.invoke(IPCChannels.AssistantProcessStream, {
@@ -51,7 +51,7 @@ export const api: AssistantAPI = {
         },
         transcribeOnly: async (args): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
             if (!(args.arrayBuffer instanceof ArrayBuffer) || args.arrayBuffer.byteLength === 0) {
-                return {ok: false, error: 'Пустое аудио'};
+                return {ok: false, error: 'Empty audio'};
             }
             const buffer = Buffer.from(new Uint8Array(args.arrayBuffer));
             return ipcRenderer.invoke(IPCChannels.AssistantTranscribeOnly, {

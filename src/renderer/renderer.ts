@@ -947,10 +947,10 @@ async function main() {
         if (logoElement) {
             try {
                 // Try to load logo from brand folder
-                logoElement.src = '../../brand/logo.png';
+                logoElement.src = '../../brand/logo_white.png';
                 logoElement.onerror = () => {
                     // Fallback: try alternative path
-                    logoElement.src = 'brand/logo.png';
+                    logoElement.src = 'brand/logo_white.png';
                     logoElement.onerror = () => {
                         // Final fallback: hide logo if not found
                         logoElement.style.display = 'none';

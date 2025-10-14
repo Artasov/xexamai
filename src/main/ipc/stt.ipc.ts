@@ -27,7 +27,7 @@ export function registerSttIpc() {
         
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
-                throw new Error('Некорректный пакет аудио');
+                throw new Error('Invalid audio payload');
             }
             const raw = (payload as any).audio;
             let audio: Buffer | null = null;
@@ -62,14 +62,14 @@ export function registerSttIpc() {
                     console.warn('[main.assistant] empty or invalid buffer after convert. rawType:', typeof raw);
                 } catch {
                 }
-                throw new Error('Пустое аудио');
+                throw new Error('Empty audio');
             }
             if (typeof payload.mime !== 'string' || payload.mime.length === 0) {
-                throw new Error('Не указан MIME тип');
+                throw new Error('MIME type is not specified');
             }
             const MAX_BYTES = 25 * 1024 * 1024;
             if (audio.length > MAX_BYTES) {
-                throw new Error('Аудио слишком большое (>25MB)');
+                throw new Error('Audio is too large (>25MB)');
             }
             const filename = payload.filename || 'lastN.webm';
             logger.info('stt', 'Starting audio processing', { 
@@ -103,7 +103,7 @@ export function registerSttIpc() {
         
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
-                throw new Error('Некорректный пакет аудио');
+                throw new Error('Invalid audio payload');
             }
             const raw = (payload as any).audio;
             let audio: Buffer | null = null;
@@ -128,9 +128,9 @@ export function registerSttIpc() {
                 } catch {
                 }
             }
-            if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Пустое аудио');
+            if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Empty audio');
             const MAX_BYTES = 25 * 1024 * 1024;
-            if (audio.length > MAX_BYTES) throw new Error('Аудио слишком большое (>25MB)');
+            if (audio.length > MAX_BYTES) throw new Error('Audio is too large (>25MB)');
             const filename = payload.filename || 'lastN.webm';
             const requestId = payload.requestId || 'default';
 
@@ -199,7 +199,7 @@ export function registerSttIpc() {
         
         try {
             if (!payload || !(payload as any).audio || !payload.mime) {
-                throw new Error('Некорректный пакет аудио');
+                throw new Error('Invalid audio payload');
             }
             const raw = (payload as any).audio;
             let audio: Buffer | null = null;
@@ -224,9 +224,9 @@ export function registerSttIpc() {
                 } catch {
                 }
             }
-            if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Пустое аудио');
+            if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Empty audio');
             const MAX_BYTES = 25 * 1024 * 1024;
-            if (audio.length > MAX_BYTES) throw new Error('Аудио слишком большое (>25MB)');
+            if (audio.length > MAX_BYTES) throw new Error('Audio is too large (>25MB)');
             const filename = payload.filename || 'lastN.webm';
 
             logger.info('stt', 'Starting transcription', { 

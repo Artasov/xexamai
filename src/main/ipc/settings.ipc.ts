@@ -22,7 +22,7 @@ export function registerSettingsIpc() {
             audioInputDeviceId: config.audioInputDeviceId,
             audioInputType: config.audioInputType,
             transcriptionModel: config.transcriptionModel,
-            transcriptionPrompt: config.transcriptionPrompt !== undefined ? config.transcriptionPrompt : 'This is a technical interview conducted in Russian. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
+            transcriptionPrompt: config.transcriptionPrompt !== undefined ? config.transcriptionPrompt : 'This is a technical interview conducted in English. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
             llmModel: config.llmModel,
             llmPrompt: config.llmPrompt !== undefined ? config.llmPrompt : DEFAULT_LLM_PROMPT,
             transcriptionMode: config.transcriptionMode || DefaultSettings.transcriptionMode,
