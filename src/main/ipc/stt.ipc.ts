@@ -1,17 +1,21 @@
-import {ipcMain} from 'electron';
+import {desktopCapturer, ipcMain, screen} from 'electron';
 import {
     AskChatRequest,
     AssistantResponse,
     IPCChannels,
     SttProcessRequest,
     TranscribeOnlyRequest,
-    StopStreamRequest
+    StopStreamRequest,
+    ScreenProcessRequest,
+    ScreenProcessResponse,
+    ScreenCaptureResponse
 } from '../shared/types';
 import {
     askChatWithText,
     processAudioToAnswer,
     processAudioToAnswerStream,
-    transcribeAudioOnly
+    transcribeAudioOnly,
+    processScreenCapture
 } from '../services/assistant.service';
 import {logger} from '../services/logger.service';
 
@@ -315,6 +319,67 @@ export function registerSttIpc() {
             // Не шлём принудительно Done тут, чтобы не перетирать UI.
         } finally {
             // keep for a bit until stream loop exits; cleanup in handlers
+        }
+    });
+
+    ipcMain.handle(IPCChannels.ScreenCapture, async (): Promise<ScreenCaptureResponse> => {
+        try {
+            const sources = await desktopCapturer.getSources({
+                types: ['screen'],
+                thumbnailSize: { width: 1920, height: 1080 },
+            });
+
+            if (!sources.length) {
+                throw new Error('No screen sources available');
+            }
+
+            let target = sources[0];
+            try {
+                const primary = screen.getPrimaryDisplay?.();
+                if (primary) {
+                    const primaryId = String(primary.id);
+                    const match = sources.find((src) => src.display_id === primaryId);
+                    if (match) target = match;
+                }
+            } catch {}
+
+            if (!target || target.thumbnail.isEmpty()) {
+                throw new Error('Failed to capture screen thumbnail');
+            }
+
+            const size = target.thumbnail.getSize();
+            const png = target.thumbnail.toPNG();
+
+            return {
+                ok: true,
+                base64: png.toString('base64'),
+                width: size.width,
+                height: size.height,
+                mime: 'image/png',
+            };
+        } catch (error: any) {
+            const message = error?.message || String(error);
+            logger.error('screen', 'Screen capture failed', { error: message });
+            return { ok: false, error: message };
+        }
+    });
+
+    ipcMain.handle(IPCChannels.ScreenProcess, async (_event, payload: ScreenProcessRequest): Promise<ScreenProcessResponse> => {
+        try {
+            if (!payload || !payload.imageBase64) {
+                throw new Error('Empty screenshot payload');
+            }
+            const buffer = Buffer.from(payload.imageBase64, 'base64');
+            const mime = payload.mime && typeof payload.mime === 'string' ? payload.mime : 'image/png';
+            const answer = await processScreenCapture(buffer, mime);
+            logger.info('screen', 'Screen processing completed', {
+                answerLength: answer?.length || 0,
+            });
+            return { ok: true, answer };
+        } catch (error: any) {
+            const message = error?.message || String(error);
+            logger.error('screen', 'Screen processing failed', { error: message });
+            return { ok: false, error: message };
         }
     });
 }

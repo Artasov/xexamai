@@ -6,6 +6,8 @@ export type LlmHost = 'api' | 'local';
 
 export type LocalDevice = 'cpu' | 'gpu';
 
+export type ScreenProcessingProvider = 'openai' | 'google';
+
 export type AppSettings = {
     durations: number[]; // seconds
     durationHotkeys?: Record<number, string>;
@@ -29,10 +31,13 @@ export type AppSettings = {
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
+    screenProcessingTimeoutMs?: number;
     // New Gemini settings
     geminiApiKey?: string;
     streamMode?: 'base' | 'stream';
     streamSendHotkey?: string;
+    screenProcessingModel?: ScreenProcessingProvider;
+    screenProcessingPrompt?: string;
 };
 
 export type AssistantResponse = {
@@ -65,6 +70,13 @@ export type AskChatRequest = {
 
 export type StopStreamRequest = {
     requestId?: string;
+};
+
+export type ScreenProcessRequest = {
+    imageBase64: string;
+    mime: string;
+    width?: number;
+    height?: number;
 };
 
 export type AudioDevice = {
@@ -163,6 +175,9 @@ export type AssistantAPI = {
         setGeminiApiKey: (key: string) => Promise<void>;
         setStreamMode: (mode: 'base' | 'stream') => Promise<void>;
         setStreamSendHotkey: (key: string) => Promise<void>;
+        setScreenProcessingModel: (provider: ScreenProcessingProvider) => Promise<void>;
+        setScreenProcessingPrompt: (prompt: string) => Promise<void>;
+        setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
     };
     hotkeys: {
         onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;
@@ -177,6 +192,10 @@ export type AssistantAPI = {
     loopback: {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
+    };
+    screen: {
+        capture: () => Promise<{ base64: string; width: number; height: number; mime: string }>;
+        process: (payload: ScreenProcessRequest) => Promise<{ ok: boolean; answer?: string; error?: string }>;
     };
     holder: {
         getStatus: (options?: { refreshBalance?: boolean }) => Promise<HolderStatus>;

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import dotenv from 'dotenv';
 import {RetryConfig} from './retry.service';
 import {appConfigService} from './app-config.service';
-import {TranscriptionMode, WhisperModel, LocalDevice, DEFAULT_LLM_PROMPT} from '../shared/types';
+import {TranscriptionMode, WhisperModel, LocalDevice, DEFAULT_LLM_PROMPT, ScreenProcessingProvider, DEFAULT_SCREEN_PROMPT} from '../shared/types';
 
 export type AppConfig = {
     openaiApiKey: string | undefined;
@@ -19,6 +19,9 @@ export type AppConfig = {
     apiSttTimeoutMs: number;
     apiLlmTimeoutMs: number;
     geminiApiKey: string | undefined;
+    screenProcessingModel: ScreenProcessingProvider;
+    screenProcessingPrompt: string;
+    screenProcessingTimeoutMs: number;
 };
 
 
@@ -56,9 +59,11 @@ export function getConfig(): AppConfig {
         apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),
         apiLlmTimeoutMs: appConfigService.getApiLlmTimeoutMs(),
         geminiApiKey: userConfig.geminiApiKey || process.env.GEMINI_API_KEY,
+        screenProcessingModel: appConfigService.getScreenProcessingModel(),
+        screenProcessingPrompt: appConfigService.getScreenProcessingPrompt() ?? DEFAULT_SCREEN_PROMPT,
+        screenProcessingTimeoutMs: appConfigService.getScreenProcessingTimeoutMs(),
     };
 }
 
 export function updateApiKeyFromSettings(apiKey?: string): void {
 }
-

@@ -4,6 +4,7 @@ import {withRetry} from '../retry.service';
 import {DefaultTimeoutConfig} from '../timeout.config';
 import {logger} from '../logger.service';
 import {GoogleGenAI} from '@google/genai';
+import {DEFAULT_SCREEN_PROMPT} from '../../shared/types';
 
 let client: OpenAI | null = null;
 
@@ -41,6 +42,9 @@ function isGeminiModel(model?: string): boolean {
 }
 
 const LOCAL_LLM_TIMEOUT_MS = 600000; // 600s only for local LLM
+const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
+const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
+const SCREEN_SYSTEM_PROMPT = 'You analyze screenshots to assist with technical interviews. Follow the user\'s instructions exactly and keep responses concise.';
 
 async function askChatGemini(prompt: string): Promise<string> {
     const cfg = getConfig();
@@ -246,6 +250,127 @@ async function askChatStreamLocal(
     } finally {
         logger.info('gpt-oss', 'Local chat stream completed', {model: cfg.chatModel});
     }
+}
+
+async function processScreenImageOpenAI(image: Buffer, mime: string, prompt: string): Promise<string> {
+    const cfg = getConfig();
+    if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
+
+    const imageBase64 = image.toString('base64');
+    const imageUrl = `data:${mime || 'image/png'};base64,${imageBase64}`;
+
+    const userPrompt = (prompt && prompt.trim().length > 0 ? prompt.trim() : DEFAULT_SCREEN_PROMPT) + '\n\nScreenshot attached below. Respond according to the instructions.';
+
+    logger.info('chatgpt', 'Starting OpenAI screen analysis', {
+        model: SCREEN_OPENAI_MODEL,
+        imageBytes: image.length,
+        mime,
+    });
+
+    const completion = await getClient().chat.completions.create({
+        model: SCREEN_OPENAI_MODEL,
+        messages: [
+            {
+                role: 'system',
+                content: SCREEN_SYSTEM_PROMPT,
+            },
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: userPrompt },
+                    { type: 'image_url', image_url: { url: imageUrl } as any },
+                ],
+            },
+        ],
+        temperature: 0.2,
+        max_tokens: 900,
+    });
+
+    const msg = completion.choices?.[0]?.message;
+    let answer = '';
+    const content = msg?.content as unknown;
+    if (typeof content === 'string') {
+        answer = content;
+    } else if (Array.isArray(content)) {
+        answer = (content as Array<any>).map((part: any) => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part.text === 'string') return part.text;
+            if (part && typeof part.content === 'string') return part.content;
+            if (part && typeof part.value === 'string') return part.value;
+            return '';
+        }).join('');
+    }
+
+    logger.info('chatgpt', 'OpenAI screen analysis completed', {
+        responseLength: answer?.length || 0,
+        model: SCREEN_OPENAI_MODEL,
+    });
+
+    return (answer || '').trim();
+}
+
+async function processScreenImageGoogle(image: Buffer, mime: string, prompt: string): Promise<string> {
+    const cfg = getConfig();
+    if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+
+    const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+    const inlineData = image.toString('base64');
+    const userPrompt = prompt && prompt.trim().length > 0 ? prompt.trim() : DEFAULT_SCREEN_PROMPT;
+
+    logger.info('gemini', 'Starting Gemini screen analysis', {
+        model: SCREEN_GEMINI_MODEL,
+        imageBytes: image.length,
+        mime,
+    });
+
+    const response = await ai.models.generateContent({
+        model: SCREEN_GEMINI_MODEL,
+        contents: [
+            {
+                role: 'user',
+                parts: [
+                    { text: `${userPrompt}\n\nScreenshot attached below.` },
+                    { inlineData: { mimeType: mime || 'image/png', data: inlineData } },
+                ],
+            },
+        ],
+        config: {
+            temperature: 0.2,
+            systemInstruction: SCREEN_SYSTEM_PROMPT,
+        },
+    });
+
+    const answer = (response.text || '').trim();
+
+    logger.info('gemini', 'Gemini screen analysis completed', {
+        responseLength: answer.length,
+        model: SCREEN_GEMINI_MODEL,
+    });
+
+    return answer;
+}
+
+export async function processScreenImage(image: Buffer, mime: string): Promise<string> {
+    const cfg = getConfig();
+    const prompt = (cfg.screenProcessingPrompt || DEFAULT_SCREEN_PROMPT).trim() || DEFAULT_SCREEN_PROMPT;
+    const provider = cfg.screenProcessingModel || 'openai';
+    const timeoutMs = cfg.screenProcessingTimeoutMs || cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs;
+
+    if (provider === 'google') {
+        return withRetry(
+            () => processScreenImageGoogle(image, mime, prompt),
+            cfg.retryConfig,
+            'Gemini screen processing',
+            timeoutMs
+        );
+    }
+
+    return withRetry(
+        () => processScreenImageOpenAI(image, mime, prompt),
+        cfg.retryConfig,
+        'OpenAI screen processing',
+        timeoutMs
+    );
 }
 
 export async function askChat(prompt: string): Promise<string> {

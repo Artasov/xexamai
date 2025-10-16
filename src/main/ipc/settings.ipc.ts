@@ -34,6 +34,9 @@ export function registerSettingsIpc() {
             geminiApiKey: config.geminiApiKey,
             streamMode: config.streamMode || DefaultSettings.streamMode,
             streamSendHotkey: config.streamSendHotkey || DefaultSettings.streamSendHotkey,
+            screenProcessingModel: appConfigService.getScreenProcessingModel(),
+            screenProcessingPrompt: appConfigService.getScreenProcessingPrompt(),
+            screenProcessingTimeoutMs: appConfigService.getScreenProcessingTimeoutMs(),
         };
     });
 
@@ -226,5 +229,16 @@ export function registerSettingsIpc() {
     ipcMain.handle(IPCChannels.SetStreamSendHotkey, async (_, key: string): Promise<void> => {
         appConfigService.setStreamSendHotkey(key);
     });
-}
 
+    ipcMain.handle(IPCChannels.SetScreenProcessingModel, async (_event, provider: 'openai' | 'google'): Promise<void> => {
+        appConfigService.setScreenProcessingModel(provider);
+    });
+
+    ipcMain.handle(IPCChannels.SetScreenProcessingPrompt, async (_event, prompt: string): Promise<void> => {
+        appConfigService.setScreenProcessingPrompt(prompt);
+    });
+
+    ipcMain.handle(IPCChannels.SetScreenProcessingTimeoutMs, async (_event, timeoutMs: number): Promise<void> => {
+        appConfigService.setScreenProcessingTimeoutMs(timeoutMs);
+    });
+}

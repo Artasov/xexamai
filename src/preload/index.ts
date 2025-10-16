@@ -206,10 +206,28 @@ export const api: AssistantAPI = {
             }
         },
         openConfigFolder: () => ipcRenderer.invoke(IPCChannels.OpenConfigFolder),
-        // New Gemini settings
+        // New Gemini + screen settings
         setGeminiApiKey: (key: string) => ipcRenderer.invoke(IPCChannels.SetGeminiApiKey, key),
         setStreamMode: (mode: 'base' | 'stream') => ipcRenderer.invoke(IPCChannels.SetStreamMode, mode),
         setStreamSendHotkey: (key: string) => ipcRenderer.invoke(IPCChannels.SetStreamSendHotkey, key),
+        setScreenProcessingModel: (provider: 'openai' | 'google') => ipcRenderer.invoke(IPCChannels.SetScreenProcessingModel, provider),
+        setScreenProcessingPrompt: (prompt: string) => ipcRenderer.invoke(IPCChannels.SetScreenProcessingPrompt, prompt),
+        setScreenProcessingTimeoutMs: (timeoutMs: number) => ipcRenderer.invoke(IPCChannels.SetScreenProcessingTimeoutMs, timeoutMs),
+    },
+    screen: {
+        capture: async () => {
+            const result = await ipcRenderer.invoke(IPCChannels.ScreenCapture);
+            if (!result || !result.ok || !result.base64) {
+                throw new Error(result?.error || 'Screen capture failed');
+            }
+            return {
+                base64: result.base64,
+                width: result.width || 0,
+                height: result.height || 0,
+                mime: result.mime || 'image/png',
+            };
+        },
+        process: (payload) => ipcRenderer.invoke(IPCChannels.ScreenProcess, payload),
     },
     hotkeys: {
         onDuration: (cb) => {

@@ -1,5 +1,5 @@
 import {transcribeAudio} from './ai/transcription.client';
-import {askChat, askChatStream} from './ai/llm.client';
+import {askChat, askChatStream, processScreenImage} from './ai/llm.client';
 import {logger} from './logger.service';
 
 export type AssistantResult = {
@@ -107,5 +107,23 @@ export async function askChatWithText(
     }
     await askChatStream(text, onDelta, onDone, options);
     logger.info('assistant', 'Chat with text completed');
+}
+
+export async function processScreenCapture(
+    image: Buffer,
+    mime: string
+): Promise<string> {
+    logger.info('assistant', 'Processing screen capture', {
+        imageBytes: image?.length || 0,
+        mime,
+    });
+
+    const answer = await processScreenImage(image, mime);
+
+    logger.info('assistant', 'Screen capture processed', {
+        answerLength: answer?.length || 0,
+    });
+
+    return answer;
 }
 

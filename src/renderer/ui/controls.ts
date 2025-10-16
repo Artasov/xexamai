@@ -13,6 +13,7 @@ export function updateButtonsState() {
     const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
     const btnRecord = document.getElementById('btnRecord') as HTMLButtonElement | null;
     const btnSendText = document.getElementById('btnSendText') as HTMLButtonElement | null;
+    const btnScreenshot = document.getElementById('btnScreenshot') as HTMLButtonElement | null;
     const sendLastContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
     const btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
 
@@ -47,6 +48,16 @@ export function updateButtonsState() {
         } else {
             btnSendText.disabled = false;
             btnSendText.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    }
+
+    if (btnScreenshot) {
+        if (state.isProcessing) {
+            btnScreenshot.disabled = true;
+            btnScreenshot.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            btnScreenshot.disabled = false;
+            btnScreenshot.classList.remove('opacity-50', 'cursor-not-allowed');
         }
     }
 

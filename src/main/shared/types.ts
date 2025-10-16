@@ -22,6 +22,8 @@ export type LlmHost = 'api' | 'local';
 
 export type LocalDevice = 'cpu' | 'gpu';
 
+export type ScreenProcessingProvider = 'openai' | 'google';
+
 export type AppSettings = {
     durations: number[]; // seconds
     durationHotkeys?: Record<number, string>; // digit or letter key, combined with Ctrl
@@ -45,13 +47,17 @@ export type AppSettings = {
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
+    screenProcessingTimeoutMs?: number;
     // New Gemini settings
     geminiApiKey?: string;
     streamMode?: 'base' | 'stream';
     streamSendHotkey?: string; // single letter/digit for Ctrl-<key>
+    screenProcessingModel?: ScreenProcessingProvider;
+    screenProcessingPrompt?: string;
 };
 
 export const DEFAULT_LLM_PROMPT = 'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
+export const DEFAULT_SCREEN_PROMPT = 'You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate\'s environment, tools, or work. Focus on actionable insights.';
 
 export const DefaultSettings: AppSettings = {
     durations: [5, 10, 15, 20, 30, 60],
@@ -64,6 +70,9 @@ export const DefaultSettings: AppSettings = {
     localDevice: 'cpu',
     streamMode: 'base',
     streamSendHotkey: '~',
+    screenProcessingModel: 'openai',
+    screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
+    screenProcessingTimeoutMs: 50000,
 };
 
 export const IPCChannels = {
@@ -111,6 +120,11 @@ export const IPCChannels = {
     HolderCreateChallenge: 'holder:create-challenge',
     HolderVerifySignature: 'holder:verify-signature',
     HolderReset: 'holder:reset',
+    SetScreenProcessingModel: 'settings:set:screen-processing-model',
+    SetScreenProcessingPrompt: 'settings:set:screen-processing-prompt',
+    ScreenProcess: 'screen:process',
+    ScreenCapture: 'screen:capture',
+    SetScreenProcessingTimeoutMs: 'settings:set:screen-processing-timeout-ms',
 } as const;
 
 export type ProcessAudioArgs = {
@@ -141,6 +155,28 @@ export type AskChatRequest = {
 
 export type StopStreamRequest = {
     requestId?: string;
+};
+
+export type ScreenProcessRequest = {
+    imageBase64: string;
+    mime: string;
+    width?: number;
+    height?: number;
+};
+
+export type ScreenProcessResponse = {
+    ok: boolean;
+    answer?: string;
+    error?: string;
+};
+
+export type ScreenCaptureResponse = {
+    ok: boolean;
+    base64?: string;
+    width?: number;
+    height?: number;
+    mime?: string;
+    error?: string;
 };
 
 export type AudioDevice = {
@@ -232,6 +268,9 @@ export type AssistantAPI = {
         setApiLlmTimeoutMs: (timeoutMs: number) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
+        setScreenProcessingModel: (provider: ScreenProcessingProvider) => Promise<void>;
+        setScreenProcessingPrompt: (prompt: string) => Promise<void>;
+        setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
     };
     window: {
         minimize: () => Promise<void>;
@@ -241,6 +280,10 @@ export type AssistantAPI = {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
     };
+    screen: {
+        capture: () => Promise<{ base64: string; width: number; height: number; mime: string }>;
+        process: (payload: ScreenProcessRequest) => Promise<ScreenProcessResponse>;
+    };
     holder: {
         getStatus: (options?: { refreshBalance?: boolean }) => Promise<HolderStatus>;
         createChallenge: () => Promise<HolderStatus>;
@@ -249,6 +292,3 @@ export type AssistantAPI = {
     };
     log: (entry: LogEntry) => Promise<void>;
 };
-
-
-

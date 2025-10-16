@@ -167,6 +167,7 @@ export class SettingsPanel {
     private settings: AppSettings = {
         durations: [5, 10, 15, 20, 30, 60],
         windowOpacity: 100,
+        screenProcessingTimeoutMs: 50000,
     };
     private panelType: 'general' | 'ai' | 'audio' | 'hotkeys' = 'general';
     private initialWindowScale: number | undefined;
@@ -182,6 +183,7 @@ export class SettingsPanel {
     private csAudioInputType?: CustomSelect;
     private csAudioInputDevice?: CustomSelect;
     private csStreamMode?: CustomSelect;
+    private csScreenProcessingModel?: CustomSelect;
 
     constructor(container: HTMLElement, options: SettingsPanelOptions = {}) {
         this.container = container;
@@ -193,6 +195,9 @@ export class SettingsPanel {
     private async init() {
         try {
             this.settings = await window.api.settings.get();
+            if (!(this.settings as any).screenProcessingTimeoutMs) {
+                (this.settings as any).screenProcessingTimeoutMs = 50000;
+            }
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -418,7 +423,7 @@ export class SettingsPanel {
                                 <div id="localDevice"></div>
                             </div>
                         </div>
-                        
+
                         <div class="fr gap-1">
                             <div class="fc gap-1" id="apiLlmSection">
                                 <div class="fc gap-1">
@@ -431,12 +436,17 @@ export class SettingsPanel {
                                 <div id="localLlmModel"></div>
                             </div>
                         </div>
+
+                        <div class="fc gap-1 flex-grow min-w-[200px]">
+                            <h3 class="text-xs text-gray-400">Screen processing</h3>
+                            <div id="screenProcessingModel"></div>
+                        </div>
                     </div>
                     
                 </div>
                 
                 <div class="settings-section card fc">
-                    <h3 class="settings-title">Promt</h3>
+                    <h3 class="settings-title">Prompt</h3>
                     
                     <div class="fr gap-2 flex-wrap">
                         <div class="fc gap-1 flex-grow">
@@ -464,6 +474,19 @@ export class SettingsPanel {
                                 <button id="saveLlmPrompt" class="btn btn-sm">Save Prompt</button>
                             </div>
                         </div>
+
+                        <div class="fc gap-1 flex-grow">
+                            <h3 class="text-xs text-gray-400">Screen processing</h3>
+                            <div class="fc gap-2">
+                                <textarea 
+                                    id="screenProcessingPrompt" 
+                                    class="input-field prompt-textarea" 
+                                    placeholder="Enter prompt for screenshot analysis..."
+                                    rows="4"
+                                >${this.settings.screenProcessingPrompt || ''}</textarea>
+                                <button id="saveScreenProcessingPrompt" class="btn btn-sm">Save Prompt</button>
+                            </div>
+                        </div>
                     </div>
                     
                 </div>
@@ -471,16 +494,21 @@ export class SettingsPanel {
 
                 <div class="settings-section card">
                     <h3 class="settings-title">API timeouts</h3>
-                    <div class="frbc gap-2">
-                        <div class="fc gap-1" style="width:48%">
+                    <div class="fr gap-2 flex-wrap">
+                        <div class="fc gap-1" style="width:32%">
                             <label class="text-xs text-gray-400">Transcription (ms)</label>
-                            <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
+                            <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" value="${(this.settings as any).apiSttTimeoutMs || 10000}" />
                             <button id="saveApiSttTimeout" class="btn btn-sm">Save</button>
                         </div>
-                        <div class="fc gap-1" style="width:48%">
+                        <div class="fc gap-1" style="width:32%">
                             <label class="text-xs text-gray-400">LLM (ms)</label>
-                            <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" />
+                            <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" value="${(this.settings as any).apiLlmTimeoutMs || 10000}" />
                             <button id="saveApiLlmTimeout" class="btn btn-sm">Save</button>
+                        </div>
+                        <div class="fc gap-1" style="width:32%">
+                            <label class="text-xs text-gray-400">Screen processing (ms)</label>
+                            <input id="screenProcessingTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" value="${(this.settings as any).screenProcessingTimeoutMs || 50000}" />
+                            <button id="saveScreenProcessingTimeout" class="btn btn-sm">Save</button>
                         </div>
                     </div>
                 </div>
@@ -785,6 +813,30 @@ export class SettingsPanel {
                         this.showNotification(`LLM host changed to ${host === 'api' ? 'API' : 'Local'}. Model set to ${defaultModel}`);
                     } catch (error) {
                         this.showNotification('Error saving LLM host', 'error');
+                    }
+                }
+            );
+        }
+
+        const screenModelEl = this.container.querySelector('#screenProcessingModel') as HTMLElement | null;
+        if (screenModelEl) {
+            const opts: CustomSelectOption[] = [
+                { value: 'openai', label: 'OpenAI (GPT-4o Mini Vision)' },
+                { value: 'google', label: 'Google Gemini (1.5 Flash)' },
+            ];
+            this.csScreenProcessingModel = new CustomSelect(
+                screenModelEl,
+                opts,
+                this.settings.screenProcessingModel || 'openai',
+                async (val) => {
+                    const provider = (val as 'openai' | 'google');
+                    logger.info('settings', 'Screen processing model changed', { provider });
+                    try {
+                        await window.api.settings.setScreenProcessingModel(provider);
+                        this.settings.screenProcessingModel = provider;
+                        this.showNotification(`Screen processing model changed to ${provider === 'openai' ? 'OpenAI' : 'Google'}`);
+                    } catch (error) {
+                        this.showNotification('Error saving screen processing model', 'error');
                     }
                 }
             );
@@ -1161,6 +1213,22 @@ export class SettingsPanel {
             });
         }
 
+        const saveScreenPromptBtn = this.container.querySelector('#saveScreenProcessingPrompt');
+        const screenPromptTextarea = this.container.querySelector('#screenProcessingPrompt') as HTMLTextAreaElement;
+        if (saveScreenPromptBtn && screenPromptTextarea) {
+            saveScreenPromptBtn.addEventListener('click', async () => {
+                const prompt = screenPromptTextarea.value.trim();
+                logger.info('settings', 'Screen processing prompt save button clicked', { promptLength: prompt.length });
+                try {
+                    await window.api.settings.setScreenProcessingPrompt(prompt);
+                    this.settings.screenProcessingPrompt = prompt;
+                    this.showNotification('Screen processing prompt saved successfully');
+                } catch (error) {
+                    this.showNotification('Error saving screen processing prompt', 'error');
+                }
+            });
+        }
+
         // audio input device change handled in initCustomSelects()
 
         const refreshDevicesBtn = this.container.querySelector('#refreshDevices');
@@ -1230,8 +1298,7 @@ export class SettingsPanel {
         // API Timeouts
         const apiSttInput = this.container.querySelector('#apiSttTimeoutMs') as HTMLInputElement;
         const apiLlmInput = this.container.querySelector('#apiLlmTimeoutMs') as HTMLInputElement;
-        if (apiSttInput) apiSttInput.value = String((this.settings as any).apiSttTimeoutMs || 10000);
-        if (apiLlmInput) apiLlmInput.value = String((this.settings as any).apiLlmTimeoutMs || 10000);
+        const screenTimeoutInput = this.container.querySelector('#screenProcessingTimeoutMs') as HTMLInputElement;
 
         const saveApiSttBtn = this.container.querySelector('#saveApiSttTimeout');
         if (saveApiSttBtn && apiSttInput) {
@@ -1257,6 +1324,20 @@ export class SettingsPanel {
                     this.showNotification('LLM API timeout saved');
                 } catch (error) {
                     this.showNotification('Error saving LLM API timeout', 'error');
+                }
+            });
+        }
+
+        const saveScreenTimeoutBtn = this.container.querySelector('#saveScreenProcessingTimeout');
+        if (saveScreenTimeoutBtn && screenTimeoutInput) {
+            saveScreenTimeoutBtn.addEventListener('click', async () => {
+                const val = Math.max(1000, Math.min(600000, Math.floor(parseInt(screenTimeoutInput.value || '0'))));
+                try {
+                    await window.api.settings.setScreenProcessingTimeoutMs(val);
+                    (this.settings as any).screenProcessingTimeoutMs = val;
+                    this.showNotification('Screen processing timeout saved');
+                } catch (error) {
+                    this.showNotification('Error saving screen processing timeout', 'error');
                 }
             });
         }

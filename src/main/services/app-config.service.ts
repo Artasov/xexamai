@@ -2,7 +2,7 @@ import {app} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {logger} from './logger.service';
-import {WhisperModel, TranscriptionMode, LlmHost, LocalDevice, DEFAULT_LLM_PROMPT} from '../shared/types';
+import {WhisperModel, TranscriptionMode, LlmHost, LocalDevice, DEFAULT_LLM_PROMPT, ScreenProcessingProvider, DEFAULT_SCREEN_PROMPT} from '../shared/types';
 
 export interface AppConfigData {
     openaiApiKey?: string;
@@ -29,10 +29,13 @@ export interface AppConfigData {
     // timeouts (ms)
     apiSttTimeoutMs?: number; // OpenAI transcription API timeout
     apiLlmTimeoutMs?: number; // OpenAI chat completion timeout
+    screenProcessingTimeoutMs?: number;
     // New Gemini settings
     geminiApiKey?: string;
     streamMode?: 'base' | 'stream';
     streamSendHotkey?: string;
+    screenProcessingModel?: ScreenProcessingProvider;
+    screenProcessingPrompt?: string;
 }
 
 export class AppConfigService {
@@ -56,6 +59,15 @@ export class AppConfigService {
             if (fs.existsSync(this.configPath)) {
                 const data = fs.readFileSync(this.configPath, 'utf8');
                 this.configData = JSON.parse(data);
+                if (!this.configData.screenProcessingModel) {
+                    this.configData.screenProcessingModel = 'openai';
+                }
+                if (typeof this.configData.screenProcessingPrompt !== 'string') {
+                    this.configData.screenProcessingPrompt = DEFAULT_SCREEN_PROMPT;
+                }
+                if (typeof this.configData.screenProcessingTimeoutMs !== 'number' || !Number.isFinite(this.configData.screenProcessingTimeoutMs)) {
+                    this.configData.screenProcessingTimeoutMs = 50000;
+                }
             } else {
                 this.configData = {
                     openaiApiKey: process.env.OPENAI_API_KEY,
@@ -81,6 +93,9 @@ export class AppConfigService {
                     windowHeight: 780,
                     apiSttTimeoutMs: 10000,
                     apiLlmTimeoutMs: 10000,
+                    screenProcessingTimeoutMs: 50000,
+                    screenProcessingModel: 'openai',
+                    screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
                 };
                 this.saveConfig();
             }
@@ -109,6 +124,9 @@ export class AppConfigService {
                 windowHeight: 780,
                 apiSttTimeoutMs: 10000,
                 apiLlmTimeoutMs: 10000,
+                screenProcessingTimeoutMs: 50000,
+                screenProcessingModel: 'openai',
+                screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
             };
         }
     }
@@ -122,6 +140,9 @@ export class AppConfigService {
     }
 
     public getConfig(): AppConfigData {
+        if (typeof this.configData.screenProcessingTimeoutMs !== 'number') {
+            this.configData.screenProcessingTimeoutMs = 50000;
+        }
         return {...this.configData};
     }
 
@@ -513,6 +534,42 @@ export class AppConfigService {
     public getStreamSendHotkey(): string {
         const key = this.configData.streamSendHotkey || '~';
         return key;
+    }
+
+    public setScreenProcessingModel(provider: ScreenProcessingProvider): void {
+        const old = this.configData.screenProcessingModel || 'openai';
+        this.configData.screenProcessingModel = provider;
+        this.saveConfig();
+        logger.info('settings', 'Screen processing model updated', { old, next: provider });
+    }
+
+    public getScreenProcessingModel(): ScreenProcessingProvider {
+        return this.configData.screenProcessingModel || 'openai';
+    }
+
+    public setScreenProcessingPrompt(prompt: string): void {
+        const sanitized = (prompt || '').trim();
+        const old = this.configData.screenProcessingPrompt || DEFAULT_SCREEN_PROMPT;
+        this.configData.screenProcessingPrompt = sanitized;
+        this.saveConfig();
+        logger.info('settings', 'Screen processing prompt updated', { oldLength: old?.length || 0, newLength: sanitized.length });
+    }
+
+    public getScreenProcessingPrompt(): string {
+        const value = this.configData.screenProcessingPrompt;
+        return typeof value === 'string' ? value : DEFAULT_SCREEN_PROMPT;
+    }
+
+    public setScreenProcessingTimeoutMs(timeoutMs: number): void {
+        const old = this.configData.screenProcessingTimeoutMs || 50000;
+        const safe = Math.max(1000, Math.min(600000, Math.floor(timeoutMs || 0)));
+        this.configData.screenProcessingTimeoutMs = safe;
+        this.saveConfig();
+        logger.info('settings', 'Screen processing timeout updated', { old, next: safe });
+    }
+
+    public getScreenProcessingTimeoutMs(): number {
+        return this.configData.screenProcessingTimeoutMs || 50000;
     }
 }
 

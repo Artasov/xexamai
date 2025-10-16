@@ -920,6 +920,56 @@ async function handleTextSend(text: string) {
     }
 }
 
+async function handleScreenshot() {
+    if (state.isProcessing) return;
+    setProcessing(true);
+    updateButtonsState();
+    setStatus('Capturing screen...', 'processing');
+    showAnswer('');
+
+    try {
+        logger.info('screenshot', 'Screenshot capture requested');
+        const capture = await window.api.screen.capture();
+        if (!capture || !capture.base64) {
+            throw new Error('Failed to capture screen');
+        }
+
+        const timestamp = new Date().toLocaleString();
+        const label = `[Screenshot captured ${timestamp}]`;
+        showText(label);
+
+        setStatus('Analyzing screenshot...', 'processing');
+
+        const result = await window.api.screen.process({
+            imageBase64: capture.base64,
+            mime: capture.mime,
+            width: capture.width,
+            height: capture.height,
+        });
+
+        if (!result?.ok) {
+            throw new Error(result?.error || 'Screen processing failed');
+        }
+
+        const answerText = (result.answer || '').trim();
+        if (answerText) {
+            showAnswer(answerText);
+        } else {
+            showAnswer('No insights returned.');
+        }
+        setStatus('Done', 'ready');
+        logger.info('screenshot', 'Screenshot analysis completed', { answerLength: result.answer?.length || 0 });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('screenshot', 'Screenshot analysis failed', { error: message });
+        setStatus('Error', 'error');
+        showAnswer('Error: ' + message);
+    } finally {
+        setProcessing(false);
+        updateButtonsState();
+    }
+}
+
 async function main() {
     // Initialize font size functionality
     initializeFontSize();
@@ -931,6 +981,7 @@ async function main() {
     streamModeContainer = document.getElementById('streamResultsSection');
     streamResults = document.getElementById('streamResultsTextarea') as HTMLTextAreaElement | null;
     btnSendStream = document.getElementById('btnSendStreamText') as HTMLButtonElement | null;
+    const btnScreenshot = document.getElementById('btnScreenshot') as HTMLButtonElement | null;
 
     // Enable/disable send button based on textarea content
     try {
@@ -942,6 +993,13 @@ async function main() {
             updateStreamSendState();
         }
     } catch {}
+
+    if (btnScreenshot) {
+        btnScreenshot.addEventListener('click', () => {
+            if (state.isProcessing) return;
+            void handleScreenshot();
+        });
+    }
     
     // Load logos
     const loadLogo = (logoElement: HTMLImageElement) => {
