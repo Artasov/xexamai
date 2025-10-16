@@ -57,12 +57,13 @@ export class HolderAuthService {
     public async getStatus(options: { refreshBalance?: boolean } = {}): Promise<HolderStatus> {
         const wallet = this.store.get('wallet');
         const lastVerified = this.store.get('lastVerified');
-        const challenge = this.store.get('challenge');
-        const needsSignatureRaw = this.requiresSignature(lastVerified);
-        let needsSignature = needsSignatureRaw;
-        const cachedHasToken = this.store.get('hasToken');
-        const cachedBalance = this.store.get('tokenBalance');
-        const cachedLastCheck = this.store.get('lastBalanceCheck');
+        const storedChallenge = this.store.get('challenge');
+        const needsSignature = this.requiresSignature(lastVerified);
+
+        let activeChallenge: HolderChallenge | null = storedChallenge && !this.isChallengeExpired(storedChallenge)
+            ? storedChallenge
+            : null;
+
         const status: HolderStatus = {
             isAuthorized: false,
             wallet,
@@ -70,73 +71,70 @@ export class HolderAuthService {
             needsSignature,
         };
 
-        const hasChallenge = challenge && !this.isChallengeExpired(challenge);
-
-        if (cachedHasToken !== undefined) {
-            status.isAuthorized = Boolean(cachedHasToken);
-        }
-        if (cachedBalance) {
-            status.tokenBalance = cachedBalance;
-        }
-        if (cachedLastCheck) {
-            status.lastVerified = status.lastVerified || lastVerified;
-        }
-
-        if (needsSignature) {
-            const freshChallenge = this.ensureChallenge(challenge);
-            status.challenge = this.toChallengeInfo(freshChallenge);
-            this.store.delete('hasToken');
-            this.store.delete('lastBalanceCheck');
-            this.store.delete('tokenBalance');
-            return status;
-        }
-
-        if (!needsSignature && hasChallenge) {
-            needsSignature = true;
+        if (needsSignature || !wallet) {
+            activeChallenge = this.ensureChallenge(activeChallenge);
             status.needsSignature = true;
-            const ensured = this.ensureChallenge(challenge);
-            status.challenge = this.toChallengeInfo(ensured);
-            return status;
-        }
-
-        if (!wallet) {
-            status.needsSignature = true;
-            status.challenge = this.toChallengeInfo(this.ensureChallenge(challenge));
-            return status;
-        }
-
-        const lastBalanceCheck = parseIso(this.store.get('lastBalanceCheck'));
-        const shouldRefresh = options.refreshBalance ||
-            !lastBalanceCheck ||
-            Date.now() - lastBalanceCheck > 5 * 60 * 1000;
-
-        if (!shouldRefresh) {
-            status.isAuthorized = Boolean(cachedHasToken);
-            if (cachedBalance) status.tokenBalance = cachedBalance;
+            status.challenge = this.toChallengeInfo(activeChallenge);
             return status;
         }
 
         status.checkingBalance = true;
-        try {
-            const {hasToken, amount} = await this.fetchTokenBalance(new PublicKey(wallet));
-            status.isAuthorized = hasToken;
-            status.tokenBalance = amount;
-            this.store.set('hasToken', hasToken);
-            this.store.set('tokenBalance', amount);
-            this.store.set('lastBalanceCheck', toIso(Date.now()));
-            if (!hasToken) {
-                status.error = 'Token balance is zero';
+        const owner = new PublicKey(wallet);
+        const maxAttempts = 3;
+        let lastError: string | null = null;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const {hasToken, amount} = await this.fetchTokenBalance(owner);
+                status.isAuthorized = hasToken;
+                status.tokenBalance = amount;
+                this.store.set('hasToken', hasToken);
+                this.store.set('tokenBalance', amount);
+                this.store.set('lastBalanceCheck', toIso(Date.now()));
+
+                if (!hasToken) {
+                    status.error = 'Token balance is zero';
+                    status.needsSignature = true;
+                    activeChallenge = this.ensureChallenge(activeChallenge);
+                    status.challenge = this.toChallengeInfo(activeChallenge);
+                    this.store.delete('hasToken');
+                    this.store.delete('tokenBalance');
+                    this.store.delete('lastBalanceCheck');
+                } else {
+                    status.needsSignature = false;
+                    status.challenge = undefined;
+                    this.store.delete('challenge');
+                }
+
+                status.checkingBalance = false;
+                logger.info('holder', 'Holder status refreshed', {
+                    wallet,
+                    hasToken: status.isAuthorized,
+                    attempt,
+                });
+                return status;
+            } catch (error) {
+                lastError = error instanceof Error ? error.message : String(error);
+                logger.warn('holder', 'Failed to refresh holder balance', { wallet, attempt, error: lastError });
+                if (attempt < maxAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, 750 * attempt));
+                }
             }
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            status.error = message || 'Failed to check token balance';
-            status.isAuthorized = Boolean(cachedHasToken);
-            if (cachedBalance) status.tokenBalance = cachedBalance;
-            logger.error('holder', 'Failed to refresh holder balance', { error: message, wallet });
-        } finally {
-            status.checkingBalance = false;
         }
 
+        status.checkingBalance = false;
+        status.isAuthorized = false;
+        status.needsSignature = true;
+        status.error = lastError || 'Failed to check token balance';
+        activeChallenge = this.ensureChallenge(activeChallenge);
+        status.challenge = this.toChallengeInfo(activeChallenge);
+        this.store.delete('hasToken');
+        this.store.delete('tokenBalance');
+        this.store.delete('lastBalanceCheck');
+        logger.info('holder', 'Holder status fallback to re-verify', {
+            wallet,
+            error: status.error,
+        });
         return status;
     }
 
