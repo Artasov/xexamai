@@ -178,11 +178,11 @@ function ensureModalElements(): ModalElements {
 
     const qrContainer = document.createElement('div');
     qrContainer.className = 'self-center';
-    qrContainer.style.marginTop = '12px';
+    qrContainer.style.marginTop = '10px';
     qrContainer.style.background = '#ffffff';
-    qrContainer.style.padding = '18px';
-    qrContainer.style.borderRadius = '16px';
-    qrContainer.style.boxShadow = '0 14px 42px rgba(0,0,0,0.24)';
+    qrContainer.style.padding = '4px';
+    qrContainer.style.borderRadius = '10px';
+    qrContainer.style.boxShadow = '0 8px 18px rgba(0,0,0,0.18)';
     qrContainer.style.maxWidth = 'fit-content';
     qrContainer.style.display = 'flex';
     qrContainer.style.alignItems = 'center';
