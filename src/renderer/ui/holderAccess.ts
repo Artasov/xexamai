@@ -21,7 +21,7 @@ type HolderAccessInitOptions = {
 };
 
 let headerTitleEl: HTMLElement | null = null;
-let crownEl: HTMLSpanElement | null = null;
+let crownEl: HTMLImageElement | null = null;
 let statusBadgeEl: HTMLElement | null = null;
 let statusDetailsEl: HTMLElement | null = null;
 let actionButtonEl: HTMLButtonElement | null = null;
@@ -96,12 +96,15 @@ function ensureHolderStyles() {
 function ensureCrownElement() {
     if (crownEl) return;
     if (!headerTitleEl || !headerTitleEl.parentElement) return;
-    crownEl = document.createElement('span');
-    crownEl.textContent = '👑';
+    crownEl = document.createElement('img');
+    crownEl.src = 'img/icons/crown.png';
+    crownEl.alt = 'Holder crown';
     crownEl.title = 'Holder access active';
     crownEl.style.display = 'none';
-    crownEl.style.fontSize = '1.2rem';
+    crownEl.style.width = '18px';
+    crownEl.style.height = '18px';
     crownEl.style.marginLeft = '6px';
+    crownEl.style.pointerEvents = 'none';
     headerTitleEl.insertAdjacentElement('afterend', crownEl);
 }
 
@@ -469,8 +472,11 @@ export function initializeHolderAccess(options: HolderAccessInitOptions = {}) {
         ensureCrownElement();
     }
     subscribeHolderState(handleStateChange);
-    // Prime initial status
-    void refreshHolderStatus(true);
+    // Load cached status first, then refresh balance in background
+    void refreshHolderStatus(false);
+    setTimeout(() => {
+        void refreshHolderStatus(true);
+    }, 250);
 }
 
 export function registerHolderSettingsSection(container: HTMLElement) {

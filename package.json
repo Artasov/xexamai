@@ -22,7 +22,7 @@
     "build:ts:renderer": "tsc -p tsconfig.renderer.json",
     "build:css": "postcss src/renderer/styles.css -o dist/styles.css --config configs/postcss.config.js",
     "copy:html": "cpx \"src/renderer/index.html\" build/renderer && cpx \"src/renderer/wide-classes.min.css\" build/renderer && npm run copy:icons",
-    "copy:icons": "cpx \"src/renderer/img/icons/audio.png\" build/renderer/img/icons && cpx \"src/renderer/img/icons/mic.png\" build/renderer/img/icons"
+    "copy:icons": "cpx \"src/renderer/img/icons/**/*\" build/renderer/img/icons"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.14",

@@ -60,6 +60,9 @@ export class HolderAuthService {
         const challenge = this.store.get('challenge');
         const needsSignatureRaw = this.requiresSignature(lastVerified);
         let needsSignature = needsSignatureRaw;
+        const cachedHasToken = this.store.get('hasToken');
+        const cachedBalance = this.store.get('tokenBalance');
+        const cachedLastCheck = this.store.get('lastBalanceCheck');
         const status: HolderStatus = {
             isAuthorized: false,
             wallet,
@@ -68,6 +71,16 @@ export class HolderAuthService {
         };
 
         const hasChallenge = challenge && !this.isChallengeExpired(challenge);
+
+        if (cachedHasToken !== undefined) {
+            status.isAuthorized = Boolean(cachedHasToken);
+        }
+        if (cachedBalance) {
+            status.tokenBalance = cachedBalance;
+        }
+        if (cachedLastCheck) {
+            status.lastVerified = status.lastVerified || lastVerified;
+        }
 
         if (needsSignature) {
             const freshChallenge = this.ensureChallenge(challenge);
@@ -98,9 +111,7 @@ export class HolderAuthService {
             Date.now() - lastBalanceCheck > 5 * 60 * 1000;
 
         if (!shouldRefresh) {
-            const cached = this.store.get('hasToken');
-            status.isAuthorized = Boolean(cached);
-            const cachedBalance = this.store.get('tokenBalance');
+            status.isAuthorized = Boolean(cachedHasToken);
             if (cachedBalance) status.tokenBalance = cachedBalance;
             return status;
         }
@@ -119,6 +130,8 @@ export class HolderAuthService {
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             status.error = message || 'Failed to check token balance';
+            status.isAuthorized = Boolean(cachedHasToken);
+            if (cachedBalance) status.tokenBalance = cachedBalance;
             logger.error('holder', 'Failed to refresh holder balance', { error: message, wallet });
         } finally {
             status.checkingBalance = false;
