@@ -20,7 +20,8 @@
     ],
     "isolatedModules": false,
     "allowImportingTsExtensions": false,
-    "noEmit": false
+    "noEmit": false,
+    "jsx": "react-jsx"
   },
   "include": [
     "src/renderer/**/*"

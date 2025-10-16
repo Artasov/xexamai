@@ -233,6 +233,12 @@ export const api: AssistantAPI = {
         enable: () => ipcRenderer.invoke('enable-loopback-audio'),
         disable: () => ipcRenderer.invoke('disable-loopback-audio'),
     },
+    holder: {
+        getStatus: (options?: { refreshBalance?: boolean }) => ipcRenderer.invoke(IPCChannels.HolderGetStatus, options),
+        createChallenge: () => ipcRenderer.invoke(IPCChannels.HolderCreateChallenge),
+        verifySignature: (signature: string) => ipcRenderer.invoke(IPCChannels.HolderVerifySignature, signature),
+        reset: () => ipcRenderer.invoke(IPCChannels.HolderReset),
+    },
     media: {
         getPrimaryDisplaySourceId: async () => {
             try {

@@ -9,6 +9,7 @@ import {floatsToWav} from './audio/encoder.js';
 import {PcmRingBuffer} from './audio/pcmRingBuffer.js';
 import {SettingsPanel} from './ui/settings.js';
 import {logger} from './utils/logger.js';
+import {initializeHolderAccess} from './ui/holderAccess.js';
 // Gemini SDK is loaded in preload and exposed via window.api.gemini
 
 import type {AssistantAPI} from './types.js';
@@ -977,6 +978,10 @@ async function main() {
     const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement;
     loadLogo(headerLogoElement);
 
+    initializeHolderAccess({
+        headerTitleEl: document.querySelector('header h1') as HTMLElement | null,
+    });
+
     const {durations, durationHotkeys} = await window.api.settings.get();
     if (Array.isArray(durations) && durations.length) {
         try {
@@ -1477,4 +1482,3 @@ function handleFontSizeWheel(event: WheelEvent): void {
     
     setFontSize(newSize);
 }
-

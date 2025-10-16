@@ -5,6 +5,7 @@ import {registerSttIpc} from './ipc/stt.ipc';
 import {registerSettingsIpc} from './ipc/settings.ipc';
 import {createMainWindow} from './windows/MainWindow';
 import {hotkeysService} from './services/hotkeys.service';
+import {registerHolderIpc} from './ipc/holder.ipc';
 
 // Enable WebGPU in Electron
 try {
@@ -55,6 +56,7 @@ function onReady() {
     mainWindow = createMainWindow();
     registerSttIpc();
     registerSettingsIpc();
+    registerHolderIpc();
     registerWindowIpc();
     if (mainWindow) {
         hotkeysService.init(mainWindow);

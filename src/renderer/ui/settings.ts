@@ -1,5 +1,6 @@
 import type {AppSettings} from '../types.js';
 import {logger} from '../utils/logger.js';
+import {registerHolderSettingsSection} from './holderAccess.js';
 
 type CustomSelectOption = { value: string; label: string; title?: string };
 
@@ -218,6 +219,9 @@ export class SettingsPanel {
         `;
 
         this.renderDurations();
+        if (this.panelType === 'general') {
+            registerHolderSettingsSection(this.container);
+        }
     }
 
     private renderGeneralSections(): string {
@@ -252,6 +256,20 @@ export class SettingsPanel {
                                 <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="settings-section card flex-grow" id="holderAuthCard">
+                        <h3 class="settings-title">Holder access</h3>
+                        <p class="text-xs text-gray-400 mb-2">
+                            Verify ownership of token D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG to unlock holder-only features.
+                        </p>
+                        <div class="frsc gap-2 flex-wrap">
+                            <button id="holderAuthBtn" class="btn btn-primary btn-sm">I'm holder</button>
+                            <span id="holderStatusBadge" class="px-2 py-1 text-xs rounded border border-gray-700 text-gray-300 bg-gray-800/60">
+                                Status: unknown
+                            </span>
+                        </div>
+                        <div id="holderStatusDetails" class="text-xs text-gray-500 mt-2"></div>
                     </div>
     
                     <div class="settings-section card flex-grow">

@@ -107,6 +107,10 @@ export const IPCChannels = {
     SetStreamMode: 'settings:set:stream-mode',
     SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
     Log: 'log:entry',
+    HolderGetStatus: 'holder:get-status',
+    HolderCreateChallenge: 'holder:create-challenge',
+    HolderVerifySignature: 'holder:verify-signature',
+    HolderReset: 'holder:reset',
 } as const;
 
 export type ProcessAudioArgs = {
@@ -151,6 +155,33 @@ export type LogEntry = {
     category: string;
     message: string;
     data?: any;
+};
+
+export type HolderChallengeInfo = {
+    deeplink: string;
+    reference: string;
+    createdAt: string;
+    expiresAt: string;
+    qrSvg?: string;
+};
+
+export type HolderStatus = {
+    isAuthorized: boolean;
+    wallet?: string;
+    lastVerified?: string;
+    needsSignature: boolean;
+    challenge?: HolderChallengeInfo;
+    error?: string;
+    checkingBalance?: boolean;
+    tokenBalance?: string;
+};
+
+export type HolderVerificationResult = {
+    ok: boolean;
+    wallet?: string;
+    lastVerified?: string;
+    message?: string;
+    error?: string;
 };
 
 export type AssistantAPI = {
@@ -210,12 +241,14 @@ export type AssistantAPI = {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
     };
+    holder: {
+        getStatus: (options?: { refreshBalance?: boolean }) => Promise<HolderStatus>;
+        createChallenge: () => Promise<HolderStatus>;
+        verifySignature: (signature: string) => Promise<HolderVerificationResult>;
+        reset: () => Promise<void>;
+    };
     log: (entry: LogEntry) => Promise<void>;
 };
-
-
-
-
 
 
 

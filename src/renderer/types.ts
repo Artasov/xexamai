@@ -81,6 +81,33 @@ export type LogEntry = {
     data?: any;
 };
 
+export type HolderChallengeInfo = {
+    deeplink: string;
+    reference: string;
+    createdAt: string;
+    expiresAt: string;
+    qrSvg?: string;
+};
+
+export type HolderStatus = {
+    isAuthorized: boolean;
+    wallet?: string;
+    lastVerified?: string;
+    needsSignature: boolean;
+    challenge?: HolderChallengeInfo;
+    error?: string;
+    checkingBalance?: boolean;
+    tokenBalance?: string;
+};
+
+export type HolderVerificationResult = {
+    ok: boolean;
+    wallet?: string;
+    lastVerified?: string;
+    message?: string;
+    error?: string;
+};
+
 export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
@@ -150,6 +177,12 @@ export type AssistantAPI = {
     loopback: {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
+    };
+    holder: {
+        getStatus: (options?: { refreshBalance?: boolean }) => Promise<HolderStatus>;
+        createChallenge: () => Promise<HolderStatus>;
+        verifySignature: (signature: string) => Promise<HolderVerificationResult>;
+        reset: () => Promise<void>;
     };
     media?: {
         getPrimaryDisplaySourceId: () => Promise<string | null>;
