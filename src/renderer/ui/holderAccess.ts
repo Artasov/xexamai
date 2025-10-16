@@ -9,7 +9,6 @@ type ModalElements = {
     copyBtn: HTMLButtonElement;
     openBtn: HTMLButtonElement;
     qrContainer: HTMLDivElement;
-    qrImage: HTMLImageElement;
     signature: HTMLInputElement;
     verifyBtn: HTMLButtonElement;
     closeBtn: HTMLButtonElement;
@@ -29,7 +28,6 @@ let actionButtonEl: HTMLButtonElement | null = null;
 let modalElements: ModalElements | null = null;
 let lastChallengeRef: string | null = null;
 let stylesInjected = false;
-let currentQrObjectUrl: string | null = null;
 
 function ensureHolderStyles() {
     if (stylesInjected) return;
@@ -191,17 +189,6 @@ function ensureModalElements(): ModalElements {
     qrContainer.style.justifyContent = 'center';
     qrContainer.style.border = '1px solid rgba(0,0,0,0.1)';
 
-    const qrImage = document.createElement('img');
-    qrImage.alt = 'Holder verification QR';
-    qrImage.style.display = 'block';
-    qrImage.style.width = '256px';
-    qrImage.style.height = '256px';
-    qrImage.style.objectFit = 'contain';
-    qrImage.style.imageRendering = 'pixelated';
-    qrImage.style.filter = 'drop-shadow(0 4px 14px rgba(0,0,0,0.15))';
-
-    qrContainer.appendChild(qrImage);
-
     const signatureLabel = document.createElement('label');
     signatureLabel.className = 'text-xs text-gray-400 uppercase tracking-wide';
     signatureLabel.textContent = 'Transaction signature';
@@ -290,7 +277,6 @@ function ensureModalElements(): ModalElements {
         copyBtn,
         openBtn,
         qrContainer,
-        qrImage,
         signature: signatureInput,
         verifyBtn,
         closeBtn,
@@ -349,23 +335,8 @@ async function performVerification() {
 
 function updateQrImage(svg?: string) {
     if (!modalElements) return;
-    if (currentQrObjectUrl) {
-        try { URL.revokeObjectURL(currentQrObjectUrl); } catch {}
-        currentQrObjectUrl = null;
-    }
-    if (svg && svg.trim()) {
-        try {
-            const blob = new Blob([svg], { type: 'image/svg+xml' });
-            const url = URL.createObjectURL(blob);
-            currentQrObjectUrl = url;
-            modalElements.qrImage.src = url;
-        } catch (error) {
-            console.error('Failed to create QR image URL', error);
-            modalElements.qrImage.removeAttribute('src');
-        }
-    } else {
-        modalElements.qrImage.removeAttribute('src');
-    }
+    const container = modalElements.qrContainer;
+    container.innerHTML = (svg && svg.trim()) ? svg : '';
 }
 
 function updateModalChallenge(challenge?: HolderChallengeInfo) {
