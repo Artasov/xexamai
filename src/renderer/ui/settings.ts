@@ -493,20 +493,20 @@ export class SettingsPanel {
 
 
                 <div class="settings-section card">
-                    <h3 class="settings-title">API timeouts</h3>
-                    <div class="fr gap-2 flex-wrap">
-                        <div class="fc gap-1" style="width:32%">
-                            <label class="text-xs text-gray-400">Transcription (ms)</label>
+                    <h3 class="settings-title">API timeouts <span class="text-xs text-gray-400">(ms)</span></h3>
+                    <div class="frb gap-2 flex-wrap">
+                        <div class="fc gap-1" style="width:31%">
+                            <label class="text-xs text-gray-400">Transcription</label>
                             <input id="apiSttTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" value="${(this.settings as any).apiSttTimeoutMs || 10000}" />
                             <button id="saveApiSttTimeout" class="btn btn-sm">Save</button>
                         </div>
-                        <div class="fc gap-1" style="width:32%">
-                            <label class="text-xs text-gray-400">LLM (ms)</label>
+                        <div class="fc gap-1" style="width:31%">
+                            <label class="text-xs text-gray-400">LLM</label>
                             <input id="apiLlmTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" value="${(this.settings as any).apiLlmTimeoutMs || 10000}" />
                             <button id="saveApiLlmTimeout" class="btn btn-sm">Save</button>
                         </div>
-                        <div class="fc gap-1" style="width:32%">
-                            <label class="text-xs text-gray-400">Screen processing (ms)</label>
+                        <div class="fc gap-1" style="width:31%">
+                            <label class="text-xs text-gray-400">Screen processing</label>
                             <input id="screenProcessingTimeoutMs" type="number" class="input-field" min="1000" max="600000" step="500" value="${(this.settings as any).screenProcessingTimeoutMs || 50000}" />
                             <button id="saveScreenProcessingTimeout" class="btn btn-sm">Save</button>
                         </div>
