@@ -9,6 +9,7 @@ type ModalElements = {
     copyBtn: HTMLButtonElement;
     openBtn: HTMLButtonElement;
     qrContainer: HTMLDivElement;
+    qrImage: HTMLImageElement;
     signature: HTMLInputElement;
     verifyBtn: HTMLButtonElement;
     closeBtn: HTMLButtonElement;
@@ -28,6 +29,7 @@ let actionButtonEl: HTMLButtonElement | null = null;
 let modalElements: ModalElements | null = null;
 let lastChallengeRef: string | null = null;
 let stylesInjected = false;
+let currentQrObjectUrl: string | null = null;
 
 function ensureHolderStyles() {
     if (stylesInjected) return;
@@ -180,13 +182,25 @@ function ensureModalElements(): ModalElements {
     qrContainer.className = 'self-center';
     qrContainer.style.marginTop = '12px';
     qrContainer.style.background = '#ffffff';
-    qrContainer.style.padding = '16px';
-    qrContainer.style.borderRadius = '14px';
-    qrContainer.style.boxShadow = '0 10px 32px rgba(0,0,0,0.18)';
+    qrContainer.style.padding = '18px';
+    qrContainer.style.borderRadius = '16px';
+    qrContainer.style.boxShadow = '0 14px 42px rgba(0,0,0,0.24)';
     qrContainer.style.maxWidth = 'fit-content';
     qrContainer.style.display = 'flex';
     qrContainer.style.alignItems = 'center';
     qrContainer.style.justifyContent = 'center';
+    qrContainer.style.border = '1px solid rgba(0,0,0,0.1)';
+
+    const qrImage = document.createElement('img');
+    qrImage.alt = 'Holder verification QR';
+    qrImage.style.display = 'block';
+    qrImage.style.width = '256px';
+    qrImage.style.height = '256px';
+    qrImage.style.objectFit = 'contain';
+    qrImage.style.imageRendering = 'pixelated';
+    qrImage.style.filter = 'drop-shadow(0 4px 14px rgba(0,0,0,0.15))';
+
+    qrContainer.appendChild(qrImage);
 
     const signatureLabel = document.createElement('label');
     signatureLabel.className = 'text-xs text-gray-400 uppercase tracking-wide';
@@ -276,6 +290,7 @@ function ensureModalElements(): ModalElements {
         copyBtn,
         openBtn,
         qrContainer,
+        qrImage,
         signature: signatureInput,
         verifyBtn,
         closeBtn,
@@ -332,22 +347,42 @@ async function performVerification() {
     }
 }
 
+function updateQrImage(svg?: string) {
+    if (!modalElements) return;
+    if (currentQrObjectUrl) {
+        try { URL.revokeObjectURL(currentQrObjectUrl); } catch {}
+        currentQrObjectUrl = null;
+    }
+    if (svg && svg.trim()) {
+        try {
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            currentQrObjectUrl = url;
+            modalElements.qrImage.src = url;
+        } catch (error) {
+            console.error('Failed to create QR image URL', error);
+            modalElements.qrImage.removeAttribute('src');
+        }
+    } else {
+        modalElements.qrImage.removeAttribute('src');
+    }
+}
+
 function updateModalChallenge(challenge?: HolderChallengeInfo) {
     if (!modalElements) return;
     if (!challenge) {
         lastChallengeRef = null;
         modalElements.deeplinkInput.value = '';
-        modalElements.qrContainer.innerHTML = '';
+        updateQrImage();
         return;
     }
     if (challenge.reference === lastChallengeRef) return;
     lastChallengeRef = challenge.reference;
     modalElements.deeplinkInput.value = challenge.deeplink;
+    updateQrImage(challenge.qrSvg);
     if (challenge.qrSvg) {
-        modalElements.qrContainer.innerHTML = challenge.qrSvg;
         setModalMessage('Scan the QR or open the link to sign the transaction');
     } else {
-        modalElements.qrContainer.innerHTML = '';
         setModalMessage('Open the link to sign the verification transaction');
     }
 }
@@ -484,6 +519,7 @@ export async function openHolderModal() {
     const modal = ensureModalElements();
     modal.overlay.classList.add('holder-overlay--visible');
     modal.signature.value = '';
+    updateQrImage();
     setModalMessage('Generating deep link…');
     setModalBusy(true);
     lastChallengeRef = null;
@@ -501,4 +537,5 @@ export async function openHolderModal() {
 export function closeModal() {
     if (!modalElements) return;
     modalElements.overlay.classList.remove('holder-overlay--visible');
+    updateQrImage();
 }

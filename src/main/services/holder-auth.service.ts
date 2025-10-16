@@ -58,7 +58,8 @@ export class HolderAuthService {
         const wallet = this.store.get('wallet');
         const lastVerified = this.store.get('lastVerified');
         const challenge = this.store.get('challenge');
-        const needsSignature = this.requiresSignature(lastVerified);
+        const needsSignatureRaw = this.requiresSignature(lastVerified);
+        let needsSignature = needsSignatureRaw;
         const status: HolderStatus = {
             isAuthorized: false,
             wallet,
@@ -66,12 +67,22 @@ export class HolderAuthService {
             needsSignature,
         };
 
+        const hasChallenge = challenge && !this.isChallengeExpired(challenge);
+
         if (needsSignature) {
             const freshChallenge = this.ensureChallenge(challenge);
             status.challenge = this.toChallengeInfo(freshChallenge);
             this.store.delete('hasToken');
             this.store.delete('lastBalanceCheck');
             this.store.delete('tokenBalance');
+            return status;
+        }
+
+        if (!needsSignature && hasChallenge) {
+            needsSignature = true;
+            status.needsSignature = true;
+            const ensured = this.ensureChallenge(challenge);
+            status.challenge = this.toChallengeInfo(ensured);
             return status;
         }
 
