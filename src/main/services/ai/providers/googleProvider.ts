@@ -2,6 +2,10 @@ import {GoogleGenAI} from '@google/genai';
 import {AppConfig} from '../../config.service';
 import {logger} from '../../logger.service';
 
+function normalizeGoogleModelName(name: string): string {
+    return name;
+}
+
 export async function askChatWithGoogle(prompt: string, cfg: AppConfig): Promise<string> {
     if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
 
@@ -11,14 +15,12 @@ export async function askChatWithGoogle(prompt: string, cfg: AppConfig): Promise
         apiKey: cfg.googleApiKey ? `${cfg.googleApiKey.substring(0, 8)}...` : null,
     });
 
-    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey });
-    const systemMessage = cfg.llmPrompt;
+    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey, apiVersion: 'v1' });
 
     const response = await ai.models.generateContent({
-        model: cfg.chatModel,
+        model: normalizeGoogleModelName(cfg.chatModel),
         contents: prompt,
         config: {
-            systemInstruction: systemMessage,
             temperature: 0.3,
         },
     });
@@ -46,14 +48,12 @@ export async function askChatStreamWithGoogle(
         model: cfg.chatModel,
     });
 
-    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey });
-    const systemMessage = cfg.llmPrompt;
+    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey, apiVersion: 'v1' });
 
     const stream = await ai.models.generateContentStream({
-        model: cfg.chatModel,
+        model: normalizeGoogleModelName(cfg.chatModel),
         contents: prompt,
         config: {
-            systemInstruction: systemMessage,
             temperature: 0.3,
         },
     });
@@ -109,7 +109,7 @@ export async function processScreenImageWithGoogle(
 ): Promise<string> {
     if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
 
-    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey });
+    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey, apiVersion: 'v1' });
     const inlineData = image.toString('base64');
 
     logger.info('google', 'Starting Google screen analysis', {
@@ -119,7 +119,7 @@ export async function processScreenImageWithGoogle(
     });
 
     const response = await ai.models.generateContent({
-        model,
+        model: normalizeGoogleModelName(model),
         contents: [
             {
                 role: 'user',
@@ -131,7 +131,6 @@ export async function processScreenImageWithGoogle(
         ],
         config: {
             temperature: 0.2,
-            systemInstruction: systemPrompt,
         },
     });
 

@@ -42,7 +42,7 @@ function isGoogleModel(model?: string): boolean {
 
 const LOCAL_LLM_TIMEOUT_MS = 600000; // 600s only for local LLM
 const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
-const SCREEN_GOOGLE_MODEL = 'gemini-1.5-flash';
+const SCREEN_GOOGLE_MODEL = 'gemini-2.5-flash';
 const SCREEN_SYSTEM_PROMPT = 'You analyze screenshots to assist with technical interviews. Follow the user\'s instructions exactly and keep responses concise.';
 
 
