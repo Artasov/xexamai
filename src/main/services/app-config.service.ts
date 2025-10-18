@@ -544,7 +544,7 @@ export class AppConfigService {
         const oldMode = this.configData.streamMode;
         this.configData.streamMode = mode;
         this.scheduleSave();
-        logger.info('settings', 'Stream mode changed', { 
+        logger.info('settings', 'Transcription type changed', {
             oldMode, 
             newMode: mode 
         });

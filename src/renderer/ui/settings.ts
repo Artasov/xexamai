@@ -937,7 +937,7 @@ export class SettingsPanel {
                 this.settings.streamMode || 'base',
                 async (val) => {
                     const mode = (val as 'base' | 'stream');
-                    logger.info('settings', 'Stream mode changed', { mode });
+                    logger.info('settings', 'Transcription type changed', { mode });
                     const previous = this.settings.streamMode || 'base';
                     try {
                         if (mode === 'stream' && !this.hasGoogleKey()) {
@@ -958,7 +958,7 @@ export class SettingsPanel {
                                 this.settings.transcriptionMode = 'api';
                             }
                         }
-                        this.showNotification(`Stream mode changed to ${mode === 'base' ? 'Base' : 'Stream'}`);
+                        this.showNotification(`Transcription type changed to ${mode === 'base' ? 'Base' : 'Stream'}`);
                         this.updateTranscriptionModeVisibility();
                         // notify renderer to refresh UI immediately
                         try {
