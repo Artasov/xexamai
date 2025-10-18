@@ -1,6 +1,6 @@
 import {BrowserWindow, globalShortcut} from 'electron';
 import {appConfigService} from './app-config.service';
-import {IPCChannels} from '../shared/types';
+import {IPCChannels} from '../../shared/ipc';
 
 class HotkeysService {
     private win: BrowserWindow | null = null;
@@ -56,5 +56,4 @@ class HotkeysService {
 }
 
 export const hotkeysService = new HotkeysService();
-
 

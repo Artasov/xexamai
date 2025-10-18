@@ -9,6 +9,7 @@ type WelcomeModalElements = {
     modal: HTMLDivElement;
     closeBtn: HTMLButtonElement;
     dismissCheckbox: HTMLInputElement;
+    footer: HTMLLabelElement;
     continueBtn: HTMLButtonElement;
 };
 
@@ -68,6 +69,8 @@ const COMMUNITY_LINKS: CommunityLink[] = [
 let stylesInjected = false;
 let modalElements: WelcomeModalElements | null = null;
 let escapeHandler: ((event: KeyboardEvent) => void) | null = null;
+let welcomeControlsEnabled = false;
+let welcomeControlsTimer: number | null = null;
 
 function ensureStyles(): void {
     if (stylesInjected) return;
@@ -169,10 +172,57 @@ function ensureStyles(): void {
     color: #94a3b8;
 }
 
-.welcome-modal__footer input {
+.welcome-modal__checkbox {
+    appearance: none;
     width: 18px;
     height: 18px;
-    accent-color: #8b5cf6;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(148, 163, 184, 0.1);
+    display: grid;
+    place-items: center;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.welcome-modal__checkbox:hover {
+    border-color: rgba(139, 92, 246, 0.55);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
+}
+
+.welcome-modal__checkbox::after {
+    content: '';
+    width: 6px;
+    height: 10px;
+    border: solid transparent;
+    border-width: 0 2px 2px 0;
+    transform: translateY(-1px) rotate(45deg) scale(0);
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.welcome-modal__checkbox:checked {
+    background: rgba(139, 92, 246, 0.18);
+    border-color: rgba(139, 92, 246, 0.7);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+.welcome-modal__checkbox:checked::after {
+    transform: translateY(-1px) rotate(45deg) scale(1);
+    border-color: #8b5cf6;
+}
+
+.welcome-modal__delayed {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+}
+
+.welcome-modal__delayed--visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
 }
 
 .welcome-modal__continue {
@@ -250,7 +300,7 @@ function ensureModalElements(): WelcomeModalElements {
     title.className = 'text-xl font-semibold';
 
     const closeBtn = document.createElement('button');
-    closeBtn.className = 'btn btn-sm';
+    closeBtn.className = 'btn btn-sm welcome-modal__delayed';
     closeBtn.textContent = '✕';
     closeBtn.style.width = '32px';
     closeBtn.style.minWidth = '32px';
@@ -270,11 +320,12 @@ function ensureModalElements(): WelcomeModalElements {
     }
 
     const footer = document.createElement('label');
-    footer.className = 'welcome-modal__footer';
+    footer.className = 'welcome-modal__footer welcome-modal__delayed';
 
     const dismissCheckbox = document.createElement('input');
     dismissCheckbox.type = 'checkbox';
     dismissCheckbox.id = 'welcome-modal-dismiss';
+    dismissCheckbox.className = 'welcome-modal__checkbox';
 
     const checkboxLabel = document.createElement('span');
     checkboxLabel.textContent = "Don't show again";
@@ -284,7 +335,7 @@ function ensureModalElements(): WelcomeModalElements {
 
     const continueBtn = document.createElement('button');
     continueBtn.type = 'button';
-    continueBtn.className = 'btn btn-primary welcome-modal__continue';
+    continueBtn.className = 'btn btn-primary welcome-modal__continue welcome-modal__delayed';
     continueBtn.textContent = 'Continue';
 
     modal.appendChild(header);
@@ -297,16 +348,22 @@ function ensureModalElements(): WelcomeModalElements {
     document.body.appendChild(overlay);
 
     overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) {
-            void closeWelcomeModal();
+        if (event.target !== overlay) return;
+        if (!welcomeControlsEnabled) {
+            event.stopPropagation();
+            event.preventDefault();
+            return;
         }
+        void closeWelcomeModal();
     });
 
     closeBtn.addEventListener('click', () => {
+        if (!welcomeControlsEnabled) return;
         void closeWelcomeModal();
     });
 
     continueBtn.addEventListener('click', () => {
+        if (!welcomeControlsEnabled) return;
         void closeWelcomeModal();
     });
 
@@ -315,6 +372,7 @@ function ensureModalElements(): WelcomeModalElements {
         modal,
         closeBtn,
         dismissCheckbox,
+        footer,
         continueBtn,
     };
 
@@ -325,6 +383,7 @@ function attachEscapeHandler(): void {
     if (escapeHandler) return;
     escapeHandler = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
+            if (!welcomeControlsEnabled) return;
             event.preventDefault();
             void closeWelcomeModal();
         }
@@ -340,9 +399,17 @@ function detachEscapeHandler(): void {
 
 async function closeWelcomeModal(): Promise<void> {
     if (!modalElements) return;
-    const {overlay, dismissCheckbox} = modalElements;
+    const {overlay, dismissCheckbox, closeBtn, footer, continueBtn} = modalElements;
     overlay.classList.remove('welcome-overlay--visible');
     detachEscapeHandler();
+    welcomeControlsEnabled = false;
+    if (welcomeControlsTimer !== null) {
+        window.clearTimeout(welcomeControlsTimer);
+        welcomeControlsTimer = null;
+    }
+    closeBtn.classList.remove('welcome-modal__delayed--visible');
+    footer.classList.remove('welcome-modal__delayed--visible');
+    continueBtn.classList.remove('welcome-modal__delayed--visible');
     if (dismissCheckbox.checked) {
         try {
             await window.api.settings.setWelcomeModalDismissed(true);
@@ -355,10 +422,24 @@ async function closeWelcomeModal(): Promise<void> {
 async function showWelcomeModal(): Promise<void> {
     const elements = ensureModalElements();
     elements.dismissCheckbox.checked = false;
+    welcomeControlsEnabled = false;
+    if (welcomeControlsTimer !== null) {
+        window.clearTimeout(welcomeControlsTimer);
+        welcomeControlsTimer = null;
+    }
+    elements.closeBtn.classList.remove('welcome-modal__delayed--visible');
+    elements.footer.classList.remove('welcome-modal__delayed--visible');
+    elements.continueBtn.classList.remove('welcome-modal__delayed--visible');
     attachEscapeHandler();
     requestAnimationFrame(() => {
         elements.overlay.classList.add('welcome-overlay--visible');
     });
+    welcomeControlsTimer = window.setTimeout(() => {
+        welcomeControlsEnabled = true;
+        elements.closeBtn.classList.add('welcome-modal__delayed--visible');
+        elements.footer.classList.add('welcome-modal__delayed--visible');
+        elements.continueBtn.classList.add('welcome-modal__delayed--visible');
+    }, 6000);
 }
 
 export async function initializeWelcomeModal(): Promise<void> {

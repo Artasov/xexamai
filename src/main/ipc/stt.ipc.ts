@@ -8,8 +8,8 @@ import {
     StopStreamRequest,
     ScreenProcessRequest,
     ScreenProcessResponse,
-    ScreenCaptureResponse
-} from '../shared/types';
+    ScreenCaptureResponse,
+} from '../../shared/ipc';
 import {
     askChatWithText,
     processAudioToAnswer,
@@ -19,6 +19,7 @@ import {
 } from '../services/assistant.service';
 import {logger} from '../services/logger.service';
 import {formatError} from '../utils/errorFormatter';
+import {normalizeAudioInput} from '../utils/audioNormalizer';
 
 export function registerSttIpc() {
     const controllers = new Map<string, { controller: AbortController; cancelled: boolean; sentDone: boolean }>();
@@ -35,34 +36,12 @@ export function registerSttIpc() {
                 throw new Error('Invalid audio payload');
             }
             const raw = (payload as any).audio;
-            let audio: Buffer | null = null;
-            try {
-                if (Buffer.isBuffer(raw)) {
-                    audio = raw as Buffer;
-                } else if (raw && typeof raw === 'object' && (raw as any).type === 'Buffer' && Array.isArray((raw as any).data)) {
-                    audio = Buffer.from((raw as any).data);
-                } else if (raw instanceof Uint8Array) {
-                    audio = Buffer.from(raw);
-                } else if (raw instanceof ArrayBuffer) {
-                    audio = Buffer.from(new Uint8Array(raw));
-                } else {
-                    // Попытка сконвертировать неизвестный тип
-                    if (raw && typeof (raw as any).byteLength === 'number' && typeof (raw as any).slice === 'function') {
-                        const view = new Uint8Array(raw as ArrayBufferLike);
-                        audio = Buffer.from(view);
-                    }
-                }
-            } catch (convErr) {
-                try {
-                    console.error('[main.assistant] audio convert error:', convErr);
-                } catch {
-                }
-            }
+            const audio = normalizeAudioInput(raw);
             try {
                 console.debug('[main.assistant] got audio length:', audio ? audio.length : 'not-buffer', 'mime:', payload.mime, 'filename:', payload.filename);
             } catch {
             }
-            if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) {
+            if (!audio || audio.length === 0) {
                 try {
                     console.warn('[main.assistant] empty or invalid buffer after convert. rawType:', typeof raw);
                 } catch {
@@ -111,29 +90,8 @@ export function registerSttIpc() {
                 throw new Error('Invalid audio payload');
             }
             const raw = (payload as any).audio;
-            let audio: Buffer | null = null;
-            try {
-                if (Buffer.isBuffer(raw)) {
-                    audio = raw as Buffer;
-                } else if (raw && typeof raw === 'object' && (raw as any).type === 'Buffer' && Array.isArray((raw as any).data)) {
-                    audio = Buffer.from((raw as any).data);
-                } else if (raw instanceof Uint8Array) {
-                    audio = Buffer.from(raw);
-                } else if (raw instanceof ArrayBuffer) {
-                    audio = Buffer.from(new Uint8Array(raw));
-                } else {
-                    if (raw && typeof (raw as any).byteLength === 'number' && typeof (raw as any).slice === 'function') {
-                        const view = new Uint8Array(raw as ArrayBufferLike);
-                        audio = Buffer.from(view);
-                    }
-                }
-            } catch (convErr) {
-                try {
-                    console.error('[main.assistant:stream] audio convert error:', convErr);
-                } catch {
-                }
-            }
-            if (!audio || !Buffer.isBuffer(audio) || audio.length === 0) throw new Error('Empty audio');
+            const audio = normalizeAudioInput(raw);
+            if (!audio || audio.length === 0) throw new Error('Empty audio');
             const MAX_BYTES = 25 * 1024 * 1024;
             if (audio.length > MAX_BYTES) throw new Error('Audio is too large (>25MB)');
             const filename = payload.filename || 'lastN.webm';

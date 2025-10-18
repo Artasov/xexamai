@@ -12,7 +12,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "baseUrl": ".",
-    "rootDir": "src/renderer",
+    "rootDir": "src",
     "outDir": "build/renderer",
     "sourceMap": true,
     "types": [
@@ -24,7 +24,8 @@
     "jsx": "react-jsx"
   },
   "include": [
-    "src/renderer/**/*"
+    "src/renderer/**/*",
+    "src/shared/**/*"
   ],
   "exclude": [
     "node_modules",
@@ -32,4 +33,3 @@
     "build"
   ]
 }
-

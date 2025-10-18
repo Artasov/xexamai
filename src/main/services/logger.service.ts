@@ -1,5 +1,5 @@
 import {app} from 'electron';
-import fs from 'node:fs';
+import {promises as fsp} from 'node:fs';
 import path from 'node:path';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
@@ -17,53 +17,69 @@ export class LoggerService {
     private logFile: string;
     private maxLogSize: number = 10 * 1024 * 1024; // 10MB
     private maxLogFiles: number = 5;
+    private initPromise: Promise<void>;
 
     constructor() {
         const userDataPath = app.getPath('userData');
         this.logDir = path.join(userDataPath, 'xexamai', 'logs');
-        
-        if (!fs.existsSync(this.logDir)) {
-            fs.mkdirSync(this.logDir, {recursive: true});
-        }
 
         this.logFile = path.join(this.logDir, 'latest.log');
-        this.clearLogOnStartup();
-        this.rotateLogIfNeeded();
+        this.initPromise = this.initialize();
     }
 
-    private clearLogOnStartup(): void {
+    private async initialize(): Promise<void> {
         try {
-            if (fs.existsSync(this.logFile)) {
-                fs.writeFileSync(this.logFile, '', 'utf8');
-                console.log(`[logger] Cleared log file: ${this.logFile}`);
-            }
+            await fsp.mkdir(this.logDir, {recursive: true});
+            await this.clearLogOnStartup();
+            await this.rotateLogIfNeeded();
         } catch (error) {
-            console.error('Failed to clear log file:', error);
+            console.error('Logger initialization failed:', error);
         }
     }
 
-    private rotateLogIfNeeded(): void {
-        if (!fs.existsSync(this.logFile)) return;
+    private async clearLogOnStartup(): Promise<void> {
+        try {
+            await fsp.writeFile(this.logFile, '', 'utf8');
+            console.log(`[logger] Cleared log file: ${this.logFile}`);
+        } catch (error: any) {
+            if (error && error.code !== 'ENOENT') {
+                console.error('Failed to clear log file:', error);
+            }
+        }
+    }
 
-        const stats = fs.statSync(this.logFile);
-        if (stats.size >= this.maxLogSize) {
-            // Ротируем логи
-            for (let i = this.maxLogFiles - 1; i > 0; i--) {
-                const oldFile = path.join(this.logDir, `latest.${i}.log`);
-                const newFile = path.join(this.logDir, `latest.${i + 1}.log`);
-                
-                if (fs.existsSync(oldFile)) {
-                    if (i === this.maxLogFiles - 1) {
-                        fs.unlinkSync(oldFile);
-                    } else {
-                        fs.renameSync(oldFile, newFile);
-                    }
+    private async rotateLogIfNeeded(): Promise<void> {
+        let stats;
+        try {
+            stats = await fsp.stat(this.logFile);
+        } catch (error: any) {
+            if (error && error.code === 'ENOENT') return;
+            throw error;
+        }
+
+        if (stats.size < this.maxLogSize) return;
+
+        for (let i = this.maxLogFiles - 1; i > 0; i--) {
+            const oldFile = path.join(this.logDir, `latest.${i}.log`);
+            const newFile = path.join(this.logDir, `latest.${i + 1}.log`);
+            try {
+                if (i === this.maxLogFiles - 1) {
+                    await fsp.unlink(oldFile);
+                } else {
+                    await fsp.rename(oldFile, newFile);
+                }
+            } catch (error: any) {
+                if (error && error.code !== 'ENOENT') {
+                    console.error('Failed to rotate log file:', error);
                 }
             }
+        }
 
-            // Переименовываем текущий файл
+        try {
             const rotatedFile = path.join(this.logDir, 'latest.1.log');
-            fs.renameSync(this.logFile, rotatedFile);
+            await fsp.rename(this.logFile, rotatedFile);
+        } catch (error) {
+            console.error('Failed to rotate latest log file:', error);
         }
     }
 
@@ -72,10 +88,11 @@ export class LoggerService {
         return `[${entry.timestamp}] ${entry.level.toUpperCase()} | ${entry.category} | ${entry.message}${dataStr}\n`;
     }
 
-    private writeLog(entry: LogEntry): void {
+    private async writeLog(entry: LogEntry): Promise<void> {
         try {
+            await this.initPromise;
             const logLine = this.formatLogEntry(entry);
-            fs.appendFileSync(this.logFile, logLine, 'utf8');
+            await fsp.appendFile(this.logFile, logLine, 'utf8');
         } catch (error) {
             console.error('Failed to write log:', error);
         }
@@ -90,7 +107,7 @@ export class LoggerService {
             data
         };
 
-        this.writeLog(entry);
+        this.writeLog(entry).catch(() => {});
         
         // Также выводим в консоль для разработки
         const consoleMethod = level === 'error' ? console.error : 

@@ -1,158 +1,8 @@
 import type {AppSettings} from '../types.js';
 import {logger} from '../utils/logger.js';
 import {registerHolderSettingsSection} from './holderAccess.js';
-
-type CustomSelectOption = { value: string; label: string; title?: string };
-
-class CustomSelect {
-    private container: HTMLElement;
-    private button: HTMLButtonElement;
-    private list: HTMLDivElement;
-    private options: CustomSelectOption[] = [];
-    private value: string = '';
-    private onChange?: (value: string) => void;
-    private isOpen: boolean = false;
-
-    constructor(container: HTMLElement, options: CustomSelectOption[], initialValue: string, onChange?: (value: string) => void) {
-        this.container = container;
-        this.onChange = onChange;
-        this.button = document.createElement('button');
-        this.button.type = 'button';
-        this.button.className = 'input-field frbc gap-2 relative w-full';
-        this.button.setAttribute('aria-haspopup', 'listbox');
-        this.button.setAttribute('aria-expanded', 'false');
-
-        const chevron = document.createElement('span');
-        chevron.textContent = '▾';
-        chevron.className = 'text-gray-400';
-
-        this.list = document.createElement('div');
-        this.list.className = 'rounded shadow-lg';
-        this.list.style.background = '#111111';
-        this.list.style.border = '1px solid #1a1a1a';
-        this.list.style.boxShadow = '0 8px 32px rgba(0,0,0,.6), 0 0 0 1px rgba(139, 92, 246, 0.1)';
-        this.list.setAttribute('role', 'listbox');
-        // Render as portal to body to avoid clipping and stacking issues
-        this.list.style.position = 'fixed';
-        this.list.style.top = '-1000px';
-        this.list.style.left = '-1000px';
-        this.list.style.maxHeight = '60vh';
-        this.list.style.overflow = 'auto';
-        this.list.style.zIndex = '2147483647';
-        this.list.style.display = 'none';
-        
-        // Custom scrollbar styles for dropdown
-        this.list.style.scrollbarWidth = 'thin';
-        this.list.style.scrollbarColor = '#8b5cf6 #111111';
-        
-        // Add webkit scrollbar styles via CSS class
-        this.list.classList.add('custom-dropdown-scrollbar');
-
-        const wrap = document.createElement('div');
-        wrap.className = 'relative w-full';
-        wrap.appendChild(this.button);
-        this.container.innerHTML = '';
-        this.container.appendChild(wrap);
-        document.body.appendChild(this.list);
-
-        this.setOptions(options);
-        this.setValue(initialValue);
-
-        this.button.addEventListener('click', () => this.toggle());
-        document.addEventListener('click', (e) => {
-            if (!this.container.contains(e.target as Node)) this.close();
-        });
-        window.addEventListener('resize', () => this.repositionIfOpen());
-        window.addEventListener('scroll', () => this.repositionIfOpen(), true);
-    }
-
-    public setOptions(options: CustomSelectOption[]) {
-        this.options = options || [];
-        this.list.innerHTML = '';
-        this.options.forEach((opt) => {
-            const item = document.createElement('div');
-            item.className = 'px-3 py-2 cursor-pointer transition-colors';
-            item.style.color = '#ffffff';
-            item.textContent = opt.label;
-            if (opt.title) item.title = opt.title;
-            item.setAttribute('role', 'option');
-            item.dataset.value = opt.value;
-            
-            // Hover effect
-            item.addEventListener('mouseenter', () => {
-                item.style.background = '#1a1a1a';
-                item.style.color = '#8b5cf6';
-            });
-            item.addEventListener('mouseleave', () => {
-                item.style.background = 'transparent';
-                item.style.color = '#ffffff';
-            });
-            item.addEventListener('click', () => {
-                this.setValue(opt.value);
-                this.onChange?.(opt.value);
-                this.close();
-            });
-            this.list.appendChild(item);
-        });
-        this.updateButtonLabel();
-    }
-
-    public setValue(value: string) {
-        this.value = value;
-        this.updateButtonLabel();
-    }
-
-    public getValue(): string {
-        return this.value;
-    }
-
-    private updateButtonLabel() {
-        const current = this.options.find((o) => o.value === this.value) || this.options[0];
-        const label = current ? current.label : '';
-        this.button.textContent = label || '';
-        // add chevron back (textContent replaced it)
-        const chevron = document.createElement('span');
-        chevron.textContent = '▾';
-        chevron.className = 'ml-2 text-gray-400';
-        this.button.appendChild(chevron);
-    }
-
-    private toggle() {
-        if (this.isOpen) this.close(); else this.open();
-    }
-
-    private open() {
-        this.reposition();
-        this.list.style.display = 'block';
-        this.button.setAttribute('aria-expanded', 'true');
-        this.isOpen = true;
-    }
-
-    private close() {
-        this.list.style.display = 'none';
-        this.button.setAttribute('aria-expanded', 'false');
-        this.isOpen = false;
-    }
-
-    private repositionIfOpen() {
-        if (!this.isOpen) return;
-        this.reposition();
-    }
-
-    private reposition() {
-        try {
-            const rect = this.button.getBoundingClientRect();
-            const margin = 4;
-            const top = rect.bottom + margin;
-            const left = rect.left;
-            const width = rect.width;
-            this.list.style.top = `${Math.max(0, Math.floor(top))}px`;
-            this.list.style.left = `${Math.max(0, Math.floor(left))}px`;
-            this.list.style.minWidth = `${Math.max(140, Math.floor(width))}px`;
-            this.list.style.maxWidth = `${Math.max(140, Math.floor(Math.min(window.innerWidth - left - 8, 560)))}px`;
-        } catch {}
-    }
-}
+import {CustomSelect, CustomSelectOption} from './components/CustomSelect.js';
+import {settingsStore} from '../state/settingsStore.js';
 
 export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;
@@ -192,9 +42,18 @@ export class SettingsPanel {
         this.init().then();
     }
 
+    private updateSettings(partial: Partial<AppSettings>) {
+        this.settings = {...this.settings, ...partial};
+        settingsStore.patch(partial);
+    }
+
     private async init() {
         try {
-            this.settings = await window.api.settings.get();
+            try {
+                this.settings = settingsStore.get();
+            } catch {
+                this.settings = await settingsStore.load();
+            }
             if (!(this.settings as any).screenProcessingTimeoutMs) {
                 (this.settings as any).screenProcessingTimeoutMs = 50000;
             }
@@ -688,6 +547,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Transcription mode changed', { mode });
                     try {
                         await window.api.settings.setTranscriptionMode(mode);
+                        this.updateSettings({ transcriptionMode: mode });
                         this.settings.transcriptionMode = mode;
                         this.updateTranscriptionModeVisibility();
                         this.showNotification(`Transcription mode changed to ${mode === 'api' ? 'API' : 'Local'}`);
@@ -715,6 +575,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Transcription model changed', { model });
                     try {
                         await window.api.settings.setTranscriptionModel(model);
+                        this.updateSettings({ transcriptionModel: model });
                         this.settings.transcriptionModel = model;
                         this.showNotification(`Transcription model changed to ${model}`);
                     } catch (error) {
@@ -745,6 +606,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Local Whisper model changed', { model });
                     try {
                         await window.api.settings.setLocalWhisperModel(model);
+                        this.updateSettings({ localWhisperModel: model });
                         this.settings.localWhisperModel = model;
                         this.showNotification(`Local Whisper model changed to ${model}`);
                     } catch (error) {
@@ -770,6 +632,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Local device changed', { device });
                     try {
                         await window.api.settings.setLocalDevice(device);
+                        this.updateSettings({ localDevice: device });
                         this.settings.localDevice = device;
                         this.showNotification(`Local device changed to ${device.toUpperCase()}`);
                     } catch (error) {
@@ -795,12 +658,15 @@ export class SettingsPanel {
                     logger.info('settings', 'LLM host changed', { host });
                     try {
                         await window.api.settings.setLlmHost(host);
+                        this.updateSettings({ llmHost: host });
                         this.settings.llmHost = host;
                         this.updateLlmHostVisibility();
                         
                         // Автоматически переключаем на подходящую модель по умолчанию
                         const defaultModel = host === 'api' ? 'gpt-4.1-nano' : 'gpt-oss:20b';
                         await window.api.settings.setLlmModel(defaultModel);
+                        this.updateSettings({ llmModel: defaultModel });
+                        this.updateSettings({ llmModel: defaultModel });
                         this.settings.llmModel = defaultModel;
                         
                         // Обновляем значения в селектах
@@ -833,6 +699,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Screen processing model changed', { provider });
                     try {
                         await window.api.settings.setScreenProcessingModel(provider);
+                        this.updateSettings({ screenProcessingModel: provider });
                         this.settings.screenProcessingModel = provider;
                         this.showNotification(`Screen processing model changed to ${provider === 'openai' ? 'OpenAI' : 'Google'}`);
                     } catch (error) {
@@ -873,6 +740,9 @@ export class SettingsPanel {
                     logger.info('settings', 'API LLM model changed', { model });
                     try {
                         await window.api.settings.setLlmModel(model);
+                        this.updateSettings({ llmModel: model });
+                        this.updateSettings({ llmModel: model });
+                        this.updateSettings({ llmModel: model });
                         this.settings.llmModel = model;
                         this.showNotification(`API LLM model changed to ${model}`);
                     } catch (error) {
@@ -937,6 +807,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Audio input type changed', { audioType });
                     try {
                         await window.api.settings.setAudioInputType(audioType);
+                        this.updateSettings({ audioInputType: audioType });
                         this.settings.audioInputType = audioType;
                         this.updateAudioTypeVisibility();
                         this.showNotification(`Audio input type changed to ${audioType === 'microphone' ? 'Microphone' : 'System Audio'}`);
@@ -963,6 +834,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Audio input device changed', { deviceId });
                     try {
                         await window.api.settings.setAudioInputDevice(deviceId);
+                        this.updateSettings({ audioInputDeviceId: deviceId });
                         this.settings.audioInputDeviceId = deviceId;
                         this.showNotification('Audio input device saved successfully');
                     } catch (error) {
@@ -988,6 +860,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Stream mode changed', { mode });
                     try {
                         await window.api.settings.setStreamMode(mode);
+                        this.updateSettings({ streamMode: mode });
                         this.settings.streamMode = mode;
                         this.showNotification(`Stream mode changed to ${mode === 'base' ? 'Base' : 'Stream'}`);
                         // notify renderer to refresh UI immediately
@@ -1013,6 +886,7 @@ export class SettingsPanel {
                     logger.info('settings', 'API key save button clicked');
                     try {
                         await window.api.settings.setOpenaiApiKey(key);
+                        this.updateSettings({ openaiApiKey: key });
                         this.settings.openaiApiKey = key;
                         this.showNotification('API Key saved successfully');
                     } catch (error) {
@@ -1032,6 +906,7 @@ export class SettingsPanel {
                     logger.info('settings', 'Gemini API key save button clicked');
                     try {
                         await window.api.settings.setGeminiApiKey(key);
+                        this.updateSettings({ geminiApiKey: key });
                         this.settings.geminiApiKey = key;
                         this.showNotification('Gemini API Key saved successfully');
                     } catch (error) {
@@ -1053,6 +928,7 @@ export class SettingsPanel {
 
                 try {
                     await window.api.settings.setWindowOpacity(value);
+                    this.updateSettings({ windowOpacity: value });
                     this.settings.windowOpacity = value;
                 } catch (error) {
                     console.error('Error setting window opacity:', error);
@@ -1073,6 +949,7 @@ export class SettingsPanel {
 
                 try {
                     await window.api.settings.setWindowScale(value);
+                    this.updateSettings({ windowScale: value });
                     this.settings.windowScale = value;
                     if (scaleRestartNote) {
                         const changed = Math.abs((this.initialWindowScale || 1.0) - value) > 1e-9;
@@ -1096,6 +973,7 @@ export class SettingsPanel {
                     const newDurations = [...(this.settings.durations || []), duration].sort((a, b) => a - b);
                     try {
                         await window.api.settings.setDurations(newDurations);
+                        this.updateSettings({ durations: newDurations });
                         this.settings.durations = newDurations;
                         this.renderDurations();
                         newDurationInput.value = '';
@@ -1118,6 +996,8 @@ export class SettingsPanel {
 
                 try {
                     await window.api.settings.setDurations(newDurations);
+                    this.updateSettings({ durations: newDurations });
+                    this.updateSettings({ durations: newDurations });
                     this.settings.durations = newDurations;
                     this.renderDurations();
                     this.showNotification('Duration removed successfully');
@@ -1138,6 +1018,7 @@ export class SettingsPanel {
                 logger.info('settings', 'Save duration hotkey clicked', { duration, key });
                 try {
                     await (window.api.settings as any).setDurationHotkeys(next);
+                    this.updateSettings({ durationHotkeys: next });
                     (this.settings as any).durationHotkeys = next;
                     this.options.onHotkeysChange?.(next);
                     this.showNotification('Hotkey saved');
@@ -1152,6 +1033,7 @@ export class SettingsPanel {
                 if (!key) return;
                 try {
                     await (window.api.settings as any).setToggleInputHotkey(key);
+                    this.updateSettings({ toggleInputHotkey: key });
                     (this.settings as any).toggleInputHotkey = key.toLowerCase();
                     this.showNotification('Hotkey saved');
                 } catch (error) {
@@ -1165,6 +1047,7 @@ export class SettingsPanel {
                 if (!key) return;
                 try {
                     await (window.api.settings as any).setStreamSendHotkey(key);
+                    this.updateSettings({ streamSendHotkey: key });
                     (this.settings as any).streamSendHotkey = key;
                     this.showNotification('Stream send hotkey saved');
                     // notify renderer so the keydown handler updates without restart
@@ -1188,6 +1071,7 @@ export class SettingsPanel {
                 logger.info('settings', 'Transcription prompt save button clicked', { promptLength: prompt.length });
                 try {
                     await window.api.settings.setTranscriptionPrompt(prompt);
+                    this.updateSettings({ transcriptionPrompt: prompt });
                     this.settings.transcriptionPrompt = prompt;
                     this.showNotification('Transcription prompt saved successfully');
                 } catch (error) {
@@ -1205,6 +1089,7 @@ export class SettingsPanel {
                 logger.info('settings', 'LLM prompt save button clicked', { promptLength: prompt.length });
                 try {
                     await window.api.settings.setLlmPrompt(prompt);
+                    this.updateSettings({ llmPrompt: prompt });
                     this.settings.llmPrompt = prompt;
                     this.showNotification('LLM prompt saved successfully');
                 } catch (error) {
@@ -1221,6 +1106,7 @@ export class SettingsPanel {
                 logger.info('settings', 'Screen processing prompt save button clicked', { promptLength: prompt.length });
                 try {
                     await window.api.settings.setScreenProcessingPrompt(prompt);
+                    this.updateSettings({ screenProcessingPrompt: prompt });
                     this.settings.screenProcessingPrompt = prompt;
                     this.showNotification('Screen processing prompt saved successfully');
                 } catch (error) {
@@ -1247,6 +1133,7 @@ export class SettingsPanel {
                 logger.info('settings', 'Always on top changed', { alwaysOnTop });
                 try {
                     await window.api.settings.setAlwaysOnTop(alwaysOnTop);
+                    this.updateSettings({ alwaysOnTop });
                     this.settings.alwaysOnTop = alwaysOnTop;
                     
                     // Показываем более информативное уведомление
@@ -1269,6 +1156,7 @@ export class SettingsPanel {
                 logger.info('settings', 'Hide app changed', { hideApp });
                 try {
                     await window.api.settings.setHideApp(hideApp);
+                    this.updateSettings({ hideApp });
                     this.settings.hideApp = hideApp;
                     
                     if (hideApp) {
@@ -1306,6 +1194,7 @@ export class SettingsPanel {
                 const val = Math.max(1000, Math.min(600000, Math.floor(parseInt(apiSttInput.value || '0'))));
                 try {
                     await (window.api.settings as any).setApiSttTimeoutMs(val);
+                    this.updateSettings({ apiSttTimeoutMs: val });
                     (this.settings as any).apiSttTimeoutMs = val;
                     this.showNotification('Transcription API timeout saved');
                 } catch (error) {
@@ -1320,6 +1209,7 @@ export class SettingsPanel {
                 const val = Math.max(1000, Math.min(600000, Math.floor(parseInt(apiLlmInput.value || '0'))));
                 try {
                     await (window.api.settings as any).setApiLlmTimeoutMs(val);
+                    this.updateSettings({ apiLlmTimeoutMs: val });
                     (this.settings as any).apiLlmTimeoutMs = val;
                     this.showNotification('LLM API timeout saved');
                 } catch (error) {
@@ -1334,6 +1224,7 @@ export class SettingsPanel {
                 const val = Math.max(1000, Math.min(600000, Math.floor(parseInt(screenTimeoutInput.value || '0'))));
                 try {
                     await window.api.settings.setScreenProcessingTimeoutMs(val);
+                    this.updateSettings({ screenProcessingTimeoutMs: val });
                     (this.settings as any).screenProcessingTimeoutMs = val;
                     this.showNotification('Screen processing timeout saved');
                 } catch (error) {
@@ -1352,6 +1243,7 @@ export class SettingsPanel {
                 logger.info('settings', 'Save window size clicked', { width, height });
                 try {
                     await window.api.settings.setWindowSize({ width, height });
+                    this.updateSettings({ windowWidth: width, windowHeight: height });
                     this.settings.windowWidth = width;
                     this.settings.windowHeight = height;
                     this.showNotification('Window size saved');

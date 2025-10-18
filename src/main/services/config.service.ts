@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import dotenv from 'dotenv';
 import {RetryConfig} from './retry.service';
 import {appConfigService} from './app-config.service';
-import {TranscriptionMode, WhisperModel, LocalDevice, DEFAULT_LLM_PROMPT, ScreenProcessingProvider, DEFAULT_SCREEN_PROMPT} from '../shared/types';
+import {
+    TranscriptionMode,
+    WhisperModel,
+    LocalDevice,
+    DEFAULT_LLM_PROMPT,
+    ScreenProcessingProvider,
+    DEFAULT_SCREEN_PROMPT,
+} from '../../shared/ipc';
 
 export type AppConfig = {
     openaiApiKey: string | undefined;

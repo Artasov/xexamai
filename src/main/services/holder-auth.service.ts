@@ -4,7 +4,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {QRCodeSVG} from 'qrcode.react';
 import {logger} from './logger.service';
-import {HolderChallengeInfo, HolderStatus, HolderVerificationResult} from '../shared/types';
+import {HolderChallengeInfo, HolderStatus, HolderVerificationResult} from '../../shared/ipc';
 
 type HolderChallenge = HolderChallengeInfo & { id: string };
 

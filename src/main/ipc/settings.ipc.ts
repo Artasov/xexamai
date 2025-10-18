@@ -1,5 +1,14 @@
 import {BrowserWindow, ipcMain, shell} from 'electron';
-import {AppSettings, DefaultSettings, IPCChannels, LocalDevice, LlmHost, TranscriptionMode, WhisperModel, DEFAULT_LLM_PROMPT} from '../shared/types';
+import {
+    AppSettings,
+    DefaultSettings,
+    IPCChannels,
+    LocalDevice,
+    LlmHost,
+    TranscriptionMode,
+    WhisperModel,
+    DEFAULT_LLM_PROMPT,
+} from '../../shared/ipc';
 import {appConfigService} from '../services/app-config.service';
 import {logger} from '../services/logger.service';
 import {hotkeysService} from '../services/hotkeys.service';

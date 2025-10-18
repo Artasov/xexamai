@@ -1,6 +1,6 @@
 import {ipcMain} from 'electron';
 import {holderAuthService} from '../services/holder-auth.service';
-import {IPCChannels, HolderStatus, HolderVerificationResult} from '../shared/types';
+import {IPCChannels, HolderStatus, HolderVerificationResult} from '../../shared/ipc';
 import {logger} from '../services/logger.service';
 
 function errorStatus(message: string): HolderStatus {

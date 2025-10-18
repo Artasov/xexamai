@@ -25,9 +25,9 @@ export type LocalDevice = 'cpu' | 'gpu';
 export type ScreenProcessingProvider = 'openai' | 'google';
 
 export type AppSettings = {
-    durations: number[]; // seconds
-    durationHotkeys?: Record<number, string>; // digit or letter key, combined with Ctrl
-    toggleInputHotkey?: string; // single letter/digit for Ctrl-<key>
+    durations: number[];
+    durationHotkeys?: Record<number, string>;
+    toggleInputHotkey?: string;
     openaiApiKey?: string;
     windowOpacity?: number;
     alwaysOnTop?: boolean;
@@ -35,7 +35,7 @@ export type AppSettings = {
     welcomeModalDismissed?: boolean;
     windowWidth?: number;
     windowHeight?: number;
-    windowScale?: number; // window scale factor (default: 1)
+    windowScale?: number;
     audioInputDeviceId?: string;
     audioInputType?: 'microphone' | 'system';
     transcriptionModel?: string;
@@ -49,16 +49,18 @@ export type AppSettings = {
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
     screenProcessingTimeoutMs?: number;
-    // New Gemini settings
     geminiApiKey?: string;
     streamMode?: 'base' | 'stream';
-    streamSendHotkey?: string; // single letter/digit for Ctrl-<key>
+    streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
     screenProcessingPrompt?: string;
 };
 
-export const DEFAULT_LLM_PROMPT = 'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
-export const DEFAULT_SCREEN_PROMPT = 'You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate\'s environment, tools, or work. Focus on actionable insights.';
+export const DEFAULT_LLM_PROMPT =
+    'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
+
+export const DEFAULT_SCREEN_PROMPT =
+    'You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate\'s environment, tools, or work. Focus on actionable insights.';
 
 export const DefaultSettings: AppSettings = {
     durations: [5, 10, 15, 20, 30, 60],
@@ -97,8 +99,8 @@ export const IPCChannels = {
     SetDurations: 'settings:set:durations',
     SetDurationHotkeys: 'settings:set:duration-hotkeys',
     SetToggleInputHotkey: 'settings:set:toggle-input-hotkey',
-    HotkeyDuration: 'hotkeys:duration', // main -> renderer event with { sec }
-    HotkeyToggleInput: 'hotkeys:toggle-input', // main -> renderer event with no payload
+    HotkeyDuration: 'hotkeys:duration',
+    HotkeyToggleInput: 'hotkeys:toggle-input',
     SetAudioInputDevice: 'settings:set:audio-input-device',
     SetAudioInputType: 'settings:set:audio-input-type',
     SetTranscriptionModel: 'settings:set:transcription-model',
@@ -114,7 +116,6 @@ export const IPCChannels = {
     SetWelcomeModalDismissed: 'settings:set:welcome-modal-dismissed',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
-    // New Gemini settings
     SetGeminiApiKey: 'settings:set:gemini-api-key',
     SetStreamMode: 'settings:set:stream-mode',
     SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
@@ -227,10 +228,7 @@ export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
         processAudioStream: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
-        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | {
-            ok: false;
-            error: string
-        }>;
+        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
         askChat: (args: AskChatRequest) => Promise<void>;
         stopStream: (args: StopStreamRequest) => Promise<void>;
         onStreamTranscript: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
@@ -274,6 +272,12 @@ export type AssistantAPI = {
         setScreenProcessingModel: (provider: ScreenProcessingProvider) => Promise<void>;
         setScreenProcessingPrompt: (prompt: string) => Promise<void>;
         setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
+        setWelcomeModalDismissed: (dismissed: boolean) => Promise<void>;
+        setGeminiApiKey: (key: string) => Promise<void>;
+        setStreamMode: (mode: 'base' | 'stream') => Promise<void>;
+        setStreamSendHotkey: (key: string) => Promise<void>;
+        setWindowScale: (scale: number) => Promise<void>;
+        setHideApp: (hideApp: boolean) => Promise<void>;
     };
     window: {
         minimize: () => Promise<void>;
@@ -292,6 +296,16 @@ export type AssistantAPI = {
         createChallenge: () => Promise<HolderStatus>;
         verifySignature: (signature: string) => Promise<HolderVerificationResult>;
         reset: () => Promise<void>;
+    };
+    gemini: {
+        startLive: (opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) => Promise<void>;
+        sendAudioChunk: (params: { data: string; mime: string }) => void;
+        stopLive: () => void;
+        onMessage: (cb: (message: any) => void) => void;
+        onError: (cb: (error: string) => void) => void;
+    };
+    media: {
+        getPrimaryDisplaySourceId: () => Promise<string | null>;
     };
     log: (entry: LogEntry) => Promise<void>;
 };
