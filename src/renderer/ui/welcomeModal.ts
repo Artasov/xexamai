@@ -236,7 +236,7 @@ function ensureStyles(): void {
 function createCommunityButton(link: CommunityLink): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'frbc gap-2 rounded-2xl px-3 py-2 transition-all duration-400 w-fit welcome-modal__link';
+    button.className = 'frbc gap-[10px] rounded-2xl px-3 py-2 transition-all duration-400 w-fit welcome-modal__link';
     button.style.backgroundColor = '#ffffff07';
     button.style.border = '1px solid #ffffff11';
 
@@ -259,6 +259,7 @@ function createCommunityButton(link: CommunityLink): HTMLButtonElement {
 
     const label = document.createElement('span');
     label.className = 'welcome-modal__label text-nowrap';
+    label.style.paddingBottom = '1px';
     label.textContent = link.label;
 
     button.appendChild(icon);
