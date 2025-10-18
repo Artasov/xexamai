@@ -25,17 +25,17 @@ const ERROR_MAPPINGS: Record<string, ErrorInfo> = {
         actionText: 'Open settings',
         actionUrl: '#settings'
     },
-    'GEMINI_API_KEY is not set': {
-        title: 'Gemini API key not configured',
-        message: 'To use Gemini, you need to configure your Google AI API key.',
+    'GOOGLE_API_KEY is not set': {
+        title: 'Google API key not configured',
+        message: 'To use Google, you need to configure your Google AI API key.',
         helpUrl: GUIDE_URL,
         helpText: 'Detailed setup instructions',
         actionText: 'Open settings',
         actionUrl: '#settings'
     },
-    'Gemini API key not configured': {
-        title: 'Gemini API key not configured',
-        message: 'To use Gemini, you need to configure your Google AI API key.',
+    'Google API key not configured': {
+        title: 'Google API key not configured',
+        message: 'To use Google, you need to configure your Google AI API key.',
         helpUrl: GUIDE_URL,
         helpText: 'Detailed setup instructions',
         actionText: 'Open settings',

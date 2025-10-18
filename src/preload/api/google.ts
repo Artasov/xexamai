@@ -10,7 +10,7 @@ async function ensureGenAI() {
     GenaiModality = mod.Modality;
 }
 
-export function createGeminiBridge(): AssistantAPI['gemini'] {
+export function createGoogleBridge(): AssistantAPI['google'] {
     let liveSession: any = null;
     let onMessageCb: ((message: any) => void) | null = null;
     let onErrorCb: ((error: string) => void) | null = null;
@@ -45,7 +45,7 @@ export function createGeminiBridge(): AssistantAPI['gemini'] {
                 },
                 onerror: (e: any) => {
                     try {
-                        onErrorCb?.(e?.message || 'Gemini error');
+                        onErrorCb?.(e?.message || 'Google error');
                     } catch {
                     }
                 },
@@ -55,7 +55,7 @@ export function createGeminiBridge(): AssistantAPI['gemini'] {
     }
 
     function sendAudioChunk(params: { data: string; mime: string }) {
-        if (!liveSession) throw new Error('Gemini Live session not started');
+        if (!liveSession) throw new Error('Google Live session not started');
         liveSession.sendRealtimeInput({
             audio: {
                 data: params.data,

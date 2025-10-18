@@ -40,8 +40,8 @@ export interface AppConfigData {
     apiSttTimeoutMs?: number; // OpenAI transcription API timeout
     apiLlmTimeoutMs?: number; // OpenAI chat completion timeout
     screenProcessingTimeoutMs?: number;
-    // New Gemini settings
-    geminiApiKey?: string;
+    // New Google settings
+    googleApiKey?: string;
     streamMode?: 'base' | 'stream';
     streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
@@ -524,20 +524,20 @@ export class AppConfigService {
         return !!this.configData.welcomeModalDismissed;
     }
 
-    // New Gemini settings methods
-    public setGeminiApiKey(key: string): void {
-        const oldKey = this.configData.geminiApiKey;
-        this.configData.geminiApiKey = key;
+    // New Google settings methods
+    public setGoogleApiKey(key: string): void {
+        const oldKey = this.configData.googleApiKey;
+        this.configData.googleApiKey = key;
         this.scheduleSave();
-        logger.info('settings', 'Gemini API key updated', { 
+        logger.info('settings', 'Google API key updated', {
             hasOldKey: !!oldKey, 
             hasNewKey: !!key,
             keyLength: key?.length 
         });
     }
 
-    public getGeminiApiKey(): string | undefined {
-        return this.configData.geminiApiKey;
+    public getGoogleApiKey(): string | undefined {
+        return this.configData.googleApiKey;
     }
 
     public setStreamMode(mode: 'base' | 'stream'): void {

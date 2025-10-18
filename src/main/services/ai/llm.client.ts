@@ -8,10 +8,10 @@ import {
     processScreenImageWithOpenAI,
 } from './providers/openaiProvider';
 import {
-    askChatWithGemini,
-    askChatStreamWithGemini,
-    processScreenImageWithGemini,
-} from './providers/geminiProvider';
+    askChatWithGoogle,
+    askChatStreamWithGoogle,
+    processScreenImageWithGoogle,
+} from './providers/googleProvider';
 import {
     askChatWithLocalModel,
     askChatStreamWithLocalModel,
@@ -35,13 +35,13 @@ function isLocalModel(model?: string): boolean {
     return typeof model === 'string' && ALLOWED_LOCAL_MODELS.has(model);
 }
 
-function isGeminiModel(model?: string): boolean {
-    return typeof model === 'string' && model.startsWith('gemini-');
+function isGoogleModel(model?: string): boolean {
+    return typeof model === 'string' && model.startsWith('google-');
 }
 
 const LOCAL_LLM_TIMEOUT_MS = 600000; // 600s only for local LLM
 const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
-const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
+const SCREEN_GOOGLE_MODEL = 'gemini-1.5-flash';
 const SCREEN_SYSTEM_PROMPT = 'You analyze screenshots to assist with technical interviews. Follow the user\'s instructions exactly and keep responses concise.';
 
 
@@ -53,9 +53,9 @@ export async function processScreenImage(image: Buffer, mime: string): Promise<s
 
     if (provider === 'google') {
         return withRetry(
-            () => processScreenImageWithGemini(image, mime, basePrompt, cfg, SCREEN_GEMINI_MODEL, SCREEN_SYSTEM_PROMPT),
+            () => processScreenImageWithGoogle(image, mime, basePrompt, cfg, SCREEN_GOOGLE_MODEL, SCREEN_SYSTEM_PROMPT),
             cfg.retryConfig,
-            'Gemini screen processing',
+            'Google screen processing',
             timeoutMs
         );
     }
@@ -72,12 +72,12 @@ export async function processScreenImage(image: Buffer, mime: string): Promise<s
 export async function askChat(prompt: string): Promise<string> {
     const cfg = getConfig();
 
-    if (isGeminiModel(cfg.chatModel)) {
-        if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+    if (isGoogleModel(cfg.chatModel)) {
+        if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
         return withRetry(
-            () => askChatWithGemini(prompt, cfg),
+            () => askChatWithGoogle(prompt, cfg),
             cfg.retryConfig,
-            'Gemini completion',
+            'Google completion',
             cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
         );
     }
@@ -107,12 +107,12 @@ export async function askChatStream(
 ): Promise<void> {
     const cfg = getConfig();
     
-    if (isGeminiModel(cfg.chatModel)) {
-        if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+    if (isGoogleModel(cfg.chatModel)) {
+        if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
         await withRetry(
-            () => askChatStreamWithGemini(prompt, cfg, onDelta, options),
+            () => askChatStreamWithGoogle(prompt, cfg, onDelta, options),
             cfg.retryConfig,
-            'Gemini streaming',
+            'Google streaming',
             cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
         );
         onDone?.();

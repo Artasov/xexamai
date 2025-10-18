@@ -2,16 +2,16 @@ import {GoogleGenAI} from '@google/genai';
 import {AppConfig} from '../../config.service';
 import {logger} from '../../logger.service';
 
-export async function askChatWithGemini(prompt: string, cfg: AppConfig): Promise<string> {
-    if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+export async function askChatWithGoogle(prompt: string, cfg: AppConfig): Promise<string> {
+    if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
 
-    logger.info('gemini', 'Starting Gemini chat completion', {
+    logger.info('google', 'Starting Google chat completion', {
         promptLength: prompt.length,
         model: cfg.chatModel,
-        apiKey: cfg.geminiApiKey ? `${cfg.geminiApiKey.substring(0, 8)}...` : null,
+        apiKey: cfg.googleApiKey ? `${cfg.googleApiKey.substring(0, 8)}...` : null,
     });
 
-    const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey });
     const systemMessage = cfg.llmPrompt;
 
     const response = await ai.models.generateContent({
@@ -25,7 +25,7 @@ export async function askChatWithGemini(prompt: string, cfg: AppConfig): Promise
 
     const msg = response.text || '';
 
-    logger.info('gemini', 'Gemini chat completion finished', {
+    logger.info('google', 'Google chat completion finished', {
         responseLength: msg.length,
         model: cfg.chatModel,
     });
@@ -33,20 +33,20 @@ export async function askChatWithGemini(prompt: string, cfg: AppConfig): Promise
     return msg;
 }
 
-export async function askChatStreamWithGemini(
+export async function askChatStreamWithGoogle(
     prompt: string,
     cfg: AppConfig,
     onDelta: (delta: string) => void,
     options?: { signal?: AbortSignal; shouldCancel?: () => boolean }
 ): Promise<void> {
-    if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+    if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
 
-    logger.info('gemini', 'Starting Gemini chat stream', {
+    logger.info('google', 'Starting Google chat stream', {
         promptLength: prompt.length,
         model: cfg.chatModel,
     });
 
-    const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey });
     const systemMessage = cfg.llmPrompt;
 
     const stream = await ai.models.generateContentStream({
@@ -75,18 +75,18 @@ export async function askChatStreamWithGemini(
             }
         }
 
-        logger.info('gemini', 'Gemini chat stream completed', {
+        logger.info('google', 'Google chat stream completed', {
             totalResponseLength: totalLength,
             model: cfg.chatModel,
             chunkCount,
         });
     } catch (error) {
-        logger.error('gemini', 'Gemini chat stream error', { error });
+        logger.error('google', 'Google chat stream error', { error });
         throw error;
     }
 }
 
-export async function processScreenImageWithGemini(
+export async function processScreenImageWithGoogle(
     image: Buffer,
     mime: string,
     userPrompt: string,
@@ -94,12 +94,12 @@ export async function processScreenImageWithGemini(
     model: string,
     systemPrompt: string
 ): Promise<string> {
-    if (!cfg.geminiApiKey) throw new Error('GEMINI_API_KEY is not set');
+    if (!cfg.googleApiKey) throw new Error('GOOGLE_API_KEY is not set');
 
-    const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
+    const ai = new GoogleGenAI({ apiKey: cfg.googleApiKey });
     const inlineData = image.toString('base64');
 
-    logger.info('gemini', 'Starting Gemini screen analysis', {
+    logger.info('google', 'Starting Google screen analysis', {
         model,
         imageBytes: image.length,
         mime,
@@ -124,7 +124,7 @@ export async function processScreenImageWithGemini(
 
     const answer = (response.text || '').trim();
 
-    logger.info('gemini', 'Gemini screen analysis completed', {
+    logger.info('google', 'Google screen analysis completed', {
         responseLength: answer.length,
         model,
     });

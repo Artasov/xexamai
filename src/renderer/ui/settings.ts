@@ -47,6 +47,22 @@ export class SettingsPanel {
         settingsStore.patch(partial);
     }
 
+    private hasOpenAiKey(): boolean {
+        const snapshot = settingsStore.get();
+        const stored = snapshot.openaiApiKey ?? this.settings.openaiApiKey;
+        if (typeof stored === 'string' && stored.trim().length > 0) return true;
+        const input = this.container.querySelector('#openaiApiKey') as HTMLInputElement | null;
+        return !!input && input.value.trim().length > 0;
+    }
+
+    private hasGoogleKey(): boolean {
+        const snapshot = settingsStore.get();
+        const stored = snapshot.googleApiKey ?? this.settings.googleApiKey;
+        if (typeof stored === 'string' && stored.trim().length > 0) return true;
+        const input = this.container.querySelector('#googleApiKey') as HTMLInputElement | null;
+        return !!input && input.value.trim().length > 0;
+    }
+
     private async init() {
         try {
             try {
@@ -112,12 +128,12 @@ export class SettingsPanel {
                                 <span class="text-xs text-gray-400">Gemeni</span>
                                 <input 
                                     type="password" 
-                                    id="geminiApiKey" 
+                                    id="googleApiKey" 
                                     class="input-field" 
-                                    placeholder="Enter your Gemini API key"
-                                    value="${this.settings.geminiApiKey || ''}"
+                                    placeholder="Enter your Google API key"
+                                    value="${this.settings.googleApiKey || ''}"
                                 />
-                                <button id="saveGeminiApiKey" class="btn btn-sm">Save</button>
+                                <button id="saveGoogleApiKey" class="btn btn-sm">Save</button>
                             </div>
                         </div>
                     </div>
@@ -265,25 +281,25 @@ export class SettingsPanel {
                 <div class="settings-section card fc">
                     <h3 class="settings-title">Model</h3>
                     
-                    <div class="fr gap-2 flex-wrap">
+                    <div class="fr flex-wrap">
                         <div class="fc gap-1">
-                            <div class="fc gap-1" id="apiTranscriptionSection">
+                            <div class="fc gap-1 mr-2 mb-1" id="apiTranscriptionSection">
                                 <div class="fc">
                                     <h3 class="text-xs text-gray-400">Transcription</h3>
                                     <div id="transcriptionModel"></div>
                                 </div>
                             </div>
-                            <div class="fc gap-1" id="localTranscriptionSection" style="display: none;">
+                            <div class="fc gap-1 mr-2 mb-1" id="localTranscriptionSection" style="display: none;">
                                 <h3 class="text-xs text-gray-400">Transcription</h3>
                                 <div id="localWhisperModel"></div>
                             </div>
-                            <div class="fc gap-1" id="localDeviceSection" style="display: none;">
+                            <div class="fc gap-1 mr-2 mb-1" id="localDeviceSection" style="display: none;">
                                 <h3 class="text-xs text-gray-400">Local transcription device</h3>
                                 <div id="localDevice"></div>
                             </div>
                         </div>
 
-                        <div class="fr gap-1">
+                        <div class="fr gap-1 mr-2 mb-2">
                             <div class="fc gap-1" id="apiLlmSection">
                                 <div class="fc gap-1">
                                     <h3 class="text-xs text-gray-400">LLM</h3>
@@ -458,9 +474,17 @@ export class SettingsPanel {
         const localSection = this.container.querySelector('#localTranscriptionSection') as HTMLElement;
         const localDeviceSection = this.container.querySelector('#localDeviceSection') as HTMLElement;
         if (apiSection && localSection && localDeviceSection) {
-            const modeVal = this.csTranscriptionMode?.getValue() || this.settings.transcriptionMode || 'api';
+            const streamMode = this.csStreamMode?.getValue() || this.settings.streamMode || 'base';
+            let modeVal = this.csTranscriptionMode?.getValue() || this.settings.transcriptionMode || 'api';
+            if (streamMode === 'stream' && modeVal !== 'api') {
+                this.csTranscriptionMode?.setValue('api');
+                modeVal = 'api';
+                this.updateSettings({ transcriptionMode: 'api' });
+                this.settings.transcriptionMode = 'api';
+            }
             const isLocal = modeVal === 'local';
-            apiSection.style.display = isLocal ? 'none' : 'flex';
+            const hideApi = isLocal || streamMode === 'stream';
+            apiSection.style.display = hideApi ? 'none' : 'flex';
             localSection.style.display = isLocal ? 'flex' : 'none';
             localDeviceSection.style.display = isLocal ? 'flex' : 'none';
         }
@@ -545,7 +569,18 @@ export class SettingsPanel {
                 async (val) => {
                     const mode = (val as 'api' | 'local');
                     logger.info('settings', 'Transcription mode changed', { mode });
+                    const previous = this.settings.transcriptionMode || 'api';
                     try {
+                        if (mode === 'api' && !this.hasOpenAiKey()) {
+                            this.showNotification('Add an OpenAI API key before using API transcription mode', 'error');
+                            this.csTranscriptionMode?.setValue(previous);
+                            return;
+                        }
+                        if (mode === 'local' && (this.csStreamMode?.getValue() || this.settings.streamMode) === 'stream') {
+                            this.showNotification('Disable Google Stream mode before switching to Local transcription', 'error');
+                            this.csTranscriptionMode?.setValue('api');
+                            return;
+                        }
                         await window.api.settings.setTranscriptionMode(mode);
                         this.updateSettings({ transcriptionMode: mode });
                         this.settings.transcriptionMode = mode;
@@ -553,6 +588,7 @@ export class SettingsPanel {
                         this.showNotification(`Transcription mode changed to ${mode === 'api' ? 'API' : 'Local'}`);
                     } catch (error) {
                         this.showNotification('Error saving transcription mode', 'error');
+                        this.csTranscriptionMode?.setValue(previous);
                     }
                 }
             );
@@ -573,13 +609,20 @@ export class SettingsPanel {
                 async (val) => {
                     const model = val;
                     logger.info('settings', 'Transcription model changed', { model });
+                    const previous = this.settings.transcriptionModel || 'gpt-4o-mini-transcribe';
                     try {
+                        if (!this.hasOpenAiKey()) {
+                            this.showNotification('Add an OpenAI API key before choosing transcription models', 'error');
+                            this.csTranscriptionModel?.setValue(previous);
+                            return;
+                        }
                         await window.api.settings.setTranscriptionModel(model);
                         this.updateSettings({ transcriptionModel: model });
                         this.settings.transcriptionModel = model;
                         this.showNotification(`Transcription model changed to ${model}`);
                     } catch (error) {
                         this.showNotification('Error saving transcription model', 'error');
+                        this.csTranscriptionModel?.setValue(previous);
                     }
                 }
             );
@@ -656,16 +699,28 @@ export class SettingsPanel {
                 async (val) => {
                     const host = (val as 'api' | 'local');
                     logger.info('settings', 'LLM host changed', { host });
+                    const previous = this.settings.llmHost || 'api';
                     try {
+                        if (host === 'api' && !this.hasOpenAiKey() && !this.hasGoogleKey()) {
+                            this.showNotification('Add an OpenAI or Google API key before using API LLM host', 'error');
+                            this.csLlmHost?.setValue(previous);
+                            return;
+                        }
                         await window.api.settings.setLlmHost(host);
                         this.updateSettings({ llmHost: host });
                         this.settings.llmHost = host;
                         this.updateLlmHostVisibility();
                         
                         // Автоматически переключаем на подходящую модель по умолчанию
-                        const defaultModel = host === 'api' ? 'gpt-4.1-nano' : 'gpt-oss:20b';
+                        let defaultModel = 'gpt-oss:20b';
+                        if (host === 'api') {
+                            if (this.hasOpenAiKey()) {
+                                defaultModel = 'gpt-4.1-nano';
+                            } else if (this.hasGoogleKey()) {
+                                defaultModel = 'gemini-1.5-flash';
+                            }
+                        }
                         await window.api.settings.setLlmModel(defaultModel);
-                        this.updateSettings({ llmModel: defaultModel });
                         this.updateSettings({ llmModel: defaultModel });
                         this.settings.llmModel = defaultModel;
                         
@@ -679,6 +734,7 @@ export class SettingsPanel {
                         this.showNotification(`LLM host changed to ${host === 'api' ? 'API' : 'Local'}. Model set to ${defaultModel}`);
                     } catch (error) {
                         this.showNotification('Error saving LLM host', 'error');
+                        this.csLlmHost?.setValue(previous);
                     }
                 }
             );
@@ -697,13 +753,25 @@ export class SettingsPanel {
                 async (val) => {
                     const provider = (val as 'openai' | 'google');
                     logger.info('settings', 'Screen processing model changed', { provider });
+                    const previous = this.settings.screenProcessingModel || 'openai';
                     try {
+                        if (provider === 'openai' && !this.hasOpenAiKey()) {
+                            this.showNotification('Add an OpenAI API key before using OpenAI screen processing', 'error');
+                            this.csScreenProcessingModel?.setValue(previous);
+                            return;
+                        }
+                        if (provider === 'google' && !this.hasGoogleKey()) {
+                            this.showNotification('Add a Google AI API key before using Google screen processing', 'error');
+                            this.csScreenProcessingModel?.setValue(previous);
+                            return;
+                        }
                         await window.api.settings.setScreenProcessingModel(provider);
                         this.updateSettings({ screenProcessingModel: provider });
                         this.settings.screenProcessingModel = provider;
                         this.showNotification(`Screen processing model changed to ${provider === 'openai' ? 'OpenAI' : 'Google'}`);
                     } catch (error) {
                         this.showNotification('Error saving screen processing model', 'error');
+                        this.csScreenProcessingModel?.setValue(previous);
                     }
                 }
             );
@@ -738,15 +806,27 @@ export class SettingsPanel {
                 async (val) => {
                     const model = val;
                     logger.info('settings', 'API LLM model changed', { model });
+                    const previous = this.settings.llmModel || initialValue;
                     try {
+                        const isOpenAiModel = model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o2');
+                        const isGoogleModel = model.startsWith('google');
+                        if (isOpenAiModel && !this.hasOpenAiKey()) {
+                            this.showNotification('Add an OpenAI API key before selecting GPT models', 'error');
+                            this.csLlmModel?.setValue(previous);
+                            return;
+                        }
+                        if (isGoogleModel && !this.hasGoogleKey()) {
+                            this.showNotification('Add a Google AI API key before selecting Google models', 'error');
+                            this.csLlmModel?.setValue(previous);
+                            return;
+                        }
                         await window.api.settings.setLlmModel(model);
-                        this.updateSettings({ llmModel: model });
-                        this.updateSettings({ llmModel: model });
                         this.updateSettings({ llmModel: model });
                         this.settings.llmModel = model;
                         this.showNotification(`API LLM model changed to ${model}`);
                     } catch (error) {
                         this.showNotification('Error saving API LLM model', 'error');
+                        this.csLlmModel?.setValue(previous);
                     }
                 }
             );
@@ -848,8 +928,8 @@ export class SettingsPanel {
         const smEl = this.container.querySelector('#streamMode') as HTMLElement | null;
         if (smEl) {
             const opts: CustomSelectOption[] = [
-                { value: 'base', label: 'Base (Current behavior)' },
-                { value: 'stream', label: 'Stream (Real-time Gemini)' },
+                { value: 'base', label: 'Base' },
+                { value: 'stream', label: 'Stream (Real-time Google)' },
             ];
             this.csStreamMode = new CustomSelect(
                 smEl,
@@ -858,17 +938,35 @@ export class SettingsPanel {
                 async (val) => {
                     const mode = (val as 'base' | 'stream');
                     logger.info('settings', 'Stream mode changed', { mode });
+                    const previous = this.settings.streamMode || 'base';
                     try {
+                        if (mode === 'stream' && !this.hasGoogleKey()) {
+                            this.showNotification('Add a Google AI API key before enabling stream mode', 'error');
+                            this.csStreamMode?.setValue(previous);
+                            return;
+                        }
                         await window.api.settings.setStreamMode(mode);
                         this.updateSettings({ streamMode: mode });
                         this.settings.streamMode = mode;
+                        if (mode === 'stream') {
+                            if (this.csTranscriptionMode) {
+                                this.csTranscriptionMode.setValue('api');
+                            }
+                            if (this.settings.transcriptionMode !== 'api') {
+                                await window.api.settings.setTranscriptionMode('api');
+                                this.updateSettings({ transcriptionMode: 'api' });
+                                this.settings.transcriptionMode = 'api';
+                            }
+                        }
                         this.showNotification(`Stream mode changed to ${mode === 'base' ? 'Base' : 'Stream'}`);
+                        this.updateTranscriptionModeVisibility();
                         // notify renderer to refresh UI immediately
                         try {
                             window.dispatchEvent(new CustomEvent('xexamai:settings-changed', { detail: { key: 'streamMode', value: mode } }));
                         } catch {}
                     } catch (error) {
                         this.showNotification('Error saving stream mode', 'error');
+                        this.csStreamMode?.setValue(previous);
                     }
                 }
             );
@@ -896,21 +994,21 @@ export class SettingsPanel {
             });
         }
 
-        const saveGeminiApiKeyBtn = this.container.querySelector('#saveGeminiApiKey');
-        const geminiApiKeyInput = this.container.querySelector('#geminiApiKey') as HTMLInputElement;
+        const saveGoogleApiKeyBtn = this.container.querySelector('#saveGoogleApiKey');
+        const googleApiKeyInput = this.container.querySelector('#googleApiKey') as HTMLInputElement;
 
-        if (saveGeminiApiKeyBtn && geminiApiKeyInput) {
-            saveGeminiApiKeyBtn.addEventListener('click', async () => {
-                const key = geminiApiKeyInput.value.trim();
+        if (saveGoogleApiKeyBtn && googleApiKeyInput) {
+            saveGoogleApiKeyBtn.addEventListener('click', async () => {
+                const key = googleApiKeyInput.value.trim();
                 if (key) {
-                    logger.info('settings', 'Gemini API key save button clicked');
+                    logger.info('settings', 'Google API key save button clicked');
                     try {
-                        await window.api.settings.setGeminiApiKey(key);
-                        this.updateSettings({ geminiApiKey: key });
-                        this.settings.geminiApiKey = key;
-                        this.showNotification('Gemini API Key saved successfully');
+                        await window.api.settings.setGoogleApiKey(key);
+                        this.updateSettings({ googleApiKey: key });
+                        this.settings.googleApiKey = key;
+                        this.showNotification('Google API Key saved successfully');
                     } catch (error) {
-                        this.showNotification('Error saving Gemini API Key', 'error');
+                        this.showNotification('Error saving Google API Key', 'error');
                     }
                 }
             });

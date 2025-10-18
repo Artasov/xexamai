@@ -8,7 +8,7 @@ import {logger} from './utils/logger.js';
 import {initializeHolderAccess} from './ui/holderAccess.js';
 import {initializeWelcomeModal} from './ui/welcomeModal.js';
 import {settingsStore} from './state/settingsStore.js';
-import {GeminiStreamingService} from './services/geminiStreamingService.js';
+import {GoogleStreamingService} from './services/googleStreamingService.js';
 import {getHolderState} from './state/holderState.js';
 import {
     startRecording as startAudioRecording,
@@ -22,7 +22,7 @@ import {
     registerPersistentSystemTrack,
 } from './app/audioSession.js';
 import type {SwitchAudioResult} from './app/audioSession.js';
-// Gemini SDK is loaded in preload and exposed via window.api.gemini
+// Google SDK is loaded in preload and exposed via window.api.google
 
 import type {AssistantAPI} from './types.js';
 
@@ -38,7 +38,7 @@ let streamModeContainer: HTMLElement | null = null;
 let streamResults: HTMLTextAreaElement | null = null;
 let btnSendStream: HTMLButtonElement | null = null;
 let isStreamMode: boolean = false;
-const geminiStreamingService = new GeminiStreamingService();
+const googleStreamingService = new GoogleStreamingService();
 
 // Fallback: ensure UI resets if stream completion event is missed
 function finalizeStreamIfActive(localRequestId?: string) {
@@ -161,16 +161,16 @@ async function updateStreamModeVisibility() {
         } catch {}
         const activeStream = getCurrentStream();
         if (isStreamMode && activeStream) {
-            try { setStatus('Preparing Gemini stream...', 'processing'); } catch {}
+            try { setStatus('Preparing Google stream...', 'processing'); } catch {}
             try {
-                await geminiStreamingService.start(activeStream);
-                setStatus('Gemini streaming active', 'processing');
+                await googleStreamingService.start(activeStream);
+                setStatus('Google streaming active', 'processing');
             } catch (error) {
-                console.error('Failed to start Gemini streaming:', error);
-                setStatus('Failed to start Gemini streaming', 'error');
+                console.error('Failed to start Google streaming:', error);
+                setStatus('Failed to start Google streaming', 'error');
             }
         } else if (!isStreamMode) {
-            await geminiStreamingService.stop();
+            await googleStreamingService.stop();
         }
     } catch (error) {
         console.error('Error updating stream mode visibility:', error);
@@ -224,16 +224,16 @@ async function switchAudioInput(newType: 'microphone' | 'system', opts?: { preSt
             const streamMode = settings.streamMode || 'base';
             if (streamMode === 'stream') {
                 try {
-                    setStatus('Preparing Gemini stream...', 'processing');
+                    setStatus('Preparing Google stream...', 'processing');
                 } catch {
                 }
                 const streamToUse = result.stream ?? getCurrentStream();
                 if (streamToUse) {
-                    await geminiStreamingService.start(streamToUse);
-                    setStatus('Gemini streaming active', 'processing');
+                    await googleStreamingService.start(streamToUse);
+                    setStatus('Google streaming active', 'processing');
                 }
             } else {
-                await geminiStreamingService.stop();
+                await googleStreamingService.stop();
                 setStatus('Recording...', 'recording');
             }
         } catch (error) {
@@ -512,7 +512,7 @@ async function main() {
     btnSendStream = document.getElementById('btnSendStreamText') as HTMLButtonElement | null;
     const btnScreenshot = document.getElementById('btnScreenshot') as HTMLButtonElement | null;
 
-    geminiStreamingService.onTranscript((text: string) => {
+    googleStreamingService.onTranscript((text: string) => {
         if (!streamResults) return;
         streamResults.value += `${text} `;
         streamResults.scrollTop = streamResults.scrollHeight;
@@ -521,9 +521,9 @@ async function main() {
         }
     });
 
-    geminiStreamingService.onError((error: string) => {
-        console.error('Gemini streaming error:', error);
-        setStatus(`Gemini error: ${error}`, 'error');
+    googleStreamingService.onError((error: string) => {
+        console.error('Google streaming error:', error);
+        setStatus(`Google error: ${error}`, 'error');
     });
 
     // Enable/disable send button based on textarea content
@@ -543,8 +543,11 @@ async function main() {
             const access = checkHolderAccess();
             if (access === 'holder') {
                 await handleScreenshot();
-            } else {
+            } else if (access === 'non-holder') {
                 showHolderOnlyModal();
+            } else {
+                setStatus('Checking holder status...', 'sending');
+                setTimeout(() => setStatus('Ready', 'ready'), 1500);
             }
         });
     }
@@ -610,7 +613,7 @@ async function main() {
                     await updateStreamModeVisibility();
                 } else {
                     await stopAudioRecording();
-                    await geminiStreamingService.stop();
+                    await googleStreamingService.stop();
                 }
             } catch (error) {
                 console.error('Record toggle failed', error);
@@ -1154,15 +1157,21 @@ function showHolderOnlyModal(): void {
     });
 }
 
-type HolderAccess = 'holder' | 'non-holder';
+type HolderAccess = 'holder' | 'non-holder' | 'pending';
 
 function checkHolderAccess(): HolderAccess {
     const snapshot = getHolderState();
+    if (snapshot.loading && !snapshot.status) {
+        return 'pending';
+    }
     const status = snapshot.status;
     if (!status) {
         return 'non-holder';
     }
-    const hasToken = status.hasToken;
-    const authorized = status.isAuthorized;
+    if (status.checkingBalance) {
+        return 'pending';
+    }
+    const hasToken = status.hasToken ?? false;
+    const authorized = status.isAuthorized ?? false;
     return hasToken || authorized ? 'holder' : 'non-holder';
 }

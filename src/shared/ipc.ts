@@ -49,7 +49,7 @@ export type AppSettings = {
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
     screenProcessingTimeoutMs?: number;
-    geminiApiKey?: string;
+    googleApiKey?: string;
     streamMode?: 'base' | 'stream';
     streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
@@ -116,7 +116,7 @@ export const IPCChannels = {
     SetWelcomeModalDismissed: 'settings:set:welcome-modal-dismissed',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
-    SetGeminiApiKey: 'settings:set:gemini-api-key',
+    SetGoogleApiKey: 'settings:set:google-api-key',
     SetStreamMode: 'settings:set:stream-mode',
     SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
     Log: 'log:entry',
@@ -274,7 +274,7 @@ export type AssistantAPI = {
         setScreenProcessingPrompt: (prompt: string) => Promise<void>;
         setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
         setWelcomeModalDismissed: (dismissed: boolean) => Promise<void>;
-        setGeminiApiKey: (key: string) => Promise<void>;
+        setGoogleApiKey: (key: string) => Promise<void>;
         setStreamMode: (mode: 'base' | 'stream') => Promise<void>;
         setStreamSendHotkey: (key: string) => Promise<void>;
         setWindowScale: (scale: number) => Promise<void>;
@@ -298,7 +298,7 @@ export type AssistantAPI = {
         verifySignature: (signature: string) => Promise<HolderVerificationResult>;
         reset: () => Promise<void>;
     };
-    gemini: {
+    google: {
         startLive: (opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) => Promise<void>;
         sendAudioChunk: (params: { data: string; mime: string }) => void;
         stopLive: () => void;

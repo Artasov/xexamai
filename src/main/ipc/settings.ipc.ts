@@ -41,7 +41,7 @@ export function registerSettingsIpc() {
             localDevice: config.localDevice || DefaultSettings.localDevice,
             apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),
             apiLlmTimeoutMs: appConfigService.getApiLlmTimeoutMs(),
-            geminiApiKey: config.geminiApiKey,
+            googleApiKey: config.googleApiKey,
             streamMode: config.streamMode || DefaultSettings.streamMode,
             streamSendHotkey: config.streamSendHotkey || DefaultSettings.streamSendHotkey,
             screenProcessingModel: appConfigService.getScreenProcessingModel(),
@@ -231,9 +231,9 @@ export function registerSettingsIpc() {
         shell.openPath(configDir);
     });
 
-    // New Gemini settings handlers
-    ipcMain.handle(IPCChannels.SetGeminiApiKey, async (_, key: string): Promise<void> => {
-        appConfigService.setGeminiApiKey(key);
+    // New Google settings handlers
+    ipcMain.handle(IPCChannels.SetGoogleApiKey, async (_, key: string): Promise<void> => {
+        appConfigService.setGoogleApiKey(key);
     });
 
     ipcMain.handle(IPCChannels.SetStreamMode, async (_, mode: 'base' | 'stream'): Promise<void> => {

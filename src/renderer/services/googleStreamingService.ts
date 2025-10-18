@@ -4,7 +4,7 @@ type StreamOptions = {
     streamMode?: 'base' | 'stream';
 };
 
-export class GeminiStreamingService {
+export class GoogleStreamingService {
     private transcriptCallback: ((text: string) => void) | null = null;
     private errorCallback: ((error: string) => void) | null = null;
     private audioContext: AudioContext | null = null;
@@ -21,19 +21,19 @@ export class GeminiStreamingService {
             settings = await settingsStore.load();
         }
 
-        const apiKey = settings.geminiApiKey;
+        const apiKey = settings.googleApiKey;
         if (!apiKey) {
-            throw new Error('Gemini API key not configured');
+            throw new Error('Google API key not configured');
         }
 
-        await window.api.gemini.startLive({
+        await window.api.google.startLive({
             apiKey,
             response: 'TEXT',
             transcribeInput: true,
             transcribeOutput: false,
         });
 
-        window.api.gemini.onMessage((message: any) => {
+        window.api.google.onMessage((message: any) => {
             try {
                 const inputTx = message?.serverContent?.inputTranscription?.text;
                 const outputTx = message?.serverContent?.outputTranscription?.text;
@@ -46,8 +46,8 @@ export class GeminiStreamingService {
             }
         });
 
-        window.api.gemini.onError((msg: string) => {
-            this.errorCallback?.(msg || 'Gemini error');
+        window.api.google.onError((msg: string) => {
+            this.errorCallback?.(msg || 'Google error');
         });
 
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -64,7 +64,7 @@ export class GeminiStreamingService {
             if (audioBuffer.length >= 20) {
                 this.processAudioChunk(audioBuffer, this.audioContext!.sampleRate).catch((e) => {
                     try {
-                        console.error('Gemini chunk error', e);
+                        console.error('Google chunk error', e);
                     } catch {
                     }
                 });
@@ -78,7 +78,7 @@ export class GeminiStreamingService {
 
     async stop(): Promise<void> {
         try {
-            await window.api.gemini.stopLive?.();
+            await window.api.google.stopLive?.();
         } catch {
         }
 
@@ -117,7 +117,7 @@ export class GeminiStreamingService {
         const combined = this.combineChunks(chunks);
         const pcm16 = this.float32ToPCM16Resampled(combined, Math.max(8000, Math.floor(sampleRate || 16000)), 16000);
         const audioBase64 = this.bytesToBase64(new Uint8Array(pcm16.buffer));
-        await window.api.gemini.sendAudioChunk({
+        await window.api.google.sendAudioChunk({
             data: audioBase64,
             mime: 'audio/pcm;rate=16000',
         });

@@ -25,7 +25,7 @@ export type AppConfig = {
     retryConfig: RetryConfig;
     apiSttTimeoutMs: number;
     apiLlmTimeoutMs: number;
-    geminiApiKey: string | undefined;
+    googleApiKey: string | undefined;
     screenProcessingModel: ScreenProcessingProvider;
     screenProcessingPrompt: string;
     screenProcessingTimeoutMs: number;
@@ -65,7 +65,7 @@ export function getConfig(): AppConfig {
         retryConfig,
         apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),
         apiLlmTimeoutMs: appConfigService.getApiLlmTimeoutMs(),
-        geminiApiKey: userConfig.geminiApiKey || process.env.GEMINI_API_KEY,
+        googleApiKey: userConfig.googleApiKey || process.env.GOOGLE_API_KEY,
         screenProcessingModel: appConfigService.getScreenProcessingModel(),
         screenProcessingPrompt: appConfigService.getScreenProcessingPrompt() ?? DEFAULT_SCREEN_PROMPT,
         screenProcessingTimeoutMs: appConfigService.getScreenProcessingTimeoutMs(),

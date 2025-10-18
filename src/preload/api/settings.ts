@@ -50,7 +50,7 @@ export function createSettingsBridge(): AssistantAPI['settings'] {
         setApiLlmTimeoutMs: (timeoutMs: number) => ipcRenderer.invoke(IPCChannels.SetApiLlmTimeoutMs, timeoutMs),
         getAudioDevices: () => enumerateAudioInputs(),
         openConfigFolder: () => ipcRenderer.invoke(IPCChannels.OpenConfigFolder),
-        setGeminiApiKey: (key: string) => ipcRenderer.invoke(IPCChannels.SetGeminiApiKey, key),
+        setGoogleApiKey: (key: string) => ipcRenderer.invoke(IPCChannels.SetGoogleApiKey, key),
         setStreamMode: (mode: 'base' | 'stream') => ipcRenderer.invoke(IPCChannels.SetStreamMode, mode),
         setStreamSendHotkey: (key: string) => ipcRenderer.invoke(IPCChannels.SetStreamSendHotkey, key),
         setScreenProcessingModel: (provider: 'openai' | 'google') => ipcRenderer.invoke(IPCChannels.SetScreenProcessingModel, provider),

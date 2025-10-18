@@ -2,7 +2,7 @@ import {contextBridge} from 'electron';
 import {marked} from 'marked';
 import {AssistantAPI} from '../shared/ipc';
 import {createAssistantBridge} from './api/assistant';
-import {createGeminiBridge} from './api/gemini';
+import {createGoogleBridge} from './api/google';
 import {createSettingsBridge} from './api/settings';
 import {createScreenBridge} from './api/screen';
 import {createHotkeysBridge} from './api/hotkeys';
@@ -14,7 +14,7 @@ import {createLoggerBridge} from './api/logger';
 
 const api: AssistantAPI = {
     assistant: createAssistantBridge(),
-    gemini: createGeminiBridge(),
+    google: createGoogleBridge(),
     settings: createSettingsBridge(),
     screen: createScreenBridge(),
     hotkeys: createHotkeysBridge(),
