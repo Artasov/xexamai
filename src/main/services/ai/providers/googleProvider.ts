@@ -58,12 +58,16 @@ export async function askChatStreamWithGoogle(
         },
     });
 
-    try {
-        let totalLength = 0;
-        let chunkCount = 0;
+    let totalLength = 0;
+    let chunkCount = 0;
+    let cancelled = false;
 
+    try {
         for await (const chunk of stream) {
-            if (options?.shouldCancel?.()) break;
+            if (options?.shouldCancel?.()) {
+                cancelled = true;
+                break;
+            }
             try {
                 const delta = chunk.text;
                 if (typeof delta === 'string' && delta.length > 0) {
@@ -74,16 +78,25 @@ export async function askChatStreamWithGoogle(
             } catch {
             }
         }
-
-        logger.info('google', 'Google chat stream completed', {
-            totalResponseLength: totalLength,
-            model: cfg.chatModel,
-            chunkCount,
-        });
     } catch (error) {
         logger.error('google', 'Google chat stream error', { error });
         throw error;
     }
+
+    if (cancelled) {
+        logger.info('google', 'Google chat stream cancelled by client', {
+            model: cfg.chatModel,
+            totalResponseLength: totalLength,
+            chunkCount,
+        });
+        return;
+    }
+
+    logger.info('google', 'Google chat stream completed', {
+        totalResponseLength: totalLength,
+        model: cfg.chatModel,
+        chunkCount,
+    });
 }
 
 export async function processScreenImageWithGoogle(

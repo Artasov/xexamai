@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./ui/holderOnlyModal.css";
+@import "./ui/holderAccessStyles.css";
 
 * {
     cursor: default !important;

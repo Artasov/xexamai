@@ -36,7 +36,8 @@ function isLocalModel(model?: string): boolean {
 }
 
 function isGoogleModel(model?: string): boolean {
-    return typeof model === 'string' && model.startsWith('google-');
+    if (typeof model !== 'string') return false;
+    return model.startsWith('gemini') || model.startsWith('google-');
 }
 
 const LOCAL_LLM_TIMEOUT_MS = 600000; // 600s only for local LLM
@@ -112,8 +113,7 @@ export async function askChatStream(
         await withRetry(
             () => askChatStreamWithGoogle(prompt, cfg, onDelta, options),
             cfg.retryConfig,
-            'Google streaming',
-            cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
+            'Google streaming'
         );
         onDone?.();
         return;
@@ -123,8 +123,7 @@ export async function askChatStream(
         await withRetry(
             () => askChatStreamWithLocalModel(prompt, cfg, onDelta, options),
             cfg.retryConfig,
-            'Local GPT-OSS streaming',
-            LOCAL_LLM_TIMEOUT_MS
+            'Local GPT-OSS streaming'
         );
         onDone?.();
         return;
@@ -133,10 +132,8 @@ export async function askChatStream(
     await withRetry(
         () => askChatStreamWithOpenAI(prompt, cfg, onDelta, options),
         cfg.retryConfig,
-        'ChatGPT streaming',
-        cfg.apiLlmTimeoutMs || DefaultTimeoutConfig.chatgptTimeoutMs
+        'ChatGPT streaming'
     );
 
     onDone?.();
 }
-
