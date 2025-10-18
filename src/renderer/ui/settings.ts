@@ -125,7 +125,7 @@ export class SettingsPanel {
                                 <button id="saveApiKey" class="btn btn-sm">Save</button>
                             </div>
                             <div class="input-group fc flex-grow">
-                                <span class="text-xs text-gray-400">Gemeni</span>
+                                <span class="text-xs text-gray-400">Google</span>
                                 <input 
                                     type="password" 
                                     id="googleApiKey" 
