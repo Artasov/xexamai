@@ -16,6 +16,7 @@ export function registerSettingsIpc() {
             windowOpacity: config.windowOpacity || DefaultSettings.windowOpacity,
             alwaysOnTop: config.alwaysOnTop !== undefined ? config.alwaysOnTop : DefaultSettings.alwaysOnTop,
             hideApp: appConfigService.getHideApp(),
+            welcomeModalDismissed: config.welcomeModalDismissed !== undefined ? config.welcomeModalDismissed : DefaultSettings.welcomeModalDismissed,
             windowWidth: config.windowWidth || 420,
             windowHeight: config.windowHeight || 780,
             windowScale: appConfigService.getWindowScale(),
@@ -209,6 +210,10 @@ export function registerSettingsIpc() {
 
     ipcMain.handle(IPCChannels.SetApiLlmTimeoutMs, async (_, timeoutMs: number): Promise<void> => {
         appConfigService.setApiLlmTimeoutMs(timeoutMs);
+    });
+
+    ipcMain.handle(IPCChannels.SetWelcomeModalDismissed, async (_, dismissed: boolean): Promise<void> => {
+        appConfigService.setWelcomeModalDismissed(!!dismissed);
     });
 
     ipcMain.handle(IPCChannels.OpenConfigFolder, async (): Promise<void> => {

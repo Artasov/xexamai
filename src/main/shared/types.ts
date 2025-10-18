@@ -32,6 +32,7 @@ export type AppSettings = {
     windowOpacity?: number;
     alwaysOnTop?: boolean;
     hideApp?: boolean;
+    welcomeModalDismissed?: boolean;
     windowWidth?: number;
     windowHeight?: number;
     windowScale?: number; // window scale factor (default: 1)
@@ -64,6 +65,7 @@ export const DefaultSettings: AppSettings = {
     toggleInputHotkey: 'g',
     windowOpacity: 100,
     alwaysOnTop: false,
+    welcomeModalDismissed: false,
     transcriptionMode: 'api',
     llmHost: 'api',
     localWhisperModel: 'base',
@@ -109,6 +111,7 @@ export const IPCChannels = {
     SetLocalDevice: 'settings:set:local-device',
     SetApiSttTimeoutMs: 'settings:set:api-stt-timeout-ms',
     SetApiLlmTimeoutMs: 'settings:set:api-llm-timeout-ms',
+    SetWelcomeModalDismissed: 'settings:set:welcome-modal-dismissed',
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
     // New Gemini settings

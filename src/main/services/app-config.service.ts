@@ -9,6 +9,7 @@ export interface AppConfigData {
     windowOpacity?: number;
     alwaysOnTop?: boolean;
     hideApp?: boolean;
+    welcomeModalDismissed?: boolean;
     durations?: number[];
     durationHotkeys?: Record<number, string>;
     toggleInputHotkey?: string;
@@ -68,12 +69,16 @@ export class AppConfigService {
                 if (typeof this.configData.screenProcessingTimeoutMs !== 'number' || !Number.isFinite(this.configData.screenProcessingTimeoutMs)) {
                     this.configData.screenProcessingTimeoutMs = 50000;
                 }
+                if (typeof this.configData.welcomeModalDismissed !== 'boolean') {
+                    this.configData.welcomeModalDismissed = false;
+                }
             } else {
                 this.configData = {
                     openaiApiKey: process.env.OPENAI_API_KEY,
                     windowOpacity: 100,
                     alwaysOnTop: false,
                     hideApp: true,
+                    welcomeModalDismissed: false,
                     durations: [5, 10, 15, 20, 30, 60],
                     durationHotkeys: {
                         5: '1',
@@ -105,6 +110,7 @@ export class AppConfigService {
                 windowOpacity: 100,
                 alwaysOnTop: false,
                 hideApp: true,
+                welcomeModalDismissed: false,
                 durations: [5, 10, 15, 20, 30, 60],
                 durationHotkeys: {
                     5: '1',
@@ -489,6 +495,20 @@ export class AppConfigService {
 
     public getHideApp(): boolean {
         return this.configData.hideApp !== undefined ? this.configData.hideApp : true;
+    }
+
+    public setWelcomeModalDismissed(dismissed: boolean): void {
+        const oldValue = this.configData.welcomeModalDismissed;
+        this.configData.welcomeModalDismissed = dismissed;
+        this.saveConfig();
+        logger.info('settings', 'Welcome modal dismissed changed', {
+            oldValue,
+            newValue: dismissed,
+        });
+    }
+
+    public isWelcomeModalDismissed(): boolean {
+        return !!this.configData.welcomeModalDismissed;
     }
 
     // New Gemini settings methods

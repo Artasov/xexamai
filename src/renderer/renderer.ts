@@ -10,6 +10,7 @@ import {PcmRingBuffer} from './audio/pcmRingBuffer.js';
 import {SettingsPanel} from './ui/settings.js';
 import {logger} from './utils/logger.js';
 import {initializeHolderAccess} from './ui/holderAccess.js';
+import {initializeWelcomeModal} from './ui/welcomeModal.js';
 // Gemini SDK is loaded in preload and exposed via window.api.gemini
 
 import type {AssistantAPI} from './types.js';
@@ -1035,6 +1036,8 @@ async function main() {
     // Load header logo
     const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement;
     loadLogo(headerLogoElement);
+
+    await initializeWelcomeModal();
 
     initializeHolderAccess({
         headerTitleEl: document.querySelector('header h1') as HTMLElement | null,

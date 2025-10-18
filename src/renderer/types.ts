@@ -16,6 +16,7 @@ export type AppSettings = {
     windowOpacity?: number;
     alwaysOnTop?: boolean;
     hideApp?: boolean;
+    welcomeModalDismissed?: boolean;
     windowWidth?: number;
     windowHeight?: number;
     windowScale?: number; // window scale factor (default: 1)
@@ -178,6 +179,7 @@ export type AssistantAPI = {
         setScreenProcessingModel: (provider: ScreenProcessingProvider) => Promise<void>;
         setScreenProcessingPrompt: (prompt: string) => Promise<void>;
         setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
+        setWelcomeModalDismissed: (dismissed: boolean) => Promise<void>;
     };
     hotkeys: {
         onDuration: (cb: (e: unknown, payload: { sec: number }) => void) => void;

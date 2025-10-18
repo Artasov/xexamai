@@ -213,6 +213,7 @@ export const api: AssistantAPI = {
         setScreenProcessingModel: (provider: 'openai' | 'google') => ipcRenderer.invoke(IPCChannels.SetScreenProcessingModel, provider),
         setScreenProcessingPrompt: (prompt: string) => ipcRenderer.invoke(IPCChannels.SetScreenProcessingPrompt, prompt),
         setScreenProcessingTimeoutMs: (timeoutMs: number) => ipcRenderer.invoke(IPCChannels.SetScreenProcessingTimeoutMs, timeoutMs),
+        setWelcomeModalDismissed: (dismissed: boolean) => ipcRenderer.invoke(IPCChannels.SetWelcomeModalDismissed, dismissed),
     },
     screen: {
         capture: async () => {
