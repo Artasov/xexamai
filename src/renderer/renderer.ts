@@ -1052,13 +1052,15 @@ function getCurrentFontSize(): number {
     return saved ? parseInt(saved, 10) : DEFAULT_FONT_SIZE;
 }
 
-function setFontSize(size: number): void {
+function setFontSize(size: number, showNotification: boolean = true): void {
     const clampedSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, size));
     localStorage.setItem(FONT_SIZE_KEY, clampedSize.toString());
     document.documentElement.style.setProperty('--answer-font-size', `${clampedSize}px`);
     
-    // Show temporary notification
-    showFontSizeNotification(clampedSize);
+    // Show temporary notification only if requested
+    if (showNotification) {
+        showFontSizeNotification(clampedSize);
+    }
 }
 
 function showFontSizeNotification(size: number): void {
@@ -1097,7 +1099,7 @@ function showFontSizeNotification(size: number): void {
 
 function initializeFontSize(): void {
     const currentSize = getCurrentFontSize();
-    setFontSize(currentSize);
+    setFontSize(currentSize, false); // Don't show notification on initialization
 }
 
 function handleFontSizeWheel(event: WheelEvent): void {
@@ -1109,7 +1111,7 @@ function handleFontSizeWheel(event: WheelEvent): void {
     const delta = event.deltaY > 0 ? -1 : 1;
     const newSize = currentSize + delta;
     
-    setFontSize(newSize);
+    setFontSize(newSize, true); // Show notification when user changes font size
 }
 function showHolderOnlyModal(): void {
     const existing = document.getElementById('holder-only-modal');
