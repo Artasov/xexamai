@@ -9,6 +9,7 @@ import {initializeHolderAccess} from './ui/holderAccess.js';
 import {initializeWelcomeModal} from './ui/welcomeModal.js';
 import {settingsStore} from './state/settingsStore.js';
 import {GeminiStreamingService} from './services/geminiStreamingService.js';
+import {getHolderState} from './state/holderState.js';
 import {
     startRecording as startAudioRecording,
     stopRecording as stopAudioRecording,
@@ -537,9 +538,14 @@ async function main() {
     } catch {}
 
     if (btnScreenshot) {
-        btnScreenshot.addEventListener('click', () => {
+        btnScreenshot.addEventListener('click', async () => {
             if (state.isProcessing) return;
-            void handleScreenshot();
+            const access = checkHolderAccess();
+            if (access === 'holder') {
+                await handleScreenshot();
+            } else {
+                showHolderOnlyModal();
+            }
         });
     }
     
@@ -1104,4 +1110,57 @@ function handleFontSizeWheel(event: WheelEvent): void {
     const newSize = currentSize + delta;
     
     setFontSize(newSize);
+}
+function showHolderOnlyModal(): void {
+    const existing = document.getElementById('holder-only-modal');
+    if (existing) {
+        existing.classList.add('holder-modal--visible');
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'holder-only-modal';
+    overlay.className = 'holder-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'holder-modal card fc gap-3';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Screen processing is holder-only';
+    title.className = 'text-lg font-semibold';
+
+    const message = document.createElement('p');
+    message.className = 'text-sm text-gray-300';
+    message.innerHTML = `This feature is available only to token holders <strong>D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG</strong>.<br/>All links and instructions are available on our website: <a href="https://xldev.ru/en/xexamai" target="_blank" rel="noreferrer">https://xldev.ru/en/xexamai</a>.`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn-primary';
+    closeBtn.textContent = 'Got it';
+    closeBtn.addEventListener('click', () => {
+        overlay.classList.remove('holder-modal--visible');
+    });
+
+    modal.appendChild(title);
+    modal.appendChild(message);
+    modal.appendChild(closeBtn);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+        overlay.classList.add('holder-modal--visible');
+    });
+}
+
+type HolderAccess = 'holder' | 'non-holder';
+
+function checkHolderAccess(): HolderAccess {
+    const snapshot = getHolderState();
+    const status = snapshot.status;
+    if (!status) {
+        return 'non-holder';
+    }
+    const hasToken = status.hasToken;
+    const authorized = status.isAuthorized;
+    return hasToken || authorized ? 'holder' : 'non-holder';
 }

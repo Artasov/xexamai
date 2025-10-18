@@ -214,6 +214,7 @@ export type HolderStatus = {
     error?: string;
     checkingBalance?: boolean;
     tokenBalance?: string;
+    hasToken?: boolean;
 };
 
 export type HolderVerificationResult = {
