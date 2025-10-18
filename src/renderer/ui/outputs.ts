@@ -1,5 +1,10 @@
+import { formatError, addErrorHelpStyles } from '../utils/errorFormatter.js';
+
 const textOut = document.getElementById('textOut') as HTMLDivElement | null;
 const answerOut = document.getElementById('answerOut') as HTMLDivElement | null;
+
+// Инициализируем стили для помощи при ошибках
+addErrorHelpStyles();
 
 export function showText(text: string) {
     if (textOut) textOut.textContent = text || '';
@@ -24,6 +29,20 @@ export function showAnswer(text: string) {
         if (!isAtBottom) {
             answerOut.scrollTop = currentScrollTop;
         }
+    }
+}
+
+export function showError(error: unknown) {
+    const formattedError = formatError(error);
+    
+    if (answerOut) {
+        let errorHtml = `<div class="error-message">${formattedError.displayText}</div>`;
+        
+        if (formattedError.helpHtml) {
+            errorHtml += formattedError.helpHtml;
+        }
+        
+        answerOut.innerHTML = errorHtml;
     }
 }
 

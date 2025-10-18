@@ -1,6 +1,6 @@
 ﻿import {initControls, updateButtonsState, updateDurations} from './ui/controls.js';
 import {setStatus} from './ui/status.js';
-import {showAnswer, showText} from './ui/outputs.js';
+import {showAnswer, showText, showError} from './ui/outputs.js';
 import {setProcessing, state} from './state/appState.js';
 import {AudioRingBuffer} from './audio/ringBuffer.js';
 import {AudioVisualizer} from './audio/visualizer.js';
@@ -306,7 +306,7 @@ function createGeminiStreamingClient() {
                 
             } catch (error) {
                 console.error('Failed to start Gemini streaming:', error);
-                (window as any).geminiErrorCallback?.(`Failed to start streaming: ${error}`);
+                (window as any).geminiErrorCallback?.(error);
             }
         },
         stopStreaming: async () => {
@@ -354,7 +354,7 @@ async function processAudioChunk(audioBuffer: Float32Array[], sampleRate: number
         
     } catch (error) {
         console.error('Error processing audio chunk:', error);
-        (window as any).geminiErrorCallback?.(`Error processing audio: ${error}`);
+        (window as any).geminiErrorCallback?.(error);
     }
 }
 
@@ -773,7 +773,7 @@ async function handleAskWindow(seconds: number) {
         }
         if (!transcribeRes.ok) {
             setStatus('Error', 'error');
-            showAnswer('Error: ' + transcribeRes.error);
+            showError(transcribeRes.error);
             setProcessing(false);
             updateButtonsState();
             return;
@@ -813,7 +813,7 @@ async function handleAskWindow(seconds: number) {
                 setStatus('Done', 'ready');
             } else {
                 setStatus('Error', 'error');
-                showAnswer('Error: ' + p.error);
+                showError(p.error);
             }
             setProcessing(false);
             hideStopButton();
@@ -832,7 +832,7 @@ async function handleAskWindow(seconds: number) {
 
     } catch (error) {
         setStatus('Error', 'error');
-        showAnswer('Error: ' + (error as any)?.message || String(error));
+        showError(error);
         setProcessing(false);
         currentRequestId = null;
         hideStopButton();
@@ -891,7 +891,7 @@ async function handleTextSend(text: string) {
                 setStatus('Done', 'ready');
             } else {
                 setStatus('Error', 'error');
-                showAnswer('Error: ' + p.error);
+                showError(p.error);
             }
             setProcessing(false);
             hideStopButton();
@@ -913,7 +913,7 @@ async function handleTextSend(text: string) {
 
     } catch (error) {
         setStatus('Error', 'error');
-        showAnswer('Error: ' + (error as any)?.message || String(error));
+        showError(error);
         setProcessing(false);
         currentRequestId = null;
         hideStopButton();
@@ -964,7 +964,7 @@ async function handleScreenshot() {
         const message = error instanceof Error ? error.message : String(error);
         logger.error('screenshot', 'Screenshot analysis failed', { error: message });
         setStatus('Error', 'error');
-        showAnswer('Error: ' + message);
+        showError(message);
     } finally {
         setProcessing(false);
         updateButtonsState();

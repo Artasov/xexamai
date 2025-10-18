@@ -18,6 +18,7 @@ import {
     processScreenCapture
 } from '../services/assistant.service';
 import {logger} from '../services/logger.service';
+import {formatError} from '../utils/errorFormatter';
 
 export function registerSttIpc() {
     const controllers = new Map<string, { controller: AbortController; cancelled: boolean; sentDone: boolean }>();
@@ -91,9 +92,9 @@ export function registerSttIpc() {
             
             return {ok: true, text: res.text, answer: res.answer};
         } catch (err: any) {
-            const message = err?.message || String(err);
-            logger.error('stt', 'Audio processing failed', { error: message });
-            return {ok: false, error: message};
+            const formattedError = formatError(err);
+            logger.error('stt', 'Audio processing failed', { error: formattedError.displayText });
+            return {ok: false, error: formattedError.displayText};
         }
     });
 
@@ -177,16 +178,16 @@ export function registerSttIpc() {
             controllers.delete(requestId);
             return {ok: true, text, answer: ''};
         } catch (err: any) {
-            const message = err?.message || String(err);
+            const formattedError = formatError(err);
             logger.error('stt', 'Audio stream processing failed', { 
-                error: message,
+                error: formattedError.displayText,
                 requestId: (payload as any)?.requestId 
             });
             event.sender.send(IPCChannels.AssistantStreamError, {
-                error: message,
+                error: formattedError.displayText,
                 requestId: (payload as any)?.requestId
             });
-            return {ok: false, error: message};
+            return {ok: false, error: formattedError.displayText};
         }
     });
 
@@ -248,9 +249,9 @@ export function registerSttIpc() {
             
             return {ok: true, text};
         } catch (err: any) {
-            const message = err?.message || String(err);
-            logger.error('stt', 'Transcription failed', { error: message });
-            return {ok: false, error: message};
+            const formattedError = formatError(err);
+            logger.error('stt', 'Transcription failed', { error: formattedError.displayText });
+            return {ok: false, error: formattedError.displayText};
         }
     });
 
@@ -297,13 +298,13 @@ export function registerSttIpc() {
             });
             controllers.delete(requestId);
         } catch (err: any) {
-            const message = err?.message || String(err);
+            const formattedError = formatError(err);
             logger.error('chat', 'Chat processing failed', { 
-                error: message,
+                error: formattedError.displayText,
                 requestId: (payload as any)?.requestId 
             });
             event.sender.send(IPCChannels.AssistantStreamError, {
-                error: message,
+                error: formattedError.displayText,
                 requestId: (payload as any)?.requestId
             });
         }
@@ -358,9 +359,9 @@ export function registerSttIpc() {
                 mime: 'image/png',
             };
         } catch (error: any) {
-            const message = error?.message || String(error);
-            logger.error('screen', 'Screen capture failed', { error: message });
-            return { ok: false, error: message };
+            const formattedError = formatError(error);
+            logger.error('screen', 'Screen capture failed', { error: formattedError.displayText });
+            return { ok: false, error: formattedError.displayText };
         }
     });
 
@@ -377,9 +378,9 @@ export function registerSttIpc() {
             });
             return { ok: true, answer };
         } catch (error: any) {
-            const message = error?.message || String(error);
-            logger.error('screen', 'Screen processing failed', { error: message });
-            return { ok: false, error: message };
+            const formattedError = formatError(error);
+            logger.error('screen', 'Screen processing failed', { error: formattedError.displayText });
+            return { ok: false, error: formattedError.displayText };
         }
     });
 }

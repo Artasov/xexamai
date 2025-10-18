@@ -890,3 +890,57 @@ body {
 #btnToggleInput:hover #toggleInputIcon {
     filter: brightness(1.1);
 }
+
+/* Error message styles */
+.error-message {
+    @apply text-red-300 font-medium mb-2;
+    padding: 12px 16px;
+    background: rgba(220, 38, 38, 0.1);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.error-help {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.error-help p {
+    margin: 0 0 8px 0;
+}
+
+.error-help p:last-child {
+    margin-bottom: 0;
+}
+
+.help-link, .action-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.help-link:hover, .action-link:hover {
+    text-decoration: underline;
+}
+
+.action-button {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.action-button:hover {
+    background: #2563eb;
+}
