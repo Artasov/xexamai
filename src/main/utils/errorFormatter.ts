@@ -161,7 +161,6 @@ function createGenericHelpHtml(): string {
     return `
         <div class="error-help">
             <p><a href="${escapeHtml(GUIDE_URL)}" target="_blank" class="help-link">📖 Get help</a></p>
-            <p><button onclick="document.querySelector('#settings').scrollIntoView()" class="action-button">⚙️ Open settings</button></p>
         </div>
     `;
 }
