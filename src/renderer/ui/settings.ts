@@ -744,7 +744,7 @@ export class SettingsPanel {
         if (screenModelEl) {
             const opts: CustomSelectOption[] = [
                 { value: 'openai', label: 'OpenAI (GPT-4o Mini Vision)' },
-                { value: 'google', label: 'Google Gemini (1.5 Flash)' },
+                { value: 'google', label: 'Google Gemini (2.5 Flash)' },
             ];
             this.csScreenProcessingModel = new CustomSelect(
                 screenModelEl,

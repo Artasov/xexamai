@@ -24,11 +24,12 @@ import {
 import type {SwitchAudioResult} from './app/audioSession.js';
 // Google SDK is loaded in preload and exposed via window.api.google
 
-import type {AssistantAPI, ScreenProcessRequest, ScreenProcessResponse} from './types.js';
+import type {AssistantAPI} from './types.js';
 
 let currentRequestId: string | null = null;
 let btnStop: HTMLButtonElement | null = null;
 let activeOpId: number = 0;
+let screenshotCancelToken: { cancelled: boolean } | null = null;
 // Stream event handlers - store references for proper cleanup
 let currentStreamDeltaHandler: any = null;
 let currentStreamDoneHandler: any = null;
@@ -39,9 +40,6 @@ let streamResults: HTMLTextAreaElement | null = null;
 let btnSendStream: HTMLButtonElement | null = null;
 let isStreamMode: boolean = false;
 const googleStreamingService = new GoogleStreamingService();
-
-const SCREEN_PROCESS_MAX_ATTEMPTS = 3;
-const SCREEN_PROCESS_RETRY_DELAY_MS = 1500;
 
 // Fallback: ensure UI resets if stream completion event is missed
 function finalizeStreamIfActive(localRequestId?: string) {
@@ -452,54 +450,17 @@ async function handleTextSend(text: string) {
     }
 }
 
-function delay(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-        window.setTimeout(resolve, ms);
-    });
-}
-
-async function processScreenshotWithRetry(
-    payload: ScreenProcessRequest,
-    maxAttempts: number = SCREEN_PROCESS_MAX_ATTEMPTS,
-    baseDelayMs: number = SCREEN_PROCESS_RETRY_DELAY_MS,
-): Promise<ScreenProcessResponse & { ok: true }> {
-    let lastError: unknown = new Error('Screen processing failed');
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            const result = await window.api.screen.process(payload);
-            if (result?.ok) {
-                return {...result, ok: true};
-            }
-
-            const message = result?.error || 'Screen processing failed';
-            lastError = new Error(message);
-            logger.warn('screenshot', 'Screen analysis attempt failed', { attempt, maxAttempts, error: message });
-        } catch (error) {
-            lastError = error;
-            const message = error instanceof Error ? error.message : String(error);
-            logger.warn('screenshot', 'Screen analysis attempt threw', { attempt, maxAttempts, error: message });
-        }
-
-        if (attempt < maxAttempts) {
-            const nextAttempt = `${attempt + 1}/${maxAttempts}`;
-            setStatus(`Retrying screenshot analysis... (${nextAttempt})`, 'processing');
-            await delay(baseDelayMs * attempt);
-        }
-    }
-
-    if (lastError instanceof Error) {
-        throw lastError;
-    }
-    throw new Error(String(lastError || 'Screen processing failed'));
-}
-
 async function handleScreenshot() {
     if (state.isProcessing) return;
+
+    const cancelToken = { cancelled: false };
+    screenshotCancelToken = cancelToken;
+
     setProcessing(true);
     updateButtonsState();
     setStatus('Capturing screen...', 'processing');
     showAnswer('');
+    showStopButton();
 
     try {
         logger.info('screenshot', 'Screenshot capture requested');
@@ -508,18 +469,32 @@ async function handleScreenshot() {
             throw new Error('Failed to capture screen');
         }
 
+        if (cancelToken.cancelled) {
+            logger.info('screenshot', 'Screenshot cancelled after capture');
+            return;
+        }
+
         const timestamp = new Date().toLocaleString();
         const label = `[Screenshot captured ${timestamp}]`;
         showText(label);
 
         setStatus('Analyzing screenshot...', 'processing');
 
-        const result = await processScreenshotWithRetry({
+        const result = await window.api.screen.process({
             imageBase64: capture.base64,
             mime: capture.mime,
             width: capture.width,
             height: capture.height,
         });
+
+        if (cancelToken.cancelled) {
+            logger.info('screenshot', 'Screenshot cancelled after processing request');
+            return;
+        }
+
+        if (!result?.ok) {
+            throw new Error(result?.error || 'Screen processing failed');
+        }
 
         const answerText = (result.answer || '').trim();
         if (answerText) {
@@ -530,13 +505,23 @@ async function handleScreenshot() {
         setStatus('Done', 'ready');
         logger.info('screenshot', 'Screenshot analysis completed', { answerLength: result.answer?.length || 0 });
     } catch (error) {
+        if (cancelToken.cancelled) {
+            logger.info('screenshot', 'Screenshot analysis cancelled', {
+                reason: error instanceof Error ? error.message : String(error),
+            });
+            return;
+        }
         const message = error instanceof Error ? error.message : String(error);
         logger.error('screenshot', 'Screenshot analysis failed', { error: message });
         setStatus('Error', 'error');
         showError(message);
     } finally {
-        setProcessing(false);
-        updateButtonsState();
+        if (screenshotCancelToken === cancelToken) {
+            screenshotCancelToken = null;
+            setProcessing(false);
+            updateButtonsState();
+            hideStopButton();
+        }
     }
 }
 
@@ -809,23 +794,34 @@ async function main() {
     btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
     if (btnStop) {
         btnStop.addEventListener('click', async () => {
-            if (!currentRequestId) { 
-                hideStopButton(); 
-                return; 
+            if (currentRequestId) {
+                logger.info('ui', 'Stop button clicked', { requestId: currentRequestId });
+                try {
+                    await window.api.assistant.stopStream({ requestId: currentRequestId });
+                } catch (e) {
+                    console.error('Stop stream error', e);
+                } finally {
+                    currentRequestId = null;
+                    removeStreamHandlers();
+                    setStatus('Ready', 'ready');
+                    setProcessing(false);
+                    hideStopButton();
+                    updateButtonsState();
+                }
+                return;
             }
-            logger.info('ui', 'Stop button clicked', { requestId: currentRequestId });
-            try {
-                await window.api.assistant.stopStream({ requestId: currentRequestId });
-            } catch (e) {
-                console.error('Stop stream error', e);
-            } finally {
-                currentRequestId = null;
-                removeStreamHandlers();
-                setStatus('Ready', 'ready');
+
+            if (screenshotCancelToken && !screenshotCancelToken.cancelled) {
+                logger.info('ui', 'Screenshot stop button clicked');
+                screenshotCancelToken.cancelled = true;
+                setStatus('Cancelled', 'ready');
                 setProcessing(false);
                 hideStopButton();
                 updateButtonsState();
+                return;
             }
+
+            hideStopButton();
         });
     }
 
