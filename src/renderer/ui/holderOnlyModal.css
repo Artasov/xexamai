@@ -1,4 +1,8 @@
-.holder-modal-overlay {
+.holder-overlay {
+    padding: 12px;
+}
+
+#holder-only-modal {
     position: fixed;
     inset: 0;
     display: flex;
@@ -14,13 +18,13 @@
     z-index: 12000;
 }
 
-.holder-modal-overlay.holder-modal--visible {
+#holder-only-modal.holder-overlay--visible {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
 }
 
-.holder-modal {
+#holder-only-modal .holder-modal {
     max-width: 420px;
     padding: 24px;
     border: 1px solid rgba(148, 163, 184, 0.25);
@@ -28,11 +32,11 @@
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.15);
 }
 
-.holder-modal a {
+#holder-only-modal .holder-modal a {
     color: #8b5cf6;
     text-decoration: underline;
 }
 
-.holder-modal a:hover {
+#holder-only-modal .holder-modal a:hover {
     color: #a78bfa;
 }

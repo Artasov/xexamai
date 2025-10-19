@@ -1117,15 +1117,15 @@ function handleFontSizeWheel(event: WheelEvent): void {
     setFontSize(newSize, true); // Show notification when user changes font size
 }
 function showHolderOnlyModal(): void {
-    const existing = document.getElementById('holder-only-modal');
+    const existing = document.getElementById('holder-only-modal') as HTMLDivElement | null;
     if (existing) {
-        existing.classList.add('holder-modal--visible');
+        existing.classList.add('holder-overlay--visible');
         return;
     }
 
     const overlay = document.createElement('div');
     overlay.id = 'holder-only-modal';
-    overlay.className = 'holder-modal-overlay';
+    overlay.className = 'holder-overlay holder-modal-overlay';
 
     const modal = document.createElement('div');
     modal.className = 'holder-modal card fc gap-3';
@@ -1136,14 +1136,20 @@ function showHolderOnlyModal(): void {
 
     const message = document.createElement('p');
     message.className = 'text-sm text-gray-300';
-    message.innerHTML = `This feature is available only to token holders <strong>D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG</strong>.<br/>All links and instructions are available on our website: <a href="https://xldev.ru/en/xexamai" target="_blank" rel="noreferrer">https://xldev.ru/en/xexamai</a>.`;
+    message.innerHTML = `This feature is available only to token holders <strong style="word-break: break-word;">D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG</strong>.<br/>All links and instructions are available on our website: <a href="https://xldev.ru/en/xexamai" target="_blank" rel="noreferrer">https://xldev.ru/en/xexamai</a>.`;
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'btn btn-primary';
     closeBtn.textContent = 'Got it';
     closeBtn.addEventListener('click', () => {
-        overlay.classList.remove('holder-modal--visible');
+        overlay.classList.remove('holder-overlay--visible');
+    });
+
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            overlay.classList.remove('holder-overlay--visible');
+        }
     });
 
     modal.appendChild(title);
@@ -1153,7 +1159,7 @@ function showHolderOnlyModal(): void {
     document.body.appendChild(overlay);
 
     requestAnimationFrame(() => {
-        overlay.classList.add('holder-modal--visible');
+        overlay.classList.add('holder-overlay--visible');
     });
 }
 

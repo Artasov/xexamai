@@ -21,83 +21,67 @@ const ERROR_MAPPINGS: Record<string, ErrorInfo> = {
         title: 'OpenAI API key not configured',
         message: 'To use ChatGPT, you need to configure your OpenAI API key.',
         helpUrl: GUIDE_URL,
-        helpText: 'Detailed setup instructions',
-        actionText: 'Open settings',
-        actionUrl: '#settings'
+        helpText: 'Detailed setup instructions'
     },
     'GOOGLE_API_KEY is not set': {
         title: 'Google API key not configured',
         message: 'To use Google, you need to configure your Google AI API key.',
         helpUrl: GUIDE_URL,
-        helpText: 'Detailed setup instructions',
-        actionText: 'Open settings',
-        actionUrl: '#settings'
+        helpText: 'Detailed setup instructions'
     },
     'Google API key not configured': {
         title: 'Google API key not configured',
         message: 'To use Google, you need to configure your Google AI API key.',
         helpUrl: GUIDE_URL,
-        helpText: 'Detailed setup instructions',
-        actionText: 'Open settings',
-        actionUrl: '#settings'
+        helpText: 'Detailed setup instructions'
     },
     'API key is invalid': {
         title: 'Invalid API key',
         message: 'Please check the API key you entered in the settings.',
         helpUrl: GUIDE_URL,
-        helpText: 'How to get a valid API key',
-        actionText: 'Open settings',
-        actionUrl: '#settings'
+        helpText: 'How to get a valid API key'
     },
     'Insufficient API credits': {
         title: 'Insufficient API credits',
         message: 'Your account does not have enough credits to complete this request.',
         helpUrl: GUIDE_URL,
-        helpText: 'How to add API credits',
-        actionText: 'Check balance',
-        actionUrl: 'https://platform.openai.com/usage'
+        helpText: 'How to add API credits'
     },
     'Rate limit exceeded': {
         title: 'Rate limit exceeded',
         message: 'Too many requests. Please try again in a few minutes.',
         helpUrl: GUIDE_URL,
-        helpText: 'API rate limit information',
-        actionText: 'Wait and retry'
+        helpText: 'API rate limit information'
     },
     'Network error': {
         title: 'Network error',
         message: 'There is a problem with your internet connection. Please check your connection.',
         helpUrl: GUIDE_URL,
-        helpText: 'Network troubleshooting',
-        actionText: 'Check connection'
+        helpText: 'Network troubleshooting'
     },
     'Timeout': {
         title: 'Request timeout',
         message: 'The request is taking too long. Please try again.',
         helpUrl: GUIDE_URL,
-        helpText: 'Performance optimization',
-        actionText: 'Retry request'
+        helpText: 'Performance optimization'
     },
     'Microphone access denied': {
         title: 'Microphone access denied',
         message: 'Please allow microphone access in your browser settings to record audio.',
         helpUrl: GUIDE_URL,
-        helpText: 'How to allow microphone access',
-        actionText: 'Check permissions'
+        helpText: 'How to allow microphone access'
     },
     'Audio recording failed': {
         title: 'Audio recording failed',
         message: 'Failed to record audio. Please check your microphone and permissions.',
         helpUrl: GUIDE_URL,
-        helpText: 'Audio troubleshooting',
-        actionText: 'Check microphone'
+        helpText: 'Audio troubleshooting'
     },
     'Screen capture failed': {
         title: 'Screen capture failed',
         message: 'Failed to capture screen image. Please check your permissions.',
         helpUrl: GUIDE_URL,
-        helpText: 'How to allow screen capture',
-        actionText: 'Check permissions'
+        helpText: 'How to allow screen capture'
     }
 };
 
