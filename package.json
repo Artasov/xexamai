@@ -48,7 +48,6 @@
     "electron-audio-loopback": "1.0.6",
     "electron-store": "^11.0.2",
     "marked": "^16.3.0",
-    "nodejs-whisper": "0.2.9",
     "openai": "6.1.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
@@ -66,13 +65,8 @@
       "dist/**/*",
       "brand/**/*",
       "node_modules/**/*",
+      "!node_modules/nodejs-whisper/**",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build",
-        "to": "build"
-      }
     ],
     "win": {
       "target": [
