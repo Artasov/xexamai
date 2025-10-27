@@ -1,10 +1,10 @@
-import {AudioRingBuffer} from '../audio/ringBuffer.js';
-import {AudioVisualizer} from '../audio/visualizer.js';
-import {PcmRingBuffer} from '../audio/pcmRingBuffer.js';
-import {ensureWave, hideWave, showWave} from '../ui/waveform.js';
-import {state} from '../state/appState.js';
-import {logger} from '../utils/logger.js';
-import {setStatus} from '../ui/status.js';
+import {AudioRingBuffer} from '../audio/ringBuffer';
+import {AudioVisualizer} from '../audio/visualizer';
+import {PcmRingBuffer} from '../audio/pcmRingBuffer';
+import {ensureWave, hideWave, showWave} from '../ui/waveform';
+import {state} from '../state/appState';
+import {logger} from '../utils/logger';
+import {setStatus} from '../ui/status';
 
 let media: MediaRecorder | null = null;
 let ring: AudioRingBuffer | null = null;

@@ -1,0 +1,206 @@
+import { useEffect, useRef } from 'react';
+import { initializeRenderer } from './renderer';
+import { setStatus } from './ui/status';
+
+export function App() {
+    const initializedRef = useRef(false);
+
+    useEffect(() => {
+        if (initializedRef.current) return;
+        initializedRef.current = true;
+        initializeRenderer().catch((error) => {
+            console.error(error);
+            setStatus('Initialization error', 'error');
+        });
+    }, []);
+
+    return (
+        <div className="app-grid relative flex h-screen min-w-[330px] flex-col text-gray-100">
+            <div
+                className="rainbow pointer-events-none"
+                style={{ position: 'absolute', top: '20%', right: '20%', width: '500px', height: '500px' }}
+            />
+
+            <div
+                className="logo-container pointer-events-none flex flex-col items-center justify-center"
+                style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2 }}
+            >
+                <img id="main-logo" alt="xexamai" style={{ width: '70vmin' }} />
+            </div>
+
+            <header className="app-header flex items-center justify-between px-3 py-2 text-gray-100 drag-region">
+                <div className="flex items-center gap-3">
+                    <div className="relative" style={{ width: '32px', height: '32px' }}>
+                        <img
+                            id="header-logo"
+                            alt="xexamai"
+                            style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2 }}
+                        />
+                        <div
+                            className="rainbow"
+                            style={{ position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)' }}
+                        />
+                    </div>
+                    <h1 className="text-lg font-semibold">xexamai</h1>
+                    <div id="status" className="status-badge ready">
+                        Ready
+                    </div>
+                </div>
+                <div className="window-controls no-drag -mr-1">
+                    <button id="closeBtn" className="window-control-btn close mr-2" title="Close" type="button">
+                        <svg width="12" height="12" viewBox="0 0 12 12">
+                            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <main className="flex flex-1 flex-col overflow-auto px-4 pb-4 pt-1">
+                <div className="tabs-container">
+                    <div className="tabs">
+                        <button id="mainTab" className="tab active" type="button">
+                            Main
+                        </button>
+                        <button id="settingsTab" className="tab" type="button">
+                            Settings
+                        </button>
+                    </div>
+                </div>
+
+                <div id="mainContent" className="content-area flex flex-col gap-4 overflow-auto">
+                    <section className="flex flex-col gap-4 overflow-auto md:flex-row">
+                        <div className="card h-min flex-grow md:max-w-[320px]">
+                            <div id="send-last-container" className="send-last-container">
+                                <div className="label mb-2">Send the last:</div>
+                                <div id="durations" className="flex flex-wrap gap-2" />
+                            </div>
+
+                            <div className="mt-2 flex items-center gap-4">
+                                <button id="btnRecord" className="btn" data-state="idle" type="button">
+                                    Start Audio Loop
+                                </button>
+                                <button id="btnToggleInput" title="Toggle audio input" type="button">
+                                    <img
+                                        id="toggleInputIcon"
+                                        src="img/icons/mic.png"
+                                        alt="MIC"
+                                        className="h-5 w-5"
+                                        style={{ filter: 'invert(1)', opacity: '80%' }}
+                                    />
+                                </button>
+                                <div id="waveform-container" className="flex-1" />
+                                <button
+                                    id="btnScreenshot"
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    title="Analyze screen (Screenshot)"
+                                >
+                                    <img src="img/icons/image.png" alt="Screenshot" className="h-5 w-5 invert" />
+                                </button>
+                            </div>
+
+                            <div className="mt-2 flex flex-col">
+                                <div className="flex h-[42px] items-stretch gap-2">
+                                    <div className="h-full flex-1">
+                                        <input
+                                            id="textInput"
+                                            placeholder="Type your question here..."
+                                            className="input-field h-full w-full resize-none rounded border border-gray-600 bg-gray-700 p-2 text-gray-100 placeholder-gray-400"
+                                        />
+                                    </div>
+                                    <div className="h-full flex-grow">
+                                        <button
+                                            id="btnSendText"
+                                            className="btn btn-primary h-full w-full"
+                                            type="button"
+                                            disabled
+                                        >
+                                            Send
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="streamResultsSection" className="mt-2 hidden">
+                                <div className="label mb-2">Stream Results:</div>
+                                <div className="flex gap-2">
+                                    <textarea
+                                        id="streamResultsTextarea"
+                                        placeholder="Stream transcription will appear here..."
+                                        className="input-field flex-1 resize-none rounded border border-gray-600 bg-gray-700 p-2 text-gray-100 placeholder-gray-400"
+                                        rows={4}
+                                    />
+                                    <button
+                                        id="btnSendStreamText"
+                                        className="btn btn-primary self-start"
+                                        type="button"
+                                        disabled
+                                    >
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="card flex flex-grow flex-col overflow-y-auto">
+                            <div className="label mb-1">Recognized</div>
+                            <div id="textOut" />
+                            <div className="mt-4 mb-1 flex items-center gap-2">
+                                <div className="label">Reply</div>
+                                <button
+                                    id="btnStopStream"
+                                    className="btn btn-secondary hidden !px-1 !py-0 text-xs"
+                                    type="button"
+                                >
+                                    Stop
+                                </button>
+                            </div>
+                            <div id="answerOut" className="min-h-[1rem] overflow-auto" />
+                        </div>
+                    </section>
+                </div>
+
+                <div id="settingsContent" className="content-area hidden flex flex-col overflow-auto">
+                    <div className="settings-tabs-container mb-4">
+                        <div className="settings-tabs">
+                            <button id="settingsGeneralTab" className="settings-tab active" type="button">
+                                General
+                            </button>
+                            <button id="settingsAiTab" className="settings-tab" type="button">
+                                AI
+                            </button>
+                            <button id="settingsAudioTab" className="settings-tab" type="button">
+                                Audio
+                            </button>
+                            <button id="settingsHotkeysTab" className="settings-tab" type="button">
+                                Hotkeys
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="settingsGeneralPanel" className="settings-panel-content w-full overflow-auto pr-1" />
+                    <div id="settingsAiPanel" className="settings-panel-content hidden w-full overflow-auto pr-1" />
+                    <div id="settingsAudioPanel" className="settings-panel-content hidden w-full overflow-auto pr-1" />
+                    <div id="settingsHotkeysPanel" className="settings-panel-content hidden w-full overflow-auto pr-1" />
+                </div>
+            </main>
+
+            <footer
+                className="pointer-events-none absolute bottom-[2px] left-[4px] text-[9px] font-light opacity-20"
+                style={{ fontWeight: 300 }}
+            >
+                <span className="opacity-70">by Nikita Artasov</span>{' '}
+                <a
+                    target="_blank"
+                    rel="noreferrer"
+                    className="pointer-events-auto text-[#c3a5ff]"
+                    href="https://t.me/artasov"
+                >
+                    @artasov
+                </a>
+            </footer>
+        </div>
+    );
+}
+
+export default App;

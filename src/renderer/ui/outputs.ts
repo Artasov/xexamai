@@ -1,48 +1,63 @@
-import { formatError, addErrorHelpStyles } from '../utils/errorFormatter.js';
-
-const textOut = document.getElementById('textOut') as HTMLDivElement | null;
-const answerOut = document.getElementById('answerOut') as HTMLDivElement | null;
+import { marked } from 'marked';
+import { formatError, addErrorHelpStyles } from '../utils/errorFormatter';
 
 // Инициализируем стили для помощи при ошибках
 addErrorHelpStyles();
 
+let textOut: HTMLDivElement | null = null;
+let answerOut: HTMLDivElement | null = null;
+
+export function initOutputs(elements: { text?: HTMLDivElement | null; answer?: HTMLDivElement | null }) {
+    if (typeof elements !== 'object' || !elements) return;
+    if (elements.text) textOut = elements.text;
+    if (elements.answer) answerOut = elements.answer;
+}
+
 export function showText(text: string) {
-    if (textOut) textOut.textContent = text || '';
+    const target = textOut ?? (document.getElementById('textOut') as HTMLDivElement | null);
+    if (!target) return;
+    textOut = target;
+    target.textContent = text || '';
 }
 
 export function showAnswer(text: string) {
-    if (answerOut) {
-        // Сохраняем текущую позицию скролла
-        const currentScrollTop = answerOut.scrollTop;
-        const currentScrollHeight = answerOut.scrollHeight;
-        const isAtBottom = currentScrollTop + answerOut.clientHeight >= currentScrollHeight - 5; // 5px tolerance
-        
-        if (text) {
-            // Рендерим Markdown через глобальный marked
-            const html = (window as any).marked.parse(text);
-            answerOut.innerHTML = html;
-        } else {
-            answerOut.innerHTML = '';
-        }
-        
-        // Восстанавливаем позицию скролла только если пользователь не был внизу
-        if (!isAtBottom) {
-            answerOut.scrollTop = currentScrollTop;
-        }
+    const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
+    if (!target) return;
+
+    answerOut = target;
+
+    // Сохраняем текущую позицию скролла
+    const currentScrollTop = target.scrollTop;
+    const currentScrollHeight = target.scrollHeight;
+    const isAtBottom = currentScrollTop + target.clientHeight >= currentScrollHeight - 5; // 5px tolerance
+
+    if (text) {
+        // Рендерим Markdown через marked
+        const html = marked.parse(text, { async: false }) as string;
+        target.innerHTML = html;
+    } else {
+        target.innerHTML = '';
+    }
+
+    // Восстанавливаем позицию скролла только если пользователь не был внизу
+    if (!isAtBottom) {
+        target.scrollTop = currentScrollTop;
     }
 }
 
 export function showError(error: unknown) {
     const formattedError = formatError(error);
     
-    if (answerOut) {
-        let errorHtml = `<div class="error-message">${formattedError.displayText}</div>`;
-        
-        if (formattedError.helpHtml) {
-            errorHtml += formattedError.helpHtml;
-        }
-        
-        answerOut.innerHTML = errorHtml;
-    }
-}
+    const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
+    if (!target) return;
 
+    answerOut = target;
+
+    let errorHtml = `<div class="error-message">${formattedError.displayText}</div>`;
+
+    if (formattedError.helpHtml) {
+        errorHtml += formattedError.helpHtml;
+    }
+
+    target.innerHTML = errorHtml;
+}

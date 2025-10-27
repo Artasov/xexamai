@@ -1,6 +1,6 @@
-﻿import {setRecording, state} from '../state/appState.js';
-import {setStatus} from './status.js';
-import {logger} from '../utils/logger.js';
+﻿import {setRecording, state} from '../state/appState';
+import {setStatus} from './status';
+import {logger} from '../utils/logger';
 
 type ControlsInitArgs = {
     onRecordToggle: (shouldRecord: boolean) => Promise<void> | void;

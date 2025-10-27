@@ -1,4 +1,4 @@
-import {BrowserWindow, shell} from 'electron';
+import {app, BrowserWindow, shell} from 'electron';
 import path from 'node:path';
 import {appConfigService} from '../services/app-config.service';
 
@@ -9,6 +9,28 @@ export function createMainWindow(): BrowserWindow {
     const initialWidth = appConfigService.getWindowWidth();
     const initialHeight = appConfigService.getWindowHeight();
 
+    const isDevelopment = !app.isPackaged || process.env.NODE_ENV === 'development';
+    const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? (isDevelopment ? 'http://localhost:5174' : undefined);
+    const resolveAssetPath = (...segments: string[]) =>
+        app.isPackaged
+            ? path.join(process.resourcesPath, ...segments)
+            : path.join(process.cwd(), ...segments);
+
+    const appRoot = app.getAppPath();
+    const {logger} = require('../services/logger.service');
+    logger.debug('app', 'Resolved Electron paths', {
+        appRoot,
+        preloadCandidate: path.join(appRoot, 'dist', 'main', 'preload.js'),
+        rendererCandidate: path.join(appRoot, 'dist', 'renderer', 'index.html'),
+        devServerUrl
+    });
+    const preloadPath = path.join(appRoot, 'dist', 'main', 'preload.js');
+    const rendererIndexPath = path.join(appRoot, 'dist', 'renderer', 'index.html');
+    const windowIcon = resolveAssetPath(
+        'brand',
+        process.platform === 'win32' ? 'logo.ico' : 'logo_white.png',
+    );
+
     const win = new BrowserWindow({
         width: initialWidth,
         height: initialHeight,
@@ -18,10 +40,10 @@ export function createMainWindow(): BrowserWindow {
         transparent: true,
         opacity: opacity / 100,
         alwaysOnTop: alwaysOnTop,
-        icon: path.join(__dirname, '..', '..', '..', 'brand', 'logo.ico'),
+        icon: windowIcon,
         skipTaskbar: true,
         webPreferences: {
-            preload: path.join(__dirname, '..', '..', 'preload', 'index.js'),
+            preload: preloadPath,
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: false,
@@ -105,7 +127,16 @@ export function createMainWindow(): BrowserWindow {
         }
     });
 
-    win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
+    const loadPromise = devServerUrl
+        ? win.loadURL(devServerUrl)
+        : win.loadFile(rendererIndexPath);
+
+    loadPromise.catch((error) => {
+        console.error('Failed to load renderer', error);
+        win.loadFile(rendererIndexPath).catch((fallbackError) => {
+            console.error('Fallback renderer load failed', fallbackError);
+        });
+    });
 
     win.webContents.setWindowOpenHandler(({url}) => {
         shell.openExternal(url);

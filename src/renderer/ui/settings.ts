@@ -1,8 +1,8 @@
-import type {AppSettings} from '../types.js';
-import {logger} from '../utils/logger.js';
-import {registerHolderSettingsSection} from './holderAccess.js';
-import {CustomSelect, CustomSelectOption} from './components/CustomSelect.js';
-import {settingsStore} from '../state/settingsStore.js';
+import type {AppSettings} from '../types';
+import {logger} from '../utils/logger';
+import {registerHolderSettingsSection} from './holderAccess';
+import {CustomSelect, CustomSelectOption} from './components/CustomSelect';
+import {settingsStore} from '../state/settingsStore';
 
 export interface SettingsPanelOptions {
     onSettingsChange?: (settings: AppSettings) => void;

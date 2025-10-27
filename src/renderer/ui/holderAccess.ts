@@ -1,6 +1,6 @@
-import type {HolderChallengeInfo, HolderStatus} from '../types.js';
-import {fetchHolderStatus, requestHolderChallenge, verifyHolderSignature} from '../services/holderClient.js';
-import {getHolderState, setHolderLoading, setHolderStatus, subscribeHolderState} from '../state/holderState.js';
+import type {HolderChallengeInfo, HolderStatus} from '../types';
+import {fetchHolderStatus, requestHolderChallenge, verifyHolderSignature} from '../services/holderClient';
+import {getHolderState, setHolderLoading, setHolderStatus, subscribeHolderState} from '../state/holderState';
 
 type ModalElements = {
     overlay: HTMLDivElement;

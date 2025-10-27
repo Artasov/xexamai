@@ -1,4 +1,4 @@
-import type {HolderStatus} from '../types.js';
+import type {HolderStatus} from '../types';
 
 export type HolderState = {
     status: HolderStatus | null;

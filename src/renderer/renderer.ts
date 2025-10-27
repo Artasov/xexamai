@@ -1,15 +1,15 @@
-import {initControls, updateButtonsState, updateDurations} from './ui/controls.js';
-import {setStatus} from './ui/status.js';
-import {showAnswer, showText, showError} from './ui/outputs.js';
-import {setProcessing, state} from './state/appState.js';
-import {floatsToWav} from './audio/encoder.js';
-import {SettingsPanel} from './ui/settings.js';
-import {logger} from './utils/logger.js';
-import {initializeHolderAccess} from './ui/holderAccess.js';
-import {initializeWelcomeModal} from './ui/welcomeModal.js';
-import {settingsStore} from './state/settingsStore.js';
-import {GoogleStreamingService} from './services/googleStreamingService.js';
-import {getHolderState} from './state/holderState.js';
+import {initControls, updateButtonsState, updateDurations} from './ui/controls';
+import {initStatus, setStatus} from './ui/status';
+import {initOutputs, showAnswer, showText, showError} from './ui/outputs';
+import {setProcessing, state} from './state/appState';
+import {floatsToWav} from './audio/encoder';
+import {SettingsPanel} from './ui/settings';
+import {logger} from './utils/logger';
+import {initializeHolderAccess} from './ui/holderAccess';
+import {initializeWelcomeModal} from './ui/welcomeModal';
+import {settingsStore} from './state/settingsStore';
+import {GoogleStreamingService} from './services/googleStreamingService';
+import {getHolderState} from './state/holderState';
 import {
     startRecording as startAudioRecording,
     stopRecording as stopAudioRecording,
@@ -20,11 +20,11 @@ import {
     getLastSecondsFloats,
     clonePersistentSystemTrack,
     registerPersistentSystemTrack,
-} from './app/audioSession.js';
-import type {SwitchAudioResult} from './app/audioSession.js';
+} from './app/audioSession';
+import type {SwitchAudioResult} from './app/audioSession';
 // Google SDK is loaded in preload and exposed via window.api.google
 
-import type {AssistantAPI} from './types.js';
+import type {AssistantAPI} from './types';
 
 let currentRequestId: string | null = null;
 let btnStop: HTMLButtonElement | null = null;
@@ -525,12 +525,51 @@ async function handleScreenshot() {
     }
 }
 
-async function main() {
+export async function initializeRenderer() {
     // Initialize font size functionality
     initializeFontSize();
     
     // Add wheel event listener for font size control
     document.addEventListener('wheel', handleFontSizeWheel, { passive: false });
+
+    initStatus(document.getElementById('status') as HTMLDivElement | null);
+    initOutputs({
+        text: document.getElementById('textOut') as HTMLDivElement | null,
+        answer: document.getElementById('answerOut') as HTMLDivElement | null,
+    });
+
+    let bridge = (window as unknown as { api?: AssistantAPI }).api;
+    if (bridge) {
+        console.info('[renderer] Preload bridge detected immediately', Object.keys(bridge));
+    }
+    if (!bridge) {
+        const isElectron =
+            typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron/') ||
+            typeof window !== 'undefined' && (window as any)?.process?.type === 'renderer';
+
+        if (isElectron) {
+            console.warn('[renderer] Preload bridge not immediately available, polling...');
+            for (let i = 0; i < 30; i += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+                bridge = (window as unknown as { api?: AssistantAPI }).api;
+                if (bridge) break;
+            }
+            if (bridge) {
+                console.info('[renderer] Preload bridge detected after polling', Object.keys(bridge));
+            }
+        }
+
+        if (!bridge) {
+            if (isElectron) {
+                console.error('[renderer] Preload bridge could not be reached after polling.');
+            } else {
+                console.info('[renderer] Running outside Electron; preload bridge intentionally unavailable.');
+            }
+            setStatus('Preload-скрипт недоступен', 'error');
+            return;
+        }
+    }
+    console.info('[renderer] Preload bridge ready for use');
     
     // Initialize stream mode elements
     streamModeContainer = document.getElementById('streamResultsSection');
@@ -1080,11 +1119,6 @@ function startLogoAnimation(logoElement: HTMLImageElement, container: HTMLElemen
         setTimeout(startAnimation, 1000);
     }
 }
-
-main().catch((e) => {
-    console.error(e);
-    setStatus('Initialization error', 'error');
-});
 
 // Font size management functions
 function getCurrentFontSize(): number {

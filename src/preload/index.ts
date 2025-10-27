@@ -1,5 +1,4 @@
 import {contextBridge} from 'electron';
-import {marked} from 'marked';
 import {AssistantAPI} from '../shared/ipc';
 import {createAssistantBridge} from './api/assistant';
 import {createGoogleBridge} from './api/google';
@@ -28,18 +27,13 @@ const api: AssistantAPI = {
 declare global {
     interface Window {
         api: AssistantAPI;
-        marked: {
-            parse: (text: string) => string;
-        };
     }
 }
 
-marked.setOptions({
-    breaks: true,
-    gfm: true,
-});
-
-contextBridge.exposeInMainWorld('api', api);
-contextBridge.exposeInMainWorld('marked', {
-    parse: (text: string) => marked.parse(text) as string,
-});
+try {
+    console.info('[preload] exposing api bridge');
+    contextBridge.exposeInMainWorld('api', api);
+    console.info('[preload] bridge ready');
+} catch (error) {
+    console.error('[preload] failed to expose bridge', error);
+}

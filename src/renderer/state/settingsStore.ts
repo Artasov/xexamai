@@ -1,4 +1,4 @@
-import type {AppSettings} from '../types.js';
+import type {AppSettings} from '../types';
 
 type SettingsListener = (settings: AppSettings) => void;
 

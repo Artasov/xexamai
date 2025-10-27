@@ -1,16 +1,18 @@
 ﻿# Repository Guidelines
 
+Никогда не запускай npm run dev
+
 ## Project Structure & Module Organization
 
 - Source: src/main/ (Electron main, IPC, services), src/renderer/ (UI: ui/, audio/, state/), src/preload/ (exposes a
   typed bridge).
 - Config: configs/ (Tailwind, PostCSS), scripts/ (build helpers), brand/ (icons).
-- Build outputs: build/ (compiled TS for main/renderer), dist/ (CSS, packaged artifacts).
+- Build outputs: dist/main (tsup compiled main + preload) and dist/renderer (Vite build artifacts).
 
 ## Build, Run, and Package
 
-- npm run dev — compile and launch Electron in development.
-- npm run build — clean, compile TypeScript, process CSS, copy HTML.
+- npm run dev — run tsup (main/preload), Vite dev server, and Electron concurrently.
+- npm run build — run tsup + Vite, then package with electron-builder (no publish).
 - npm run build:win|mac|linux|all — create platform packages.
 - npm run clean — remove build outputs.
 

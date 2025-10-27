@@ -160,7 +160,7 @@ export class AudioRingBuffer {
         }
         if (parts.length === 0) return null;
         parts.reverse();
-        const mod = await import('./encoder.js');
+        const mod = await import('./encoder');
         const wav = await (mod as any).blobsToWav(parts);
         try {
             console.debug('[ringBuffer.getLastSecondsWavBlob] parts:', parts.length, 'wav size:', wav.size);

@@ -1,4 +1,4 @@
-import type {HolderStatus, HolderVerificationResult} from '../types.js';
+import type {HolderStatus, HolderVerificationResult} from '../types';
 
 export async function fetchHolderStatus(refresh: boolean = false): Promise<HolderStatus> {
     if (refresh) {

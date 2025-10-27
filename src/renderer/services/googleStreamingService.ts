@@ -1,4 +1,4 @@
-import {settingsStore} from '../state/settingsStore.js';
+import {settingsStore} from '../state/settingsStore';
 
 type StreamOptions = {
     streamMode?: 'base' | 'stream';
