@@ -67,6 +67,8 @@ function onReady() {
 
 function registerWindowIpc() {
     const {logger} = require('./services/logger.service');
+    const MIN_WIDTH = 400;
+    const MIN_HEIGHT = 700;
     
     ipcMain.handle('window:minimize', () => {
         logger.info('ui', 'Window minimize requested');
@@ -80,6 +82,20 @@ function registerWindowIpc() {
         if (mainWindow) {
             mainWindow.close();
         }
+    });
+
+    ipcMain.handle('window:get-bounds', () => {
+        if (!mainWindow) return null;
+        return mainWindow.getBounds();
+    });
+
+    ipcMain.handle('window:set-bounds', (_, bounds: { x: number; y: number; width: number; height: number }) => {
+        if (!mainWindow) return;
+        const nextWidth = Math.max(MIN_WIDTH, Math.round(bounds.width));
+        const nextHeight = Math.max(MIN_HEIGHT, Math.round(bounds.height));
+        const nextX = Math.round(bounds.x);
+        const nextY = Math.round(bounds.y);
+        mainWindow.setBounds({ x: nextX, y: nextY, width: nextWidth, height: nextHeight }, false);
     });
 
     ipcMain.handle('log:entry', async (_, entry) => {

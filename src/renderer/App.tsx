@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { initializeRenderer } from './renderer';
 import { setStatus } from './ui/status';
 import { SettingsView } from './components/settings/SettingsView/SettingsView';
+import { WindowResizer } from './components/common/WindowResizer/WindowResizer';
 
 export function App() {
     const initializedRef = useRef(false);
@@ -18,6 +19,7 @@ export function App() {
 
     return (
         <div className="app-grid disable-tap-select relative fc h-screen min-w-[330px] text-gray-100">
+            <WindowResizer />
             <div
                 className="rainbow pointer-events-none"
                 style={{ position: 'absolute', width: '500px', height: '500px' }}
@@ -111,17 +113,17 @@ export function App() {
 
                             <div className="mt-2 flex flex-col">
                                 <div className="flex h-[42px] items-stretch gap-2">
-                                    <div className="h-full flex-1">
+                                    <div className="h-full flex-grow">
                                         <input
                                             id="textInput"
                                             placeholder="Type your question here..."
                                             className="input-field h-full w-full resize-none rounded border border-gray-600 bg-gray-700 p-2 text-gray-100 placeholder-gray-400"
                                         />
                                     </div>
-                                    <div className="h-full flex-grow">
+                                    <div className="h-full">
                                         <button
                                             id="btnSendText"
-                                            className="btn btn-primary h-full w-full"
+                                            className="btn btn-primary h-full"
                                             type="button"
                                             disabled
                                         >
