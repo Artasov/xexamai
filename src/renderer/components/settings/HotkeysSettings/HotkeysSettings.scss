@@ -1,0 +1,59 @@
+.hotkeys-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.hotkeys-duration-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.hotkeys-duration {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.hotkeys-duration__label {
+    min-width: 3rem;
+    font-size: 0.875rem;
+    color: #e2e8f0;
+}
+
+.hotkeys-duration__input {
+    width: 4.5rem;
+    text-transform: uppercase;
+}
+
+.hotkeys-duration-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.hotkeys-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.hotkeys-input-row__prefix {
+    font-size: 0.85rem;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.hotkeys-input {
+    width: 4.5rem;
+    text-transform: uppercase;
+}
+
+.hotkeys-helper {
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.8);
+    margin-top: 0.5rem;
+}

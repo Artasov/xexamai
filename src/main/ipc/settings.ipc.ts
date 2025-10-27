@@ -18,6 +18,9 @@ export function registerSettingsIpc() {
     ipcMain.handle(IPCChannels.GetSettings, async (): Promise<AppSettings> => {
         logger.info('settings', 'Settings requested');
         const config = appConfigService.getConfig();
+        const llmHost = config.llmHost || DefaultSettings.llmHost;
+        const apiLlmModel = config.apiLlmModel || 'gpt-4.1-nano';
+        const localLlmModel = config.localLlmModel || 'gpt-oss:20b';
         return {
             durations: config.durations || DefaultSettings.durations,
             durationHotkeys: appConfigService.getDurationHotkeys(config.durations || DefaultSettings.durations),
@@ -33,10 +36,12 @@ export function registerSettingsIpc() {
             audioInputType: config.audioInputType,
             transcriptionModel: config.transcriptionModel,
             transcriptionPrompt: config.transcriptionPrompt !== undefined ? config.transcriptionPrompt : 'This is a technical interview conducted in English. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
-            llmModel: config.llmModel,
+            llmModel: appConfigService.getLlmModel(),
+            apiLlmModel,
+            localLlmModel,
             llmPrompt: config.llmPrompt !== undefined ? config.llmPrompt : DEFAULT_LLM_PROMPT,
             transcriptionMode: config.transcriptionMode || DefaultSettings.transcriptionMode,
-            llmHost: config.llmHost || DefaultSettings.llmHost,
+            llmHost,
             localWhisperModel: config.localWhisperModel || DefaultSettings.localWhisperModel,
             localDevice: config.localDevice || DefaultSettings.localDevice,
             apiSttTimeoutMs: appConfigService.getApiSttTimeoutMs(),

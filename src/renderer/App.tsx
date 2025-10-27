@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { initializeRenderer } from './renderer';
 import { setStatus } from './ui/status';
+import { SettingsView } from './components/settings/SettingsView/SettingsView';
 
 export function App() {
     const initializedRef = useRef(false);
+    const [activeTab, setActiveTab] = useState<'main' | 'settings'>('main');
 
     useEffect(() => {
         if (initializedRef.current) return;
@@ -58,16 +60,24 @@ export function App() {
             <main className="flex flex-1 flex-col overflow-auto px-4 pb-4 pt-1">
                 <div className="tabs-container">
                     <div className="tabs">
-                        <button id="mainTab" className="tab active" type="button">
+                        <button
+                            className={`tab ${activeTab === 'main' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setActiveTab('main')}
+                        >
                             Main
                         </button>
-                        <button id="settingsTab" className="tab" type="button">
+                        <button
+                            className={`tab ${activeTab === 'settings' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setActiveTab('settings')}
+                        >
                             Settings
                         </button>
                     </div>
                 </div>
 
-                <div id="mainContent" className="content-area flex flex-col gap-4 overflow-auto">
+                <div className="content-area flex flex-col gap-4 overflow-auto" hidden={activeTab !== 'main'}>
                     <section className="flex flex-col gap-4 overflow-auto md:flex-row">
                         <div className="card h-min flex-grow md:max-w-[320px]">
                             <div id="send-last-container" className="send-last-container">
@@ -139,7 +149,7 @@ export function App() {
                                         Send
                                     </button>
                                 </div>
-                            </div>
+                                </div>
                         </div>
 
                         <div className="card flex flex-grow flex-col overflow-y-auto">
@@ -160,28 +170,8 @@ export function App() {
                     </section>
                 </div>
 
-                <div id="settingsContent" className="content-area hidden flex flex-col overflow-auto">
-                    <div className="settings-tabs-container mb-4">
-                        <div className="settings-tabs">
-                            <button id="settingsGeneralTab" className="settings-tab active" type="button">
-                                General
-                            </button>
-                            <button id="settingsAiTab" className="settings-tab" type="button">
-                                AI
-                            </button>
-                            <button id="settingsAudioTab" className="settings-tab" type="button">
-                                Audio
-                            </button>
-                            <button id="settingsHotkeysTab" className="settings-tab" type="button">
-                                Hotkeys
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="settingsGeneralPanel" className="settings-panel-content w-full overflow-auto pr-1" />
-                    <div id="settingsAiPanel" className="settings-panel-content hidden w-full overflow-auto pr-1" />
-                    <div id="settingsAudioPanel" className="settings-panel-content hidden w-full overflow-auto pr-1" />
-                    <div id="settingsHotkeysPanel" className="settings-panel-content hidden w-full overflow-auto pr-1" />
+                <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'settings'}>
+                    <SettingsView />
                 </div>
             </main>
 

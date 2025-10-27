@@ -12,18 +12,13 @@
     display: none !important;
 }
 
+ 
 .card {
     @apply rounded-lg p-4;
     background-color: #0002;
     border: 1px solid #ffffff05;
-    /*box-shadow: 0 8px 32px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .02) inset;*/
     backdrop-filter: blur(50px);
     transition: all 0.3s var(--ease-out);
-}
-
-.card:hover {
-    border-color: var(--purple-500);
-    /*box-shadow: 0 12px 40px rgba(0, 0, 0, .8), 0 0 20px var(--purple-glow), 0 1px 0 rgba(255, 255, 255, .03) inset;*/
 }
 
 .rainbow {

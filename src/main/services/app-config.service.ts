@@ -27,6 +27,8 @@ export interface AppConfigData {
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
+    apiLlmModel?: string;
+    localLlmModel?: string;
     llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
     llmHost?: LlmHost;
@@ -81,6 +83,27 @@ export class AppConfigService {
                 if (typeof this.configData.welcomeModalDismissed !== 'boolean') {
                     this.configData.welcomeModalDismissed = false;
                 }
+                const fallbackApiModel = 'gpt-4.1-nano';
+                const fallbackLocalModel = 'gpt-oss:20b';
+                if (!this.configData.apiLlmModel) {
+                    if ((this.configData.llmHost ?? 'api') === 'api' && this.configData.llmModel) {
+                        this.configData.apiLlmModel = this.configData.llmModel;
+                    } else {
+                        this.configData.apiLlmModel = fallbackApiModel;
+                    }
+                }
+                if (!this.configData.localLlmModel) {
+                    if ((this.configData.llmHost ?? 'api') === 'local' && this.configData.llmModel) {
+                        this.configData.localLlmModel = this.configData.llmModel;
+                    } else {
+                        this.configData.localLlmModel = fallbackLocalModel;
+                    }
+                }
+                if (!this.configData.llmModel) {
+                    this.configData.llmModel = (this.configData.llmHost ?? 'api') === 'local'
+                        ? this.configData.localLlmModel
+                        : this.configData.apiLlmModel;
+                }
             } else {
                 this.configData = {
                     openaiApiKey: process.env.OPENAI_API_KEY,
@@ -98,6 +121,9 @@ export class AppConfigService {
                     },
                     transcriptionModel: 'gpt-4o-mini-transcribe',
                     transcriptionPrompt: 'This is a technical interview conducted in English. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
+                    llmModel: 'gpt-4.1-nano',
+                    apiLlmModel: 'gpt-4.1-nano',
+                    localLlmModel: 'gpt-oss:20b',
                     llmPrompt: DEFAULT_LLM_PROMPT,
                     transcriptionMode: 'api',
                     llmHost: 'api',
@@ -130,6 +156,9 @@ export class AppConfigService {
                 },
                 transcriptionModel: 'gpt-4o-mini-transcribe',
                 transcriptionPrompt: 'This is a technical interview conducted in English. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).',
+                llmModel: 'gpt-4.1-nano',
+                apiLlmModel: 'gpt-4.1-nano',
+                localLlmModel: 'gpt-oss:20b',
                 llmPrompt: DEFAULT_LLM_PROMPT,
                 transcriptionMode: 'api',
                 llmHost: 'api',
@@ -162,6 +191,16 @@ export class AppConfigService {
         if (typeof this.configData.screenProcessingTimeoutMs !== 'number') {
             this.configData.screenProcessingTimeoutMs = 50000;
         }
+        if (!this.configData.apiLlmModel) {
+            this.configData.apiLlmModel = 'gpt-4.1-nano';
+        }
+        if (!this.configData.localLlmModel) {
+            this.configData.localLlmModel = 'gpt-oss:20b';
+        }
+        const currentHost = this.configData.llmHost ?? 'api';
+        this.configData.llmModel = currentHost === 'local'
+            ? this.configData.localLlmModel
+            : this.configData.apiLlmModel;
         return {...this.configData};
     }
 
@@ -334,17 +373,28 @@ export class AppConfigService {
     }
 
     public setLlmModel(model: string): void {
+        const host = this.getLlmHost();
         const oldModel = this.configData.llmModel;
         this.configData.llmModel = model;
+        if (host === 'local') {
+            this.configData.localLlmModel = model;
+        } else {
+            this.configData.apiLlmModel = model;
+        }
         this.scheduleSave();
-        logger.info('settings', 'LLM model changed', { 
-            oldModel, 
-            newModel: model 
+        logger.info('settings', 'LLM model changed', {
+            host,
+            oldModel,
+            newModel: model,
         });
     }
 
     public getLlmModel(): string {
-        return this.configData.llmModel || 'gpt-4.1-nano';
+        const host = this.getLlmHost();
+        if (host === 'local') {
+            return this.configData.localLlmModel || this.configData.llmModel || 'gpt-oss:20b';
+        }
+        return this.configData.apiLlmModel || this.configData.llmModel || 'gpt-4.1-nano';
     }
 
     public setTranscriptionMode(mode: TranscriptionMode): void {
@@ -364,10 +414,22 @@ export class AppConfigService {
     public setLlmHost(host: LlmHost): void {
         const oldHost = this.configData.llmHost;
         this.configData.llmHost = host;
+        if (host === 'local') {
+            if (!this.configData.localLlmModel) {
+                this.configData.localLlmModel = 'gpt-oss:20b';
+            }
+            this.configData.llmModel = this.configData.localLlmModel;
+        } else {
+            if (!this.configData.apiLlmModel) {
+                this.configData.apiLlmModel = 'gpt-4.1-nano';
+            }
+            this.configData.llmModel = this.configData.apiLlmModel;
+        }
         this.scheduleSave();
-        logger.info('settings', 'LLM host changed', { 
-            oldHost, 
-            newHost: host 
+        logger.info('settings', 'LLM host changed', {
+            oldHost,
+            newHost: host,
+            activeModel: this.configData.llmModel,
         });
     }
 

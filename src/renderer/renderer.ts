@@ -3,9 +3,7 @@ import {initStatus, setStatus} from './ui/status';
 import {initOutputs, showAnswer, showText, showError} from './ui/outputs';
 import {setProcessing, state} from './state/appState';
 import {floatsToWav} from './audio/encoder';
-import {SettingsPanel} from './ui/settings';
 import {logger} from './utils/logger';
-import {initializeHolderAccess} from './ui/holderAccess';
 import {initializeWelcomeModal} from './ui/welcomeModal';
 import {settingsStore} from './state/settingsStore';
 import {GoogleStreamingService} from './services/googleStreamingService';
@@ -654,10 +652,6 @@ export async function initializeRenderer() {
 
     await initializeWelcomeModal();
 
-    initializeHolderAccess({
-        headerTitleEl: document.querySelector('header h1') as HTMLElement | null,
-    });
-
     const settings = await settingsStore.load();
     const durations = Array.isArray(settings.durations) && settings.durations.length
         ? settings.durations
@@ -914,161 +908,64 @@ export async function initializeRenderer() {
     window.addEventListener('xexamai:settings-changed' as any, async (ev: any) => {
         try {
             const { key, value } = ev?.detail || {};
-            if (key === 'streamSendHotkey') {
-                currentStreamSendHotkey = value || '~';
-            }
-            if (key === 'streamMode') {
-                settingsStore.patch({ streamMode: value });
-                await updateStreamModeVisibility();
-            }
-            if (key === 'audioInputType') {
-                const normalized = value === 'system' ? 'system' : 'microphone';
-                settingsStore.patch({ audioInputType: normalized });
-                setAudioInputType(normalized);
-                await updateToggleButtonLabel(normalized);
-            }
-        } catch {}
-    });
-
-    // Initialize stream mode visibility after all elements are ready
-    await updateStreamModeVisibility();
-
-    // Initialize settings panels for each tab
-    const settingsGeneralPanel = document.getElementById('settingsGeneralPanel');
-    const settingsAiPanel = document.getElementById('settingsAiPanel');
-    const settingsAudioPanel = document.getElementById('settingsAudioPanel');
-    const settingsHotkeysPanel = document.getElementById('settingsHotkeysPanel');
-
-    if (settingsGeneralPanel) {
-        new SettingsPanel(settingsGeneralPanel, {
-            panelType: 'general',
-            onDurationsChange: (newDurations) => {
-                updateDurations(newDurations, (sec) => {
-                    handleAskWindow(sec);
-                });
-                try {
-                    (state as any).durationSec = Math.max(...newDurations);
-                } catch {
+            switch (key) {
+                case 'streamSendHotkey': {
+                    currentStreamSendHotkey = value || '~';
+                    break;
                 }
-                settingsStore.patch({ durations: newDurations });
-                const snapshot = settingsStore.get();
-                const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
-                if (durationsEl) {
+                case 'streamMode': {
+                    settingsStore.patch({ streamMode: value });
+                    await updateStreamModeVisibility();
+                    break;
+                }
+                case 'audioInputType': {
+                    const normalized = value === 'system' ? 'system' : 'microphone';
+                    settingsStore.patch({ audioInputType: normalized });
+                    setAudioInputType(normalized);
+                    await updateToggleButtonLabel(normalized);
+                    break;
+                }
+                case 'durations': {
+                    const nextDurations: number[] = Array.isArray(value) ? value : [];
+                    settingsStore.patch({ durations: nextDurations });
+                    updateDurations(nextDurations, (sec) => {
+                        handleAskWindow(sec);
+                    });
+                    try {
+                        (state as any).durationSec = Math.max(...nextDurations);
+                    } catch {}
+                    break;
+                }
+                case 'durationHotkeys': {
+                    const map = (value ?? {}) as Record<number, string>;
+                    settingsStore.patch({ durationHotkeys: map });
+                    const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
+                    if (!durationsEl) break;
                     const buttons = durationsEl.querySelectorAll('button');
                     buttons.forEach((btn) => {
                         const old = btn.querySelector('.hk');
                         if (old) old.remove();
                         const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
-                        const key = (snapshot.durationHotkeys as any)?.[sec];
-                        if (key) {
+                        const hotkey = map?.[sec];
+                        if (hotkey) {
                             const label = document.createElement('span');
                             label.className = 'hk text-xs text-gray-400 font-extralight';
-                            label.textContent = `Ctrl-${String(key).toUpperCase()}`;
+                            label.textContent = `Ctrl-${String(hotkey).toUpperCase()}`;
                             btn.appendChild(label);
                         }
                     });
+                    break;
                 }
-            },
-            onHotkeysChange: (map) => {
-                settingsStore.patch({ durationHotkeys: map });
-                const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
-                if (!durationsEl) return;
-                const buttons = durationsEl.querySelectorAll('button');
-                buttons.forEach((btn) => {
-                    const old = btn.querySelector('.hk');
-                    if (old) old.remove();
-                    const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
-                    const key = (map as any)[sec];
-                    if (key) {
-                        const label = document.createElement('span');
-                        label.className = 'hk text-xs text-gray-400 font-extralight';
-                        label.textContent = `Ctrl-${String(key).toUpperCase()}`;
-                        btn.appendChild(label);
-                    }
-                });
-            },
-            onSettingsChange: async () => {
-                // Update stream mode visibility when settings change
-                await updateStreamModeVisibility();
+                default:
+                    break;
             }
-        });
-    }
+        } catch (error) {
+            console.error('settings change handler failed', error);
+        }
+    });
 
-    // Initialize other settings panels
-    if (settingsAiPanel) {
-        new SettingsPanel(settingsAiPanel, { 
-            panelType: 'ai',
-            onSettingsChange: async () => {
-                // Update stream mode visibility when settings change
-                await updateStreamModeVisibility();
-            }
-        });
-    }
-    if (settingsAudioPanel) {
-        new SettingsPanel(settingsAudioPanel, { panelType: 'audio' });
-    }
-    if (settingsHotkeysPanel) {
-        new SettingsPanel(settingsHotkeysPanel, { panelType: 'hotkeys' });
-    }
-
-    // Settings sub-tabs navigation
-    const settingsGeneralTab = document.getElementById('settingsGeneralTab');
-    const settingsAiTab = document.getElementById('settingsAiTab');
-    const settingsAudioTab = document.getElementById('settingsAudioTab');
-    const settingsHotkeysTab = document.getElementById('settingsHotkeysTab');
-
-    function switchSettingsTab(activeTab: string) {
-        // Hide all panels
-        [settingsGeneralPanel, settingsAiPanel, settingsAudioPanel, settingsHotkeysPanel].forEach(panel => {
-            if (panel) panel.classList.add('hidden');
-        });
-        
-        // Remove active class from all tabs
-        [settingsGeneralTab, settingsAiTab, settingsAudioTab, settingsHotkeysTab].forEach(tab => {
-            if (tab) tab.classList.remove('active');
-        });
-
-        // Show active panel and tab
-        const activePanel = document.getElementById(`settings${activeTab}Panel`);
-        const activeTabElement = document.getElementById(`settings${activeTab}Tab`);
-        if (activePanel) activePanel.classList.remove('hidden');
-        if (activeTabElement) activeTabElement.classList.add('active');
-    }
-
-    // Add event listeners for settings sub-tabs
-    if (settingsGeneralTab) {
-        settingsGeneralTab.addEventListener('click', () => switchSettingsTab('General'));
-    }
-    if (settingsAiTab) {
-        settingsAiTab.addEventListener('click', () => switchSettingsTab('Ai'));
-    }
-    if (settingsAudioTab) {
-        settingsAudioTab.addEventListener('click', () => switchSettingsTab('Audio'));
-    }
-    if (settingsHotkeysTab) {
-        settingsHotkeysTab.addEventListener('click', () => switchSettingsTab('Hotkeys'));
-    }
-
-    const mainTab = document.getElementById('mainTab');
-    const settingsTab = document.getElementById('settingsTab');
-    const mainContent = document.getElementById('mainContent');
-    const settingsContent = document.getElementById('settingsContent');
-
-    if (mainTab && settingsTab && mainContent && settingsContent) {
-        mainTab.addEventListener('click', () => {
-            mainTab.classList.add('active');
-            settingsTab.classList.remove('active');
-            mainContent.classList.remove('hidden');
-            settingsContent.classList.add('hidden');
-        });
-
-        settingsTab.addEventListener('click', () => {
-            settingsTab.classList.add('active');
-            mainTab.classList.remove('active');
-            settingsContent.classList.remove('hidden');
-            mainContent.classList.add('hidden');
-        });
-    }
+    // Initialize stream mode visibility after all elements are ready
+    await updateStreamModeVisibility();
 
     const minimizeBtn = document.getElementById('minimizeBtn');
     const closeBtn = document.getElementById('closeBtn');

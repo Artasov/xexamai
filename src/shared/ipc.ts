@@ -41,6 +41,8 @@ export type AppSettings = {
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
+    apiLlmModel?: string;
+    localLlmModel?: string;
     llmPrompt?: string;
     transcriptionMode?: TranscriptionMode;
     llmHost?: LlmHost;
@@ -70,6 +72,9 @@ export const DefaultSettings: AppSettings = {
     welcomeModalDismissed: false,
     transcriptionMode: 'api',
     llmHost: 'api',
+    llmModel: 'gpt-4.1-nano',
+    apiLlmModel: 'gpt-4.1-nano',
+    localLlmModel: 'gpt-oss:20b',
     localWhisperModel: 'base',
     localDevice: 'cpu',
     streamMode: 'base',

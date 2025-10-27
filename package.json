@@ -41,6 +41,7 @@
     "electron-builder": "26.0.12",
     "postcss": "8.5.6",
     "tailwindcss": "4.1.16",
+    "sass": "1.93.2",
     "tslib": "2.8.1",
     "tsup": "8.5.0",
     "typescript": "5.9.3",
