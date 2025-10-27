@@ -1,0 +1,83 @@
+appId: com.xexamai.app
+productName: Xexamai
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/main/**/*
+  - dist/renderer/**/*
+  - package.json
+asar: true
+
+extraResources:
+  - from: brand/logo_white.png
+    to: brand/logo_white.png
+  - from: brand/logo.ico
+    to: brand/logo.ico
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: brand/logo.ico
+  artifactName: '${productName}-Setup-${version}.${ext}'
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 'Xexamai'
+  installerIcon: brand/logo.ico
+  uninstallerIcon: brand/logo.ico
+  deleteAppDataOnUninstall: false
+  menuCategory: true
+  runAfterFinish: true
+  perMachine: false
+  displayLanguageSelector: false
+  license: LICENSE
+  artifactName: '${productName}-Setup-${version}-${arch}.${ext}'
+  include: build/installer.nsh
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.productivity
+  icon: brand/logo_white.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+
+dmg:
+  title: '${productName} ${version} ${arch}'
+  icon: brand/logo_white.png
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+
+linux:
+  target:
+    - target: deb
+      arch:
+        - x64
+  category: Utility
+  icon: brand/logo_white.png
+  synopsis: 'Xexamai - AI Interview Assistant'
+  description: 'Xexamai - AI Interview Assistant'
+  maintainer: 'Xexamai Team <support@xexamai.com>'
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+
+extraMetadata:
+  main: dist/main/app.js
+
+npmRebuild: false
+
+publish:
+  provider: github
+  releaseType: draft

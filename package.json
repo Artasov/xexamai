@@ -16,8 +16,8 @@
     "build": "npm run build:assets && electron-builder --publish=never",
     "build:win": "npm run build:assets && electron-builder --win --publish=never",
     "build:mac": "npm run build:assets && electron-builder --mac --publish=never",
-    "build:linux": "npm run build:assets && electron-builder --linux --publish=never && npm run create-linux-archive",
-    "build:all": "npm run build:assets && electron-builder -mwl --publish=never && npm run create-linux-archive",
+    "build:linux": "npm run build:assets && electron-builder --linux --publish=never",
+    "build:all": "npm run build:assets && electron-builder -mwl --publish=never",
     "build:ci": "npm run build:assets && electron-builder --publish=always",
     "build:assets": "cross-env NODE_ENV=production npm run build:main && npm run build:renderer",
     "build:main": "tsup --entry.app src/main/app.ts --entry.preload src/preload/index.ts --format=cjs --sourcemap --out-dir dist/main --external electron --target=node20",
@@ -25,7 +25,6 @@
     "clean": "node scripts/clean.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "create-linux-archive": "node scripts/create-linux-archive.js",
     "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
@@ -40,8 +39,8 @@
     "electron": "38.4.0",
     "electron-builder": "26.0.12",
     "postcss": "8.5.6",
-    "tailwindcss": "4.1.16",
     "sass": "1.93.2",
+    "tailwindcss": "4.1.16",
     "tslib": "2.8.1",
     "tsup": "8.5.0",
     "typescript": "5.9.3",
@@ -49,79 +48,15 @@
     "wait-on": "9.0.1"
   },
   "dependencies": {
-    "@google/genai": "^1.22.0",
-    "@solana/web3.js": "^1.98.4",
+    "@google/genai": "1.22.0",
+    "@solana/web3.js": "1.98.4",
     "dotenv": "17.2.3",
     "electron-audio-loopback": "1.0.6",
-    "electron-store": "^11.0.2",
-    "marked": "^16.3.0",
+    "electron-store": "11.0.2",
+    "marked": "16.3.0",
     "openai": "6.1.0",
-    "qrcode.react": "^4.2.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
-  },
-  "build": {
-    "appId": "com.xexamai.app",
-    "productName": "xexamai",
-    "icon": "brand/logo_white.png",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "dist/**/*",
-      "brand/**/*",
-      "node_modules/**/*",
-      "!node_modules/nodejs-whisper/**",
-      "package.json"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "brand/logo.ico"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ],
-      "icon": "brand/logo_white.png",
-      "category": "public.app-category.productivity",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "configs/entitlements.mac.plist",
-      "entitlementsInherit": "configs/entitlements.mac.plist"
-    },
-    "linux": {
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "dir",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "brand/logo_white.png",
-      "category": "Office"
-    },
-    "portable": {
-      "artifactName": "xexamai-${version}.exe"
-    }
+    "qrcode.react": "4.2.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
   }
 }

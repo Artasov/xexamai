@@ -1,0 +1,177 @@
+name: CI / CD
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release creation'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: 20
+
+jobs:
+  quality:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Build renderer and main bundles
+        run: npm run build:assets
+
+  package:
+    name: Package ${{ matrix.os }}
+    needs: quality
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows artifacts
+        if: matrix.os == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win -- --x64 --ia32
+
+      - name: Remove per-arch installers
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "release" -Filter "*-ia32.exe" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+          Get-ChildItem -Path "release" -Filter "*-x64.exe" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+
+      - name: Build macOS artifacts
+        if: matrix.os == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:mac
+
+      - name: Build Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:linux
+
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xexamai-windows
+          path: |
+            release/*.exe
+          if-no-files-found: warn
+
+      - name: Upload macOS artifacts
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xexamai-macos
+          path: |
+            release/*.dmg
+          if-no-files-found: warn
+
+      - name: Upload Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xexamai-linux
+          path: |
+            release/*.deb
+          if-no-files-found: warn
+
+  release:
+    name: Publish Release
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          echo "✨ Meet **Xexamai** — your AI interview assistant" > release-body.md
+          echo "" >> release-body.md
+          echo "## Installation Guide" >> release-body.md
+          echo "" >> release-body.md
+          echo "### Windows" >> release-body.md
+          echo "1. Download \`Xexamai-Setup-__VERSION__.exe\` from the assets list below." >> release-body.md
+          echo "2. Run the installer and follow the prompts." >> release-body.md
+          echo "3. Launch Xexamai from the Start Menu after installation." >> release-body.md
+          echo "" >> release-body.md
+          echo "### macOS" >> release-body.md
+          echo "1. Download the DMG that matches your Mac (\`Xexamai-__VERSION__-x64.dmg\` for Intel, \`Xexamai-__VERSION__-arm64.dmg\` for Apple Silicon)." >> release-body.md
+          echo "2. Open the DMG and drag \`Xexamai.app\` into \`Applications\`." >> release-body.md
+          echo "3. On first launch macOS may warn about an unidentified developer – right-click the app, choose **Open**, then confirm." >> release-body.md
+          echo "" >> release-body.md
+          echo "### Linux (Debian/Ubuntu)" >> release-body.md
+          echo "1. Download \`Xexamai-__VERSION__-amd64.deb\`." >> release-body.md
+          echo "2. Install with \`sudo apt install ./Xexamai-__VERSION__-amd64.deb\`." >> release-body.md
+          echo "3. Start Xexamai from your application menu." >> release-body.md
+          echo "" >> release-body.md
+          echo "---" >> release-body.md
+          echo "## Changes" >> release-body.md
+          gh api repos/${{ github.repository }}/releases/generate-notes -F tag_name="$VERSION" -F target_commitish="${{ github.sha }}" --jq '.body' >> release-body.md
+          sed -i "s/__VERSION__/${VERSION}/g" release-body.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/**/*.deb
+            dist/**/*.dmg
+            dist/**/*.exe
+          body_path: release-body.md
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
