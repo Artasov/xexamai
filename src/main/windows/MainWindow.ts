@@ -38,7 +38,7 @@ export function createMainWindow(): BrowserWindow {
         minHeight: 700,
         frame: false,
         titleBarStyle: 'hidden',
-        transparent: true,
+        transparent: process.platform !== 'win32',
         opacity: opacity / 100,
         alwaysOnTop: alwaysOnTop,
         icon: windowIcon,
@@ -46,8 +46,8 @@ export function createMainWindow(): BrowserWindow {
         resizable: true,
         maximizable: true,
         minimizable: true,
-        thickFrame: true,
-        backgroundColor: '#00000000',
+        thickFrame: process.platform === 'win32',
+        backgroundColor: process.platform === 'win32' ? '#111827' : '#00000000',
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
@@ -73,6 +73,7 @@ export function createMainWindow(): BrowserWindow {
         win.setResizable(true);
         win.setMinimumSize(400, 700);
     } catch {}
+
 
     win.webContents.on('did-finish-load', () => {
         win.webContents.executeJavaScript(`
