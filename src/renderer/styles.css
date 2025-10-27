@@ -70,18 +70,6 @@
     @apply flex items-center gap-2;
 }
 
-.window-control-btn {
-    @apply w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-700 transition-colors;
-}
-
-.window-control-btn.close {
-    @apply hover:bg-red-600;
-}
-
-.window-control-btn.minimize {
-    @apply hover:bg-gray-600;
-}
-
 /* Window dragging */
 .drag-region {
     -webkit-app-region: drag;
@@ -739,67 +727,6 @@ body {
     backdrop-filter: blur(var(--glass-blur));
 }
 
-.window-control-btn {
-    background: var(--bg-elev-2);
-    border: 1px solid var(--border-default);
-    transition: transform 0.2s var(--ease-out), box-shadow 0.3s var(--ease-out), background-color 0.3s var(--ease-out), border-color 0.3s var(--ease-out);
-    position: relative;
-    overflow: hidden;
-}
-
-.window-control-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.05));
-    opacity: 0;
-    transition: opacity 0.3s var(--ease-out);
-    z-index: 0; /* render above background, below content */
-    pointer-events: none;
-}
-
-.window-control-btn:hover {
-    background: var(--bg-elev-1);
-    border-color: var(--purple-500);
-    box-shadow: var(--glow);
-    transform: translateY(-1px);
-}
-
-.window-control-btn:hover::before {
-    opacity: 1;
-}
-
-.window-control-btn.close:hover {
-    background: #1a0a0a;
-    border-color: #dc2626;
-    box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
-}
-
-.window-control-btn.close::before {
-    /* keep red overlay defined outside :hover to avoid mid-fade color swap */
-    background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(185, 28, 28, 0.05));
-}
-
-.window-control-btn.close:hover::before {
-    opacity: 1;
-}
-
-.window-control-btn:active {
-    transform: translateY(0);
-    transition: transform 0.1s var(--ease-out);
-}
-
-/* Убираем подсказку с кнопки Close при фокусе */
-.window-control-btn.close:focus {
-    outline: none;
-}
-
-.window-control-btn.close:focus-visible {
-    outline: none;
-}
 
 /* Buttons */
 .btn {
