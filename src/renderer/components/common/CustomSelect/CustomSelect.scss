@@ -75,9 +75,9 @@
     gap: 0.25rem;
     border-radius: 0.75rem;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(8, 12, 22, 0.36);
+    background: transparent;
     backdrop-filter: blur(28px) saturate(165%);
-    box-shadow: 0 24px 48px rgba(5, 6, 12, 0.45);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
     max-height: 280px;
     overflow: auto;
     pointer-events: auto;
@@ -116,4 +116,36 @@
 .custom-select__option--disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+.custom-dropdown-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #eaeaea22 #00000005;
+}
+
+.custom-dropdown-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-dropdown-scrollbar::-webkit-scrollbar-track {
+    background: #00000005;
+    border-radius: 4px;
+}
+
+.custom-dropdown-scrollbar::-webkit-scrollbar-thumb {
+    background: #eaeaea22;
+    border-radius: 4px;
+    border: 1px solid #eaeaea22;
+}
+
+.custom-dropdown-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #eaeaea22;
+}
+
+.custom-dropdown-scrollbar::-webkit-scrollbar-thumb:active {
+    background: #eaeaea22;
+}
+
+.custom-dropdown-scrollbar::-webkit-scrollbar-corner {
+    background: #00000005;
 }

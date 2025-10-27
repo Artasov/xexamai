@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./ui/holderOnlyModal.css";
+@import "./wide-classes.min.css";
 
 @source "./**/*.{ts,tsx,html}";
 
@@ -12,7 +13,7 @@
     display: none !important;
 }
 
- 
+
 .card {
     @apply rounded-lg p-4;
     background-color: #0002;
@@ -22,12 +23,22 @@
 }
 
 .rainbow {
+    top: 20%;
+    right: 20%;
     width: 100%;
     height: 100%;
     border-radius: 50%;
     background: conic-gradient(red, orange, yellow, green, cyan, blue, violet, red);
     filter: blur(calc((20vh + 50vw) / 1.9));
     animation: rainbow-spin 10s linear infinite;
+}
+
+@media (max-width: 768px) {
+    .rainbow {
+        top: -50%;
+        left: -90%;
+        filter: blur(100px);
+    }
 }
 
 @keyframes rainbow-spin {
@@ -881,11 +892,12 @@ body {
     filter: blur(0);
     z-index: -1;
 }
+
 /* Для экранов менее 600px */
 @media (max-width: 600px) {
-  #main-logo.logo-final-state {
-    opacity: 0.008;
-  }
+    #main-logo.logo-final-state {
+        opacity: 0.008;
+    }
 }
 
 /* Logo container animation */

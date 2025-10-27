@@ -17,21 +17,21 @@ export function App() {
     }, []);
 
     return (
-        <div className="app-grid relative flex h-screen min-w-[330px] flex-col text-gray-100">
+        <div className="app-grid disable-tap-select relative fc h-screen min-w-[330px] text-gray-100">
             <div
                 className="rainbow pointer-events-none"
-                style={{ position: 'absolute', top: '20%', right: '20%', width: '500px', height: '500px' }}
+                style={{ position: 'absolute', width: '500px', height: '500px' }}
             />
 
             <div
-                className="logo-container pointer-events-none flex flex-col items-center justify-center"
+                className="logo-container pointer-events-none fccc"
                 style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2 }}
             >
                 <img id="main-logo" alt="xexamai" style={{ width: '70vmin' }} />
             </div>
 
-            <header className="app-header flex items-center justify-between px-3 py-2 text-gray-100 drag-region">
-                <div className="flex items-center gap-3">
+            <header className="app-header frbc px-3 py-2 text-gray-100 drag-region">
+                <div className="frsc gap-3">
                     <div className="relative" style={{ width: '32px', height: '32px' }}>
                         <img
                             id="header-logo"

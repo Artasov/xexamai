@@ -35,6 +35,7 @@ export function createMainWindow(): BrowserWindow {
         width: initialWidth,
         height: initialHeight,
         minWidth: 400,
+        minHeight: 700,
         frame: false,
         titleBarStyle: 'hidden',
         transparent: true,
@@ -42,6 +43,11 @@ export function createMainWindow(): BrowserWindow {
         alwaysOnTop: alwaysOnTop,
         icon: windowIcon,
         skipTaskbar: true,
+        resizable: true,
+        maximizable: true,
+        minimizable: true,
+        thickFrame: true,
+        backgroundColor: '#00000000',
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
@@ -62,6 +68,11 @@ export function createMainWindow(): BrowserWindow {
             callback(false);
         }
     });
+
+    try {
+        win.setResizable(true);
+        win.setMinimumSize(400, 700);
+    } catch {}
 
     win.webContents.on('did-finish-load', () => {
         win.webContents.executeJavaScript(`
