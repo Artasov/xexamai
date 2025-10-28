@@ -139,24 +139,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.ref_name }}"
-          echo "✨ Meet **Xexamai** — your AI interview assistant" > release-body.md
+          echo "✨ Meet **XEXAMAI** — your AI interview assistant" > release-body.md
           echo "" >> release-body.md
           echo "## Installation Guide" >> release-body.md
           echo "" >> release-body.md
           echo "### Windows" >> release-body.md
-          echo "1. Download \`Xexamai-Setup-__VERSION__.exe\` from the assets list below." >> release-body.md
+          echo "1. Download \`XEXAMAI-Setup-__VERSION__.exe\` from the assets list below." >> release-body.md
           echo "2. Run the installer and follow the prompts." >> release-body.md
-          echo "3. Launch Xexamai from the Start Menu after installation." >> release-body.md
+          echo "3. Launch XEXAMAI from the Start Menu after installation." >> release-body.md
           echo "" >> release-body.md
           echo "### macOS" >> release-body.md
-          echo "1. Download the DMG that matches your Mac (\`Xexamai-__VERSION__-x64.dmg\` for Intel, \`Xexamai-__VERSION__-arm64.dmg\` for Apple Silicon)." >> release-body.md
-          echo "2. Open the DMG and drag \`Xexamai.app\` into \`Applications\`." >> release-body.md
+          echo "1. Download the DMG that matches your Mac (\`XEXAMAI-__VERSION__-x64.dmg\` for Intel, \`XEXAMAI-__VERSION__-arm64.dmg\` for Apple Silicon)." >> release-body.md
+          echo "2. Open the DMG and drag \`XEXAMAI.app\` into \`Applications\`." >> release-body.md
           echo "3. On first launch macOS may warn about an unidentified developer – right-click the app, choose **Open**, then confirm." >> release-body.md
           echo "" >> release-body.md
           echo "### Linux (Debian/Ubuntu)" >> release-body.md
-          echo "1. Download \`Xexamai-__VERSION__-amd64.deb\`." >> release-body.md
-          echo "2. Install with \`sudo apt install ./Xexamai-__VERSION__-amd64.deb\`." >> release-body.md
-          echo "3. Start Xexamai from your application menu." >> release-body.md
+          echo "1. Download \`XEXAMAI-__VERSION__-amd64.deb\`." >> release-body.md
+          echo "2. Install with \`sudo apt install ./XEXAMAI-__VERSION__-amd64.deb\`." >> release-body.md
+          echo "3. Start XEXAMAI from your application menu." >> release-body.md
           echo "" >> release-body.md
           echo "---" >> release-body.md
           echo "## Changes" >> release-body.md
