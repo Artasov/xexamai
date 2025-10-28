@@ -12,8 +12,12 @@ asar: true
 extraResources:
   - from: brand/logo_white.png
     to: brand/logo_white.png
+  - from: brand/logo.png
+    to: brand/logo.png
   - from: brand/logo.ico
     to: brand/logo.ico
+  - from: brand/logo.svg
+    to: brand/logo.svg
 
 win:
   target:
@@ -30,7 +34,7 @@ nsis:
   allowElevation: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 'Xexamai'
+  shortcutName: 'XEXAMAI'
   installerIcon: brand/logo.ico
   uninstallerIcon: brand/logo.ico
   deleteAppDataOnUninstall: false
@@ -67,10 +71,10 @@ linux:
       arch:
         - x64
   category: Utility
-  icon: brand/logo_white.png
-  synopsis: 'Xexamai - AI Interview Assistant'
-  description: 'Xexamai - AI Interview Assistant'
-  maintainer: 'Xexamai Team <support@xexamai.com>'
+  icon: brand/logo.svg
+  synopsis: 'XEXAMAI - AI Interview Assistant'
+  description: 'XEXAMAI - For ur successful hire'
+  maintainer: 'XEXAMAI Team <ivanhvalevskey@gmail.com>'
   artifactName: '${productName}-${version}-${arch}.${ext}'
 
 extraMetadata:
