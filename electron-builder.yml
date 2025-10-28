@@ -1,5 +1,5 @@
 appId: com.xexamai.app
-productName: Xexamai
+productName: XEXAMAI
 directories:
   output: release
   buildResources: build
