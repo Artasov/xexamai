@@ -7,6 +7,7 @@ import {AuthProvider, useAuth} from './auth';
 import {LoginView} from './components/auth/LoginView/LoginView';
 import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
 import {ProfileView} from './components/auth/ProfileView/ProfileView';
+import {BetaFeedbackWidget} from './components/feedback/BetaFeedbackWidget';
 
 function AuthenticatedApp() {
     const initializedRef = useRef(false);
@@ -192,18 +193,23 @@ function AuthenticatedApp() {
             </main>
 
             <footer
-                className="pointer-events-none absolute bottom-[2px] left-[4px] text-[9px] font-light opacity-20"
+                className="pointer-events-none absolute bottom-2 left-0 right-0 flex items-end justify-between px-3 text-[9px] font-light opacity-40"
                 style={{ fontWeight: 300 }}
             >
-                <span className="opacity-70">by Nikita Artasov</span>{' '}
-                <a
-                    target="_blank"
-                    rel="noreferrer"
-                    className="pointer-events-auto text-[#c3a5ff]"
-                    href="https://t.me/artasov"
-                >
-                    @artasov
-                </a>
+                <div className="pointer-events-auto space-x-1 text-gray-300">
+                    <span className="opacity-70">by Nikita Artasov</span>
+                    <a
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#c3a5ff]"
+                        href="https://t.me/artasov"
+                    >
+                        @artasov
+                    </a>
+                </div>
+                <div className="pointer-events-auto">
+                    <BetaFeedbackWidget />
+                </div>
             </footer>
         </div>
     );
