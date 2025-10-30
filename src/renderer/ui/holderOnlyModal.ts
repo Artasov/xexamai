@@ -14,7 +14,7 @@ export function showHolderOnlyModal(): void {
     overlay.className = 'holder-overlay holder-modal-overlay';
 
     const modal = document.createElement('div');
-    modal.className = 'holder-modal card fc gap-3';
+    modal.className = 'holder-modal card fc gap-3 overflow-y-auto';
 
     const title = document.createElement('h3');
     title.textContent = 'Screen processing is holder-only';

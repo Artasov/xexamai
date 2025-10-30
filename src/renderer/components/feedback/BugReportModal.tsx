@@ -142,6 +142,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
         'holder-modal',
         'card',
         'bug-report-modal',
+        'overflow-y-auto',
         isVisible ? 'bug-report-modal--visible' : '',
     ].join(' ');
 
@@ -155,13 +156,19 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
         >
             <div className={modalClassName}>
                 <div className="modal-header flex items-start justify-between gap-4">
-                    <div>
+                    <div className="space-y-2">
                         <h3 id="bug-report-modal-title" className="text-lg font-semibold text-gray-100">
                             Report a bug
                         </h3>
-                        <p className="mt-1 text-sm text-gray-400">
-                            Tell us what happened. Include steps to reproduce if possible.
+                        <p className="text-sm text-gray-300">
+                            Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
+                            feels off so we can fix it quickly.
                         </p>
+                        {!success ? (
+                            <p className="text-sm text-gray-400">
+                                Tell us what happened. Include steps to reproduce if possible.
+                            </p>
+                        ) : null}
                     </div>
                     <button
                         type="button"

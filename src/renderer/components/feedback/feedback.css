@@ -37,11 +37,37 @@
         opacity 220ms var(--ease-out, ease),
         transform 220ms var(--ease-out, ease);
     color: #e2e8f0;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #eaeaea22 #00000005;
 }
 
 .bug-report-modal--visible {
     opacity: 1;
     transform: translateY(0) scale(1);
+}
+
+.bug-report-modal::-webkit-scrollbar {
+    width: 8px;
+}
+
+.bug-report-modal::-webkit-scrollbar-track {
+    background: #00000005;
+    border-radius: 4px;
+}
+
+.bug-report-modal::-webkit-scrollbar-thumb {
+    background: #eaeaea22;
+    border-radius: 4px;
+    border: 1px solid #eaeaea22;
+}
+
+.bug-report-modal::-webkit-scrollbar-thumb:hover {
+    background: #eaeaea22;
+}
+
+.bug-report-modal::-webkit-scrollbar-thumb:active {
+    background: #eaeaea22;
 }
 
 .bug-report-modal .modal-content {
