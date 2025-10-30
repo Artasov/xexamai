@@ -9,7 +9,7 @@ function formatFullName(user: ReturnType<typeof useAuth>['user']) {
 }
 
 export function ProfileView() {
-    const { user, signOut } = useAuth();
+    const {user, signOut} = useAuth();
 
     const fullName = useMemo(() => formatFullName(user), [user]);
     const initials = useMemo(() => {
@@ -25,47 +25,52 @@ export function ProfileView() {
 
     if (!user) {
         return (
-            <div className="card flex flex-col items-center justify-center gap-4 p-8 text-center">
+            <div className="card fccc gap-4 p-8 text-center">
                 <p className="text-sm text-gray-400">User information is not available.</p>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="card flex flex-col items-center gap-4 p-6 text-center">
-                <div className="relative flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5 text-2xl font-semibold text-white">
-                    {initials || '👤'}
+        <div className="fc gap-4">
+            <div className="card fc gap-1 p-6 text-center">
+                <div className={'frsc gap-4'}>
+                    <div
+                        className="frcc h-20 w-20 rounded-full border border-white/10 bg-white/5 text-2xl font-semibold">
+                        {user.avatar ? <img className={'rounded-full'} src={user.avatar} alt=""/> : '👤'}
+                    </div>
+                    <div className={'fc gap-2'}>
+                        <div className={'fcss gap-0'}>
+                            <h2 className="text-xl font-semibold text-white">
+                                {user.username || user.email}
+                            </h2>
+                            <p className="text-sm text-gray-400">{user.email}</p>
+                        </div>
+                        <div className="frcc flex-wrap gap-2 text-xs text-gray-300">
+                            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">
+                                Email confirmed: {user.is_email_confirmed ? 'Yes' : 'No'}
+                            </span>
+                            {user.timezone ? (
+                                <span className="rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-1">
+                                    Timezone: {typeof user.timezone === 'string' ? user.timezone : 'Custom'}
+                                </span>
+                            ) : null}
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <h2 className="text-xl font-semibold text-white">
-                        {fullName || user.username || user.email}
-                    </h2>
-                    <p className="text-sm text-gray-400">{user.email}</p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-gray-300">
-                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">
-                        Email confirmed: {user.is_email_confirmed ? 'Yes' : 'No'}
-                    </span>
-                    {user.timezone ? (
-                        <span className="rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-1">
-                            Timezone: {typeof user.timezone === 'string' ? user.timezone : 'Custom'}
-                        </span>
-                    ) : null}
-                </div>
-                <button className="btn btn-secondary mt-2 px-4 py-2" type="button" onClick={signOut}>
+                <button className="btn btn-secondary ml-1 mt-2 px-4 py-2 w-fit" type="button" onClick={signOut}>
                     Log out
                 </button>
             </div>
 
-            <div className="card grid gap-4 p-5 md:grid-cols-2">
-                <ProfileField label="Username" value={user.username} />
-                <ProfileField label="First name" value={user.first_name} />
-                <ProfileField label="Last name" value={user.last_name} />
-                <ProfileField label="Middle name" value={user.middle_name} />
-                <ProfileField label="Birth date" value={user.birth_date} emptyPlaceholder="Not set" />
-                <ProfileField label="Avatar" value={user.avatar} emptyPlaceholder="Not uploaded" />
-            </div>
+            {/*<div className="card grid gap-4 p-5 md:grid-cols-2">*/}
+            {/*    <ProfileField label="Username" value={user.username} />*/}
+            {/*    <ProfileField label="First name" value={user.first_name} />*/}
+            {/*    <ProfileField label="Last name" value={user.last_name} />*/}
+            {/*    <ProfileField label="Middle name" value={user.middle_name} />*/}
+            {/*    <ProfileField label="Birth date" value={user.birth_date} emptyPlaceholder="Not set" />*/}
+            {/*    <ProfileField label="Avatar" value={user.avatar} emptyPlaceholder="Not uploaded" />*/}
+            {/*</div>*/}
         </div>
     );
 }
@@ -76,7 +81,7 @@ type ProfileFieldProps = {
     emptyPlaceholder?: string;
 };
 
-function ProfileField({ label, value, emptyPlaceholder = '—' }: ProfileFieldProps) {
+function ProfileField({label, value, emptyPlaceholder = '—'}: ProfileFieldProps) {
     return (
         <div className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-wide text-gray-400">{label}</span>
