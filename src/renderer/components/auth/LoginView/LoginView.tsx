@@ -10,13 +10,14 @@ import {WindowResizer} from '../../common/WindowResizer/WindowResizer';
 function DiscordIcon(props: SvgIconProps) {
     return (
         <SvgIcon {...props} viewBox="0 0 24 24">
-            <path d="M20.32 4.37A17.22 17.22 0 0 0 15.54 3l-.55 1.17a15.61 15.61 0 0 0-5-.01L9.43 3a16.97 16.97 0 0 0-4.78 1.35 18.45 18.45 0 0 0-2.97 12.4 16.41 16.41 0 0 0 5.84 2.96l.82-2.65-1.37-.46.36-1.16c1.47.49 2.94.73 4.4.73 1.46 0 2.93-.24 4.4-.73l.37 1.16-1.38.46.82 2.65a16.4 16.4 0 0 0 5.84-2.96 18.46 18.46 0 0 0-2.94-12.37zM8.88 14.47c-.85 0-1.54-.82-1.54-1.83s.69-1.82 1.54-1.82c.85 0 1.54.82 1.54 1.82 0 1.01-.69 1.83-1.54 1.83zm6.24 0c-.85 0-1.54-.82-1.54-1.83s.69-1.82 1.54-1.82 1.54.82 1.54 1.82-.69 1.83-1.54 1.83z" />
+            <path
+                d="M20.32 4.37A17.22 17.22 0 0 0 15.54 3l-.55 1.17a15.61 15.61 0 0 0-5-.01L9.43 3a16.97 16.97 0 0 0-4.78 1.35 18.45 18.45 0 0 0-2.97 12.4 16.41 16.41 0 0 0 5.84 2.96l.82-2.65-1.37-.46.36-1.16c1.47.49 2.94.73 4.4.73 1.46 0 2.93-.24 4.4-.73l.37 1.16-1.38.46.82 2.65a16.4 16.4 0 0 0 5.84-2.96 18.46 18.46 0 0 0-2.94-12.37zM8.88 14.47c-.85 0-1.54-.82-1.54-1.83s.69-1.82 1.54-1.82c.85 0 1.54.82 1.54 1.82 0 1.01-.69 1.83-1.54 1.83zm6.24 0c-.85 0-1.54-.82-1.54-1.83s.69-1.82 1.54-1.82 1.54.82 1.54 1.82-.69 1.83-1.54 1.83z"/>
         </SvgIcon>
     );
 }
 
 export function LoginView() {
-    const { signIn, startOAuth, status, error, clearError } = useAuth();
+    const {signIn, startOAuth, status, error, clearError} = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [localError, setLocalError] = useState<string | null>(null);
@@ -102,15 +103,16 @@ export function LoginView() {
 
     return (
         <div className="relative h-screen min-w-[330px] text-gray-100">
-            <WindowResizer />
+            <WindowResizer/>
             <div
                 className="rainbow pointer-events-none"
-                style={{ position: 'absolute', width: '520px', height: '520px' }}
+                style={{position: 'absolute', width: '520px', height: '520px'}}
             />
 
-            <header className="drag-region absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2" style={{ zIndex: 5 }}>
+            <header className="drag-region absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2"
+                    style={{zIndex: 5}}>
                 <div className="frsc pointer-events-none gap-2">
-                    <div className="relative" style={{ width: '32px', height: '32px' }}>
+                    <div className="relative" style={{width: '32px', height: '32px'}}>
                         <img
                             src="brand/logo_white.png"
                             alt="xexamai"
@@ -126,7 +128,7 @@ export function LoginView() {
                         />
                         <div
                             className="rainbow"
-                            style={{ position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)' }}
+                            style={{position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)'}}
                         />
                     </div>
                     <h1 className="text-lg font-semibold">xexamai</h1>
@@ -139,13 +141,14 @@ export function LoginView() {
                         onClick={handleClose}
                     >
                         <svg width="12" height="12" viewBox="0 0 12 12">
-                            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none"/>
                         </svg>
                     </button>
                 </div>
             </header>
 
-            <div className="disable-tap-select relative flex h-full flex-col items-center justify-center gap-6 px-6" style={{ zIndex: 4 }}>
+            <div className="disable-tap-select relative fccc h-full gap-4 px-6"
+                 style={{zIndex: 4}}>
                 <div className="fccc pointer-events-none gap-2 text-center">
                     <img
                         src="brand/logo_white.png"
@@ -213,7 +216,8 @@ export function LoginView() {
                     </div>
 
                     {combinedError ? (
-                        <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        <div
+                            className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
                             {combinedError}
                         </div>
                     ) : null}
@@ -226,8 +230,7 @@ export function LoginView() {
                         {isSubmitting ? 'Signing in…' : 'Sign In'}
                     </button>
 
-                    <div className="flex flex-col gap-3">
-                        <div className="text-xs uppercase tracking-wide text-gray-400">Or continue with</div>
+                    <div className="frc gap-3">
                         <div className="flex items-center gap-3">
                             {oauthProviders.map((provider) => {
                                 const isActive = oauthProvider === provider.id && isOAuthInProgress;
@@ -242,7 +245,7 @@ export function LoginView() {
                                         aria-label={provider.label}
                                         title={provider.label}
                                     >
-                                        <IconComponent fontSize="small" />
+                                        <IconComponent fontSize="small"/>
                                     </button>
                                 );
                             })}
@@ -250,15 +253,13 @@ export function LoginView() {
                     </div>
 
                     {isOAuthInProgress ? (
-                        <div className="rounded-md border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
-                            Finish authentication in your browser. This window will update automatically once the flow completes.
+                        <div
+                            className="rounded-md border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
+                            Finish authentication in your browser. This window will update automatically once the flow
+                            completes.
                         </div>
                     ) : null}
                 </form>
-
-                <p className="text-xs text-gray-500">
-                    API: <span className="font-mono text-gray-300">http://localhost:8000</span>
-                </p>
             </div>
         </div>
     );

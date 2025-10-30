@@ -811,24 +811,23 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    background: #ffffff0b;
     width: 46px;
     height: 46px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(8, 10, 18, 0.85);
+    border-radius: 50%;
     color: #f8fafc;
-    transition: transform 0.18s ease, box-shadow 0.25s ease, border-color 0.2s ease, background 0.25s ease;
+    transition: transform 0.4s ease, box-shadow 0.25s ease, border-color 0.2s ease, background 0.25s ease;
     position: relative;
     overflow: hidden;
 }
 
 .oauth-button svg {
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
 }
 
 .oauth-button:hover:not(:disabled) {
-    transform: translateY(-1px);
+    transform: rotate(360deg);
     border-color: rgba(255, 255, 255, 0.35);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
@@ -840,26 +839,6 @@ body {
 .oauth-button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
-}
-
-.oauth-button--google {
-    background: radial-gradient(circle at 30% 30%, rgba(66, 133, 244, 0.35), transparent),
-        rgba(8, 10, 18, 0.85);
-}
-
-.oauth-button--github {
-    background: radial-gradient(circle at 70% 25%, rgba(36, 41, 46, 0.45), transparent),
-        rgba(6, 8, 12, 0.92);
-}
-
-.oauth-button--discord {
-    background: radial-gradient(circle at 30% 30%, rgba(88, 101, 242, 0.35), transparent),
-        rgba(8, 10, 18, 0.85);
-}
-
-.oauth-button--x {
-    background: radial-gradient(circle at 30% 30%, rgba(23, 23, 23, 0.6), transparent),
-        rgba(8, 10, 18, 0.95);
 }
 
 .oauth-button--active {
