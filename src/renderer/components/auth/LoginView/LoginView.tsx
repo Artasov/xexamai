@@ -3,7 +3,7 @@ import {useAuth} from '../../../auth';
 import type {AuthProvider as OAuthProviderType} from '../../../types';
 import GoogleIcon from '@mui/icons-material/Google';
 import GitHubIcon from '@mui/icons-material/GitHub';
-import TwitterIcon from '@mui/icons-material/Twitter';
+import XIcon from '@mui/icons-material/X';
 import SvgIcon, {SvgIconProps} from '@mui/material/SvgIcon';
 import {WindowResizer} from '../../common/WindowResizer/WindowResizer';
 
@@ -48,9 +48,9 @@ export function LoginView() {
             },
             {
                 id: 'twitter' as OAuthProviderType,
-                label: 'Sign in with X (Twitter)',
-                className: 'oauth-button--twitter',
-                Icon: TwitterIcon,
+                label: 'Sign in with X',
+                className: 'oauth-button--x',
+                Icon: XIcon,
             },
         ],
         [],
