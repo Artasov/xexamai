@@ -117,29 +117,27 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
         <Dialog open={open} onClose={handleClose} scroll="paper" keepMounted>
             <DialogTitle>
                 <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
-                    <Box>
-                        <Typography variant="h6" component="h3">
-                            Report a bug
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" mt={1}>
-                            Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
-                            feels off so we can fix it quickly.
-                        </Typography>
-                        {!success ? (
-                            <Typography variant="body2" color="text.secondary" mt={1}>
-                                Tell us what happened. Include steps to reproduce if possible.
-                            </Typography>
-                        ) : null}
-                    </Box>
+                    <Typography variant="h6" component="h3">
+                        Report a bug
+                    </Typography>
                     <IconButton aria-label="Close bug report modal" onClick={handleClose} disabled={submitting}>
-                        <CloseIcon fontSize="small" />
+                        <CloseIcon fontSize="small"/>
                     </IconButton>
                 </Box>
             </DialogTitle>
 
             <form onSubmit={handleSubmit}>
-                <DialogContent dividers>
-                    <Stack spacing={3}>
+                <DialogContent sx={{pt: 1}} dividers>
+                    <Typography variant="body2" color="text.secondary" mt={1}>
+                        Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
+                        feels off so we can fix it quickly.
+                    </Typography>
+                    {!success ? (
+                        <Typography variant="body2" color="text.secondary" mt={1} mb={3}>
+                            Tell us what happened. Include steps to reproduce if possible.
+                        </Typography>
+                    ) : null}
+                    <Stack spacing={2}>
                         {success ? (
                             <Stack spacing={1.5} alignItems="flex-start">
                                 <Typography variant="body1" color="text.primary">
@@ -150,7 +148,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                 </Typography>
                             </Stack>
                         ) : (
-                            <Stack spacing={2.5}>
+                            <Stack spacing={1.5}>
                                 <TextField
                                     required
                                     id="bug-report-subject"
@@ -181,6 +179,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                 <Stack spacing={1}>
                                     <Button
                                         variant="outlined"
+                                        className={'w-fit'}
                                         onClick={() => fileInputRef.current?.click()}
                                         disabled={submitting}
                                     >
