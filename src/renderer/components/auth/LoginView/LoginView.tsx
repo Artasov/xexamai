@@ -5,6 +5,7 @@ import GoogleIcon from '@mui/icons-material/Google';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import XIcon from '@mui/icons-material/X';
 import SvgIcon, {SvgIconProps} from '@mui/material/SvgIcon';
+import {TextField} from '@mui/material';
 import {resolveAuthApiBaseUrl, resolveSiteBaseUrl} from '../../../../shared/appUrls';
 import {WindowResizer} from '../../common/WindowResizer/WindowResizer';
 
@@ -174,49 +175,37 @@ export function LoginView() {
                     className="card flex w-full max-w-[360px] flex-col gap-4 bg-black/30 p-6"
                     onSubmit={handleSubmit}
                 >
-                    <div className="flex flex-col gap-2">
-                        <label className="text-sm text-gray-300" htmlFor="auth-email">
-                            Email
-                        </label>
-                        <input
-                            id="auth-email"
-                            type="email"
-                            autoComplete="email"
-                            className="input-field w-full bg-gray-800/70"
-                            placeholder="name@example.com"
-                            value={email}
-                            onChange={(event) => {
-                                if (combinedError) {
-                                    clearError();
-                                    setLocalError(null);
-                                }
-                                setEmail(event.target.value);
-                            }}
-                            disabled={isSubmitting}
-                        />
-                    </div>
+                    <TextField
+                        id="auth-email"
+                        label="Email"
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(event) => {
+                            if (combinedError) {
+                                clearError();
+                                setLocalError(null);
+                            }
+                            setEmail(event.target.value);
+                        }}
+                        disabled={isSubmitting}
+                    />
 
-                    <div className="flex flex-col gap-2">
-                        <label className="text-sm text-gray-300" htmlFor="auth-password">
-                            Password
-                        </label>
-                        <input
-                            id="auth-password"
-                            type="password"
-                            autoComplete="current-password"
-                            className="input-field w-full bg-gray-800/70"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(event) => {
-                                if (combinedError) {
-                                    clearError();
-                                    setLocalError(null);
-                                }
-                                setPassword(event.target.value);
-                            }}
-                            disabled={isSubmitting}
-                        />
-                    </div>
+                    <TextField
+                        id="auth-password"
+                        label="Password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(event) => {
+                            if (combinedError) {
+                                clearError();
+                                setLocalError(null);
+                            }
+                            setPassword(event.target.value);
+                        }}
+                        disabled={isSubmitting}
+                    />
 
                     {combinedError ? (
                         <div

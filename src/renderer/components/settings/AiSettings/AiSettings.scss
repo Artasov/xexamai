@@ -17,8 +17,3 @@
 .ai-settings__grid--timeouts {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
-
-.prompt-textarea {
-    min-height: 140px;
-    resize: vertical;
-}

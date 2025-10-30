@@ -2,7 +2,6 @@ import {useState} from 'react';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import {submitIssueReport} from '../../services/issuesClient';
 import {BugReportModal} from './BugReportModal';
-import './feedback.css';
 
 export function BetaFeedbackWidget() {
     const [isModalOpen, setModalOpen] = useState(false);

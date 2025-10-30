@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./ui/holderOnlyModal.css";
 @import "./wide-classes.min.css";
 
 @source "./**/*.{ts,tsx,html}";
@@ -323,50 +322,6 @@ button:focus-visible {
 /* Specific styles for device selection input group */
 #microphoneSection .input-group {
     align-items: stretch; /* Ensure elements align properly */
-}
-
-#microphoneSection .input-field {
-    min-width: 0; /* Allow select to shrink */
-}
-
-.input-field {
-    @apply flex-1 px-3 py-2 text-gray-200 placeholder-gray-400 focus:outline-none;
-    background: #0001;
-    border: 1px solid #ffffff06;
-    border-radius: var(--radius-sm);
-    transition: all 0.3s var(--ease-out);
-}
-
-.input-field:focus {
-    border-color: #ffffff20;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
-    background: #0004;
-}
-
-.input-field:hover:not(:focus) {
-    border-color: #ffffff15;
-    background: #0003;
-}
-
-.prompt-textarea {
-    @apply resize-y min-h-[100px] font-mono text-sm;
-}
-
-/* Select specific styles for device selection */
-.input-field[type="select"],
-.input-field:is(select) {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Ensure select dropdown doesn't overflow container */
-.input-field:is(select) option {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .btn-sm {

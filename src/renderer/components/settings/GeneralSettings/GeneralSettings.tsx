@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import {TextField} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import { logger } from '../../../utils/logger';
 import { HolderAccess } from '../HolderAccess/HolderAccess';
@@ -151,9 +152,9 @@ export const GeneralSettings = () => {
                 <div className="settings-grid">
                     <div className="settings-field">
                         <label className="settings-field__label">OpenAI</label>
-                        <input
+                        <TextField
                             type="password"
-                            className="input-field"
+                            size={'small'}
                             value={openaiKey}
                             placeholder="Enter your OpenAI API key"
                             onChange={(event) => setOpenaiKey(event.target.value)}
@@ -164,9 +165,9 @@ export const GeneralSettings = () => {
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">Google AI</label>
-                        <input
+                        <TextField
                             type="password"
-                            className="input-field"
+                            size={'small'}
                             value={googleKey}
                             placeholder="Enter your Google API key"
                             onChange={(event) => setGoogleKey(event.target.value)}
@@ -243,22 +244,22 @@ export const GeneralSettings = () => {
                 <div className="settings-window-size">
                     <div className="settings-field">
                         <label className="settings-field__label">Width (min {MIN_WINDOW_WIDTH})</label>
-                        <input
+                        <TextField
                             type="number"
-                            className="input-field"
-                            min={MIN_WINDOW_WIDTH}
                             value={windowWidth}
+                            size={'small'}
                             onChange={(event) => setWindowWidth(Number(event.target.value))}
+                            inputProps={{ min: MIN_WINDOW_WIDTH }}
                         />
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">Height (min {MIN_WINDOW_HEIGHT})</label>
-                        <input
+                        <TextField
                             type="number"
-                            className="input-field"
-                            min={MIN_WINDOW_HEIGHT}
+                            size={'small'}
                             value={windowHeight}
                             onChange={(event) => setWindowHeight(Number(event.target.value))}
+                            inputProps={{ min: MIN_WINDOW_HEIGHT }}
                         />
                     </div>
                 </div>

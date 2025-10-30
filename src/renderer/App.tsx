@@ -1,13 +1,16 @@
 import {useEffect, useRef, useState} from 'react';
+import {TextField} from '@mui/material';
 import { initializeRenderer } from './renderer';
 import { setStatus } from './ui/status';
 import { SettingsView } from './components/settings/SettingsView/SettingsView';
 import { WindowResizer } from './components/common/WindowResizer/WindowResizer';
+import {ThemeProvider, CssBaseline} from '@mui/material';
 import {AuthProvider, useAuth} from './auth';
 import {LoginView} from './components/auth/LoginView/LoginView';
 import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
 import {ProfileView} from './components/auth/ProfileView/ProfileView';
 import {BetaFeedbackWidget} from './components/feedback/BetaFeedbackWidget';
+import {muiTheme} from './mui/config.mui';
 
 function AuthenticatedApp() {
     const initializedRef = useRef(false);
@@ -126,10 +129,22 @@ function AuthenticatedApp() {
                             <div className="mt-2 flex flex-col">
                                 <div className="flex h-[42px] items-stretch gap-2">
                                     <div className="h-full flex-grow">
-                                        <input
+                                        <TextField
                                             id="textInput"
                                             placeholder="Type your question here..."
-                                            className="input-field h-full w-full resize-none rounded border border-gray-600 bg-gray-700 p-2 text-gray-100 placeholder-gray-400"
+                                            fullWidth
+                                            variant="outlined"
+                                            size="small"
+                                            multiline
+                                            minRows={1}
+                                            maxRows={4}
+                                            sx={{
+                                                height: '100%',
+                                                '& .MuiInputBase-root': {
+                                                    height: '100%',
+                                                    alignItems: 'center',
+                                                },
+                                            }}
                                         />
                                     </div>
                                     <div className="h-full">
@@ -148,11 +163,13 @@ function AuthenticatedApp() {
                             <div id="streamResultsSection" className="mt-2 hidden">
                                 <div className="label mb-2">Stream Results:</div>
                                 <div className="flex gap-2">
-                                    <textarea
+                                    <TextField
                                         id="streamResultsTextarea"
                                         placeholder="Stream transcription will appear here..."
-                                        className="input-field flex-1 resize-none rounded border border-gray-600 bg-gray-700 p-2 text-gray-100 placeholder-gray-400"
-                                        rows={4}
+                                        variant="outlined"
+                                        multiline
+                                        minRows={4}
+                                        fullWidth
                                     />
                                     <button
                                         id="btnSendStreamText"
@@ -231,9 +248,12 @@ function AppContent() {
 
 export function App() {
     return (
-        <AuthProvider>
-            <AppContent />
-        </AuthProvider>
+        <ThemeProvider theme={muiTheme}>
+            <CssBaseline />
+            <AuthProvider>
+                <AppContent />
+            </AuthProvider>
+        </ThemeProvider>
     );
 }
 

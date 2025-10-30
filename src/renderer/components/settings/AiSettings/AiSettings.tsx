@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import {TextField} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import type { LlmHost, ScreenProcessingProvider, TranscriptionMode } from '../../../types';
 import { logger } from '../../../utils/logger';
@@ -434,9 +435,9 @@ export const AiSettings = () => {
                 <div className="ai-settings__grid ai-settings__grid--prompts">
                     <div className="settings-field">
                         <label className="settings-field__label">Transcription prompt</label>
-                        <textarea
-                            className="input-field prompt-textarea"
-                            rows={4}
+                        <TextField
+                            multiline
+                            minRows={4}
                             value={transcriptionPrompt}
                             onChange={(event) => setTranscriptionPrompt(event.target.value)}
                         />
@@ -446,9 +447,9 @@ export const AiSettings = () => {
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">LLM system prompt</label>
-                        <textarea
-                            className="input-field prompt-textarea"
-                            rows={4}
+                        <TextField
+                            multiline
+                            minRows={4}
                             value={llmPrompt}
                             onChange={(event) => setLlmPrompt(event.target.value)}
                         />
@@ -458,9 +459,9 @@ export const AiSettings = () => {
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">Screen processing prompt</label>
-                        <textarea
-                            className="input-field prompt-textarea"
-                            rows={4}
+                        <TextField
+                            multiline
+                            minRows={4}
                             value={screenPrompt}
                             onChange={(event) => setScreenPrompt(event.target.value)}
                         />
@@ -476,38 +477,32 @@ export const AiSettings = () => {
                 <div className="ai-settings__grid ai-settings__grid--timeouts">
                     <div className="settings-field">
                         <label className="settings-field__label">Transcription</label>
-                        <input
+                        <TextField
                             type="number"
-                            className="input-field"
-                            min={1000}
-                            max={600000}
-                            step={500}
                             value={apiSttTimeout}
+                            size={'small'}
                             onChange={(event) => setApiSttTimeout(Number(event.target.value))}
+                            inputProps={{ min: 1000, max: 600000, step: 500 }}
                         />
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">LLM</label>
-                        <input
+                        <TextField
                             type="number"
-                            className="input-field"
-                            min={1000}
-                            max={600000}
-                            step={500}
                             value={apiLlmTimeout}
+                            size={'small'}
                             onChange={(event) => setApiLlmTimeout(Number(event.target.value))}
+                            inputProps={{ min: 1000, max: 600000, step: 500 }}
                         />
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">Screen processing</label>
-                        <input
+                        <TextField
                             type="number"
-                            className="input-field"
-                            min={1000}
-                            max={600000}
-                            step={500}
+                            size={'small'}
                             value={screenTimeout}
                             onChange={(event) => setScreenTimeout(Number(event.target.value))}
+                            inputProps={{ min: 1000, max: 600000, step: 500 }}
                         />
                     </div>
                 </div>

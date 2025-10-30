@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import {TextField} from '@mui/material';
 import type { HolderChallengeInfo, HolderStatus } from '../../../types';
 import { fetchHolderStatus, requestHolderChallenge, verifyHolderSignature, resetHolderState } from '../../../services/holderClient';
 import { subscribeHolderState, setHolderLoading, setHolderStatus, getHolderState } from '../../../state/holderState';
@@ -247,9 +248,8 @@ export const HolderAccess = () => {
 
                             <div className="holder-verification">
                                 <label className="settings-field__label">Transaction signature</label>
-                                <input
-                                    type="text"
-                                    className="input-field"
+                                <TextField
+                                    id="holder-signature"
                                     placeholder="Paste signed transaction signature"
                                     value={signature}
                                     onChange={(event) => setSignature(event.target.value)}
