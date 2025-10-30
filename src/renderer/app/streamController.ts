@@ -25,6 +25,8 @@ type StreamElements = {
     streamResults: HTMLTextAreaElement | null;
     streamSendButton: HTMLButtonElement | null;
     toggleInputButton: HTMLButtonElement | null;
+    toggleInputIcon?: HTMLImageElement | null;
+    durationsContainer?: HTMLDivElement | null;
 };
 
 type ToggleSource = 'button' | 'hotkey';
@@ -41,9 +43,15 @@ export class StreamController {
     private streamModeContainer: HTMLElement | null = null;
     private streamResults: HTMLTextAreaElement | null = null;
     private streamSendButton: HTMLButtonElement | null = null;
+    private toggleInputButton: HTMLButtonElement | null = null;
+    private toggleInputIcon: HTMLImageElement | null = null;
+    private durationsContainer: HTMLDivElement | null = null;
 
     private isStreamMode = false;
     private currentStreamSendHotkey = '~';
+    private streamAccumulator = '';
+    private streamModeInitialized = false;
+    private googleStreamingActive = false;
 
     private readonly onTranscript = (text: string) => {
         if (!this.streamResults) return;
@@ -73,6 +81,9 @@ export class StreamController {
         this.streamModeContainer = elements.streamModeContainer;
         this.streamResults = elements.streamResults;
         this.streamSendButton = elements.streamSendButton;
+        this.toggleInputButton = elements.toggleInputButton;
+        this.toggleInputIcon = elements.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
+        this.durationsContainer = elements.durationsContainer ?? (document.getElementById('send-last-container') as HTMLDivElement | null);
 
         if (this.streamResults && this.streamSendButton) {
             const update = () => this.updateStreamSendButtonState();
@@ -83,8 +94,8 @@ export class StreamController {
             update();
         }
 
-        if (elements.toggleInputButton) {
-            elements.toggleInputButton.addEventListener('click', async () => {
+        if (this.toggleInputButton) {
+            this.toggleInputButton.addEventListener('click', async () => {
                 await this.handleAudioInputToggle('button');
             });
         }
@@ -136,6 +147,7 @@ export class StreamController {
             } else {
                 await stopAudioRecording();
                 await this.googleStreamingService.stop();
+                this.googleStreamingActive = false;
             }
         } catch (error) {
             console.error('Record toggle failed', error);
@@ -174,7 +186,6 @@ export class StreamController {
         const wav = floatsToWav(pcm.channels, pcm.sampleRate);
         const arrayBuffer = await wav.arrayBuffer();
         const requestId = `ask-window-${seconds}-` + Date.now();
-        this.currentRequestId = requestId;
 
         try {
             const transcribeRes = await window.api.assistant.transcribeOnly({
@@ -202,55 +213,14 @@ export class StreamController {
             showText(text);
 
             setStatus('Sending to LLM...', 'sending');
-
-            this.removeStreamHandlers();
-
-            let acc = '';
-            this.streamDeltaHandler = (_e: unknown, payload: { requestId?: string; delta: string }) => {
-                if (!payload || (payload.requestId && payload.requestId !== requestId) || this.currentRequestId !== requestId) return;
-                acc += payload.delta || '';
-                showAnswer(acc);
-                setStatus('Responding...', 'processing');
-                showStopButton();
-            };
-            this.streamDoneHandler = (_e: unknown, payload: { requestId?: string; full: string }) => {
-                if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-                logger.info('stream', 'Stream done handler called', { requestId: payload.requestId });
-                this.currentRequestId = null;
-                setStatus('Done', 'ready');
-                setProcessing(false);
-                hideStopButton();
-                updateButtonsState();
-            };
-            this.streamErrorHandler = (_e: unknown, payload: { requestId?: string; error: string }) => {
-                if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-                logger.info('stream', 'Stream error handler called', { requestId: payload.requestId, error: payload.error });
-                this.currentRequestId = null;
-                const msg = (payload.error || '').toString();
-                if (msg.toLowerCase().includes('aborted')) {
-                    setStatus('Done', 'ready');
-                } else {
-                    setStatus('Error', 'error');
-                    showError(payload.error);
-                }
-                setProcessing(false);
-                hideStopButton();
-                updateButtonsState();
-            };
-
-            window.api.assistant.onStreamDelta(this.streamDeltaHandler);
-            window.api.assistant.onStreamDone(this.streamDoneHandler);
-            window.api.assistant.onStreamError(this.streamErrorHandler);
-
-            showStopButton();
-            await window.api.assistant.askChat({ text, requestId });
-            await this.finalizeStreamIfActive(requestId);
+            await this.sendChatRequest(requestId, text);
         } catch (error) {
             setStatus('Error', 'error');
             showError(error);
             setProcessing(false);
             this.currentRequestId = null;
             hideStopButton();
+            this.removeStreamHandlers();
             updateButtonsState();
         }
     }
@@ -272,62 +242,17 @@ export class StreamController {
         }
 
         const requestId = `text-send-${Date.now()}`;
-        this.currentRequestId = requestId;
 
         try {
             setStatus('Sending to LLM...', 'sending');
-
-            this.removeStreamHandlers();
-
-            let acc = '';
-            this.streamDeltaHandler = (_e: unknown, payload: { requestId?: string; delta: string }) => {
-                if (!payload || (payload.requestId && payload.requestId !== requestId) || this.currentRequestId !== requestId) return;
-                acc += payload.delta || '';
-                showAnswer(acc);
-                setStatus('Responding...', 'processing');
-                showStopButton();
-            };
-            this.streamDoneHandler = (_e: unknown, payload: { requestId?: string; full: string }) => {
-                if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-                logger.info('stream', 'Stream done handler called', { requestId: payload.requestId });
-                this.currentRequestId = null;
-                setStatus('Done', 'ready');
-                setProcessing(false);
-                hideStopButton();
-                updateButtonsState();
-            };
-            this.streamErrorHandler = (_e: unknown, payload: { requestId?: string; error: string }) => {
-                if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-                logger.info('stream', 'Stream error handler called', { requestId: payload.requestId, error: payload.error });
-                this.currentRequestId = null;
-                const msg = (payload.error || '').toString();
-                if (msg.toLowerCase().includes('aborted')) {
-                    setStatus('Done', 'ready');
-                } else {
-                    setStatus('Error', 'error');
-                    showError(payload.error);
-                }
-                setProcessing(false);
-                hideStopButton();
-                updateButtonsState();
-            };
-
-            window.api.assistant.onStreamDelta(this.streamDeltaHandler);
-            window.api.assistant.onStreamDone(this.streamDoneHandler);
-            window.api.assistant.onStreamError(this.streamErrorHandler);
-
-            showStopButton();
-            await window.api.assistant.askChat({
-                text,
-                requestId,
-            });
-            await this.finalizeStreamIfActive(requestId);
+            await this.sendChatRequest(requestId, text);
         } catch (error) {
             setStatus('Error', 'error');
             showError(error);
             setProcessing(false);
             this.currentRequestId = null;
             hideStopButton();
+            this.removeStreamHandlers();
             updateButtonsState();
         }
     }
@@ -379,50 +304,45 @@ export class StreamController {
                     streamMode = (snapshot.streamMode || 'base') as 'base' | 'stream';
                 }
             }
-            this.isStreamMode = streamMode === 'stream';
+            const nextIsStreamMode = streamMode === 'stream';
+            const modeChanged = !this.streamModeInitialized || this.isStreamMode !== nextIsStreamMode;
+            this.isStreamMode = nextIsStreamMode;
+            this.streamModeInitialized = true;
 
-            console.log('Updating stream mode visibility:', {
-                streamMode,
-                isStreamMode: this.isStreamMode,
-                streamModeContainer: !!this.streamModeContainer,
-            });
-
-            if (this.streamModeContainer) {
-                if (this.isStreamMode) {
-                    this.streamModeContainer.classList.remove('hidden');
-                    this.streamModeContainer.style.display = 'block';
-                } else {
-                    this.streamModeContainer.classList.add('hidden');
-                    this.streamModeContainer.style.display = 'none';
+            if (modeChanged) {
+                if (this.streamModeContainer) {
+                    this.streamModeContainer.classList.toggle('hidden', !this.isStreamMode);
+                    this.streamModeContainer.style.display = this.isStreamMode ? 'block' : 'none';
                 }
-            }
-
-            const durationsContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
-            if (durationsContainer) {
-                if (this.isStreamMode) {
-                    durationsContainer.classList.add('hidden');
-                    durationsContainer.style.display = 'none';
-                } else {
-                    durationsContainer.classList.remove('hidden');
-                    durationsContainer.style.display = 'block';
+                if (this.durationsContainer) {
+                    this.durationsContainer.classList.toggle('hidden', this.isStreamMode);
+                    this.durationsContainer.style.display = this.isStreamMode ? 'none' : 'block';
                 }
             }
 
             const activeStream = getCurrentStream();
             if (this.isStreamMode && activeStream) {
+                if (!this.googleStreamingActive || modeChanged) {
+                    try {
+                        setStatus('Preparing Google stream...', 'processing');
+                    } catch {
+                    }
+                    try {
+                        await this.googleStreamingService.start(activeStream);
+                        this.googleStreamingActive = true;
+                        setStatus('Google streaming active', 'processing');
+                    } catch (error) {
+                        this.googleStreamingActive = false;
+                        console.error('Failed to start Google streaming:', error);
+                        setStatus('Failed to start Google streaming', 'error');
+                    }
+                }
+            } else if (this.googleStreamingActive && (!this.isStreamMode || modeChanged)) {
                 try {
-                    setStatus('Preparing Google stream...', 'processing');
+                    await this.googleStreamingService.stop();
                 } catch {
                 }
-                try {
-                    await this.googleStreamingService.start(activeStream);
-                    setStatus('Google streaming active', 'processing');
-                } catch (error) {
-                    console.error('Failed to start Google streaming:', error);
-                    setStatus('Failed to start Google streaming', 'error');
-                }
-            } else if (!this.isStreamMode) {
-                await this.googleStreamingService.stop();
+                this.googleStreamingActive = false;
             }
         } catch (error) {
             console.error('Error updating stream mode visibility:', error);
@@ -446,6 +366,59 @@ export class StreamController {
         }
     }
 
+    private async sendChatRequest(requestId: string, text: string): Promise<void> {
+        this.currentRequestId = requestId;
+        this.prepareStreamHandlers(requestId);
+        showStopButton();
+        await window.api.assistant.askChat({ text, requestId });
+        await this.finalizeStreamIfActive(requestId);
+    }
+
+    private prepareStreamHandlers(requestId: string): void {
+        this.removeStreamHandlers();
+        this.streamAccumulator = '';
+
+        this.streamDeltaHandler = (_e: unknown, payload: { requestId?: string; delta: string }) => {
+            if (!payload || (payload.requestId && payload.requestId !== requestId) || this.currentRequestId !== requestId) return;
+            this.streamAccumulator += payload.delta || '';
+            showAnswer(this.streamAccumulator);
+            setStatus('Responding...', 'processing');
+            showStopButton();
+        };
+
+        this.streamDoneHandler = (_e: unknown, payload: { requestId?: string; full: string }) => {
+            if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
+            logger.info('stream', 'Stream done handler called', { requestId: payload.requestId });
+            this.currentRequestId = null;
+            setStatus('Done', 'ready');
+            setProcessing(false);
+            hideStopButton();
+            updateButtonsState();
+            this.removeStreamHandlers();
+        };
+
+        this.streamErrorHandler = (_e: unknown, payload: { requestId?: string; error: string }) => {
+            if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
+            logger.info('stream', 'Stream error handler called', { requestId: payload.requestId, error: payload.error });
+            this.currentRequestId = null;
+            const msg = (payload.error || '').toString();
+            if (msg.toLowerCase().includes('aborted')) {
+                setStatus('Done', 'ready');
+            } else {
+                setStatus('Error', 'error');
+                showError(payload.error);
+            }
+            setProcessing(false);
+            hideStopButton();
+            updateButtonsState();
+            this.removeStreamHandlers();
+        };
+
+        window.api.assistant.onStreamDelta(this.streamDeltaHandler);
+        window.api.assistant.onStreamDone(this.streamDoneHandler);
+        window.api.assistant.onStreamError(this.streamErrorHandler);
+    }
+
     private removeStreamHandlers(): void {
         try {
             (window.api.assistant as any).offStreamTranscript?.();
@@ -457,6 +430,7 @@ export class StreamController {
         this.streamDeltaHandler = null;
         this.streamDoneHandler = null;
         this.streamErrorHandler = null;
+        this.streamAccumulator = '';
     }
 
     private updateStreamSendButtonState(): void {
@@ -552,10 +526,14 @@ export class StreamController {
                     const streamToUse = result.stream ?? getCurrentStream();
                     if (streamToUse) {
                         await this.googleStreamingService.start(streamToUse);
+                        this.googleStreamingActive = true;
                         setStatus('Google streaming active', 'processing');
+                    } else {
+                        this.googleStreamingActive = false;
                     }
                 } else {
                     await this.googleStreamingService.stop();
+                    this.googleStreamingActive = false;
                     setStatus('Recording...', 'recording');
                 }
             } catch (error) {
@@ -648,8 +626,10 @@ export class StreamController {
     }
 
     private async updateToggleButtonLabel(preferred?: 'microphone' | 'system'): Promise<void> {
-        const btn = document.getElementById('btnToggleInput') as HTMLButtonElement | null;
-        const icon = document.getElementById('toggleInputIcon') as HTMLImageElement | null;
+        const btn = this.toggleInputButton ?? (document.getElementById('btnToggleInput') as HTMLButtonElement | null);
+        const icon = this.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
+        this.toggleInputButton = btn;
+        this.toggleInputIcon = icon;
         if (!btn || !icon) return;
 
         let type: 'microphone' | 'system' | undefined = preferred;

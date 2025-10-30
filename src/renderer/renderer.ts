@@ -35,11 +35,15 @@ export async function initializeRenderer() {
     const streamResults = document.getElementById('streamResultsTextarea') as HTMLTextAreaElement | null;
     const btnSendStream = document.getElementById('btnSendStreamText') as HTMLButtonElement | null;
     const btnToggleInput = document.getElementById('btnToggleInput') as HTMLButtonElement | null;
+    const toggleInputIcon = document.getElementById('toggleInputIcon') as HTMLImageElement | null;
+    const durationsContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
     streamController.initialize({
         streamModeContainer: streamModeContainer as HTMLElement | null,
         streamResults,
         streamSendButton: btnSendStream,
         toggleInputButton: btnToggleInput,
+        toggleInputIcon,
+        durationsContainer,
     });
     await streamController.syncInitialSettings();
 
