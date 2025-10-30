@@ -6,7 +6,7 @@ import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
 import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
-const MIN_WINDOW_HEIGHT = 700;
+const MIN_WINDOW_HEIGHT = 500;
 
 type Message = { text: string; tone: 'success' | 'error' };
 

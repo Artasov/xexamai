@@ -497,7 +497,7 @@ export class AppConfigService {
         const oldWidth = this.configData.windowWidth;
         const oldHeight = this.configData.windowHeight;
         const validWidth = Math.max(400, Math.floor(width || 0));
-        const validHeight = Math.max(700, Math.floor(height || 0));
+        const validHeight = Math.max(500, Math.floor(height || 0));
         this.configData.windowWidth = validWidth;
         this.configData.windowHeight = validHeight;
         this.scheduleSave();
@@ -516,7 +516,7 @@ export class AppConfigService {
 
     public getWindowHeight(): number {
         const h = this.configData.windowHeight || 780;
-        return Math.max(700, h);
+        return Math.max(500, h);
     }
 
     public setWindowScale(scale: number): void {

@@ -10,6 +10,7 @@ import {createLoopbackBridge} from './api/loopback';
 import {createHolderBridge} from './api/holder';
 import {createMediaBridge} from './api/media';
 import {createLoggerBridge} from './api/logger';
+import {createAuthBridge} from './api/auth';
 
 const api: AssistantAPI = {
     assistant: createAssistantBridge(),
@@ -20,6 +21,7 @@ const api: AssistantAPI = {
     window: createWindowControlsBridge(),
     loopback: createLoopbackBridge(),
     holder: createHolderBridge(),
+    auth: createAuthBridge(),
     media: createMediaBridge(),
     log: createLoggerBridge(),
 };

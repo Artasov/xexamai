@@ -14,7 +14,7 @@ type Edge =
 type Bounds = { x: number; y: number; width: number; height: number };
 
 const MIN_WIDTH = 400;
-const MIN_HEIGHT = 700;
+const MIN_HEIGHT = 500;
 
 const EDGE_CONFIG: Array<{
     edge: Edge;

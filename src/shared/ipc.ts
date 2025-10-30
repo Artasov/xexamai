@@ -124,6 +124,9 @@ export const IPCChannels = {
     SetGoogleApiKey: 'settings:set:google-api-key',
     SetStreamMode: 'settings:set:stream-mode',
     SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
+    AuthStartOAuth: 'auth:start-oauth',
+    AuthConsumeDeepLinks: 'auth:consume-deep-links',
+    AuthDeepLink: 'auth:deep-link',
     Log: 'log:entry',
     HolderGetStatus: 'holder:get-status',
     HolderCreateChallenge: 'holder:create-challenge',
@@ -201,6 +204,26 @@ export type LogEntry = {
     message: string;
     data?: any;
 };
+
+export type AuthProvider = 'google' | 'github' | 'discord' | 'twitter';
+
+export type AuthTokensPayload = {
+    access: string;
+    refresh?: string | null;
+};
+
+export type AuthDeepLinkPayload =
+    | {
+        kind: 'success';
+        provider: AuthProvider | string;
+        tokens: AuthTokensPayload;
+        user?: Record<string, unknown> | null;
+    }
+    | {
+        kind: 'error';
+        provider: AuthProvider | string;
+        error: string;
+    };
 
 export type HolderChallengeInfo = {
     deeplink: string;
@@ -311,6 +334,11 @@ export type AssistantAPI = {
         stopLive: () => void;
         onMessage: (cb: (message: any) => void) => void;
         onError: (cb: (error: string) => void) => void;
+    };
+    auth: {
+        startOAuth: (provider: AuthProvider) => Promise<void>;
+        onOAuthPayload: (cb: (payload: AuthDeepLinkPayload) => void) => () => void;
+        consumePendingOAuthPayloads: () => Promise<AuthDeepLinkPayload[]>;
     };
     media: {
         getPrimaryDisplaySourceId: () => Promise<string | null>;

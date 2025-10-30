@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import {useEffect, useRef, useState} from 'react';
 import { initializeRenderer } from './renderer';
 import { setStatus } from './ui/status';
 import { SettingsView } from './components/settings/SettingsView/SettingsView';
 import { WindowResizer } from './components/common/WindowResizer/WindowResizer';
+import {AuthProvider, useAuth} from './auth';
+import {LoginView} from './components/auth/LoginView/LoginView';
+import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
+import {ProfileView} from './components/auth/ProfileView/ProfileView';
 
-export function App() {
+function AuthenticatedApp() {
     const initializedRef = useRef(false);
-    const [activeTab, setActiveTab] = useState<'main' | 'settings'>('main');
+    const [activeTab, setActiveTab] = useState<'main' | 'settings' | 'profile'>('main');
 
     useEffect(() => {
         if (initializedRef.current) return;
@@ -50,6 +54,7 @@ export function App() {
                         Ready
                     </div>
                 </div>
+                <div className="no-drag" />
                 <div className="window-controls no-drag -mr-1">
                     <button id="closeBtn" className="close mr-[11px]" title="Close" type="button">
                         <svg width="12" height="12" viewBox="0 0 12 12">
@@ -75,6 +80,13 @@ export function App() {
                             onClick={() => setActiveTab('settings')}
                         >
                             Settings
+                        </button>
+                        <button
+                            className={`tab ${activeTab === 'profile' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setActiveTab('profile')}
+                        >
+                            Profile
                         </button>
                     </div>
                 </div>
@@ -175,6 +187,9 @@ export function App() {
                 <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'settings'}>
                     <SettingsView />
                 </div>
+                <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'profile'}>
+                    <ProfileView />
+                </div>
             </main>
 
             <footer
@@ -192,6 +207,28 @@ export function App() {
                 </a>
             </footer>
         </div>
+    );
+}
+
+function AppContent() {
+    const { status, isAuthenticated } = useAuth();
+
+    if (status === 'initializing' || status === 'checking') {
+        return <LoadingScreen message={status === 'checking' ? 'Restoring session…' : 'Launching…'} />;
+    }
+
+    if (!isAuthenticated) {
+        return <LoginView />;
+    }
+
+    return <AuthenticatedApp />;
+}
+
+export function App() {
+    return (
+        <AuthProvider>
+            <AppContent />
+        </AuthProvider>
     );
 }
 

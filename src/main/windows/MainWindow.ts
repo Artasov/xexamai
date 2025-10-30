@@ -35,7 +35,7 @@ export function createMainWindow(): BrowserWindow {
         width: initialWidth,
         height: initialHeight,
         minWidth: 400,
-        minHeight: 700,
+        minHeight: 500,
         frame: false,
         titleBarStyle: 'hidden',
         transparent: true,
@@ -71,7 +71,7 @@ export function createMainWindow(): BrowserWindow {
 
     try {
         win.setResizable(true);
-        win.setMinimumSize(400, 700);
+        win.setMinimumSize(400, 500);
     } catch {}
 
 
