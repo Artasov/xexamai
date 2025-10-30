@@ -40,7 +40,7 @@ export async function submitIssueReport(payload: IssueReportPayload): Promise<vo
     }
 
     try {
-        await axios.post(`${baseUrl}/issues/`, formData, {
+        await axios.post(`${baseUrl}/issues/create/`, formData, {
             headers: {
                 ...headers,
                 'Content-Type': 'multipart/form-data',
