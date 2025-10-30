@@ -5,7 +5,11 @@ import GoogleIcon from '@mui/icons-material/Google';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import XIcon from '@mui/icons-material/X';
 import SvgIcon, {SvgIconProps} from '@mui/material/SvgIcon';
+import {resolveAuthApiBaseUrl, resolveSiteBaseUrl} from '../../../../shared/appUrls';
 import {WindowResizer} from '../../common/WindowResizer/WindowResizer';
+
+const AUTH_API_BASE_URL = resolveAuthApiBaseUrl();
+const SITE_BASE_URL = resolveSiteBaseUrl();
 
 function DiscordIcon(props: SvgIconProps) {
     return (

@@ -1,4 +1,5 @@
 import axios, {AxiosRequestConfig} from 'axios';
+import {resolveAuthApiBaseUrl} from '../../shared/appUrls';
 import {logger} from '../utils/logger';
 
 export type AuthTokens = {
@@ -32,7 +33,7 @@ export class AuthError extends Error {
 }
 
 const AUTH_STORAGE_KEY = 'xexamai.auth.tokens';
-const DEFAULT_BASE_URL = 'http://localhost:8000/api/v1';
+const DEFAULT_BASE_URL = resolveAuthApiBaseUrl();
 
 type TokenResponsePayload = {
     access?: unknown;

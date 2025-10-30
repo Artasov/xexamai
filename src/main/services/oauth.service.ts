@@ -1,4 +1,5 @@
 import {AuthProvider} from '../../shared/ipc';
+import {resolveSiteBaseUrl} from '../../shared/appUrls';
 
 function normalizeBase(url?: string): string | null {
     if (!url) return null;
@@ -22,21 +23,25 @@ function getEnv(name: string): string | undefined {
 }
 
 export function resolveOAuthRedirectBase(): string {
+    const defaultBase = resolveSiteBaseUrl();
     const fromEnv =
         normalizeBase(getEnv('OAUTH_REDIRECT_BASE_URL')) ??
         normalizeBase(getEnv('OAUTH_BASE_URL')) ??
         normalizeBase(getEnv('APP_BASE_URL')) ??
-        'http://localhost:3000';
+        normalizeBase(defaultBase) ??
+        defaultBase;
     return fromEnv;
 }
 
 export function resolveOAuthStartBase(): string {
+    const defaultBase = resolveSiteBaseUrl();
     const fromEnv =
         normalizeBase(getEnv('OAUTH_START_BASE_URL')) ??
         normalizeBase(getEnv('OAUTH_SITE_URL')) ??
         normalizeBase(getEnv('OAUTH_BASE_URL')) ??
         normalizeBase(getEnv('APP_BASE_URL')) ??
-        'http://localhost:3000';
+        normalizeBase(defaultBase) ??
+        defaultBase;
     return fromEnv;
 }
 
