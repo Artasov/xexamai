@@ -140,7 +140,6 @@ export function LoginView() {
                 <div className="window-controls no-drag -mr-1 flex items-center">
                     <button
                         className="close mr-[11px]"
-                        title="Close"
                         type="button"
                         onClick={handleClose}
                     >
@@ -247,7 +246,6 @@ export function LoginView() {
                                         disabled={isSubmitting}
                                         onClick={() => handleOAuth(provider.id)}
                                         aria-label={provider.label}
-                                        title={provider.label}
                                     >
                                         <IconComponent fontSize="small"/>
                                     </button>

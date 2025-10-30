@@ -56,7 +56,7 @@ function AuthenticatedApp() {
                 </div>
                 <div className="no-drag" />
                 <div className="window-controls no-drag -mr-1">
-                    <button id="closeBtn" className="close mr-[11px]" title="Close" type="button">
+                    <button id="closeBtn" className="close mr-[11px]" type="button">
                         <svg width="12" height="12" viewBox="0 0 12 12">
                             <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none" />
                         </svg>
@@ -103,7 +103,7 @@ function AuthenticatedApp() {
                                 <button id="btnRecord" className="btn" data-state="idle" type="button">
                                     Start Audio Loop
                                 </button>
-                                <button id="btnToggleInput" title="Toggle audio input" type="button">
+                                <button id="btnToggleInput" type="button">
                                     <img
                                         id="toggleInputIcon"
                                         src="img/icons/mic.png"
@@ -117,7 +117,6 @@ function AuthenticatedApp() {
                                     id="btnScreenshot"
                                     type="button"
                                     className="btn btn-secondary"
-                                    title="Analyze screen (Screenshot)"
                                 >
                                     <img src="img/icons/image.png" alt="Screenshot" className="h-5 w-5 invert" />
                                 </button>

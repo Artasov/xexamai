@@ -53,6 +53,9 @@ export interface AppConfigData {
 export class AppConfigService {
     private configPath: string;
     private configData: AppConfigData = {};
+    private saveTimer: NodeJS.Timeout | null = null;
+    private saveRequested = false;
+    private isSaving = false;
 
     constructor() {
         const userDataPath = app.getPath('userData');
@@ -175,16 +178,37 @@ export class AppConfigService {
         }
     }
 
-    private async saveConfig(): Promise<void> {
-        try {
-            await fsp.writeFile(this.configPath, JSON.stringify(this.configData, null, 2));
-        } catch (error) {
-            console.error('Error saving config:', error);
+    private scheduleSave(): void {
+        this.saveRequested = true;
+        if (this.saveTimer) {
+            return;
         }
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            void this.flushSave();
+        }, 200);
     }
 
-    private scheduleSave(): void {
-        this.saveConfig().catch(() => {});
+    private async flushSave(): Promise<void> {
+        if (this.isSaving) {
+            return;
+        }
+        if (!this.saveRequested) {
+            return;
+        }
+        this.isSaving = true;
+        this.saveRequested = false;
+        try {
+            const payload = JSON.stringify(this.configData, null, 2);
+            await fsp.writeFile(this.configPath, payload);
+        } catch (error) {
+            console.error('Error saving config:', error);
+        } finally {
+            this.isSaving = false;
+            if (this.saveRequested) {
+                this.scheduleSave();
+            }
+        }
     }
 
     public getConfig(): AppConfigData {

@@ -7,7 +7,7 @@ import {setupAnswerFontSizeControls} from './app/fontSizeControls';
 import {awaitPreloadBridge} from './app/preloadBridge';
 import {StreamController} from './app/streamController';
 import {ScreenshotController} from './app/screenshotController';
-import {startLogoAnimation} from './ui/logoAnimation';
+import {startLogoAnimation, loadLogo} from './ui/logoAnimation';
 import {checkHolderAccess, showHolderOnlyModal} from './ui/holderOnlyModal';
 import {registerStopButton, hideStopButton} from './ui/stopButton';
 import {state} from './state/appState';
@@ -77,29 +77,13 @@ export async function initializeRenderer() {
         });
     }
 
-    const loadLogo = (logoElement: HTMLImageElement) => {
-        if (!logoElement) return;
-        try {
-            logoElement.src = '../../brand/logo_white.png';
-            logoElement.onerror = () => {
-                logoElement.src = 'brand/logo_white.png';
-                logoElement.onerror = () => {
-                    logoElement.style.display = 'none';
-                };
-            };
-        } catch (error) {
-            console.warn('Could not load logo:', error);
-            logoElement.style.display = 'none';
-        }
-    };
-
-    const mainLogoElement = document.getElementById('main-logo') as HTMLImageElement;
-    const logoContainer = document.querySelector('.logo-container') as HTMLElement;
+    const mainLogoElement = document.getElementById('main-logo') as HTMLImageElement | null;
+    const logoContainer = document.querySelector('.logo-container') as HTMLElement | null;
     loadLogo(mainLogoElement);
     if (mainLogoElement && logoContainer) {
         startLogoAnimation(mainLogoElement, logoContainer);
     }
-    const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement;
+    const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement | null;
     loadLogo(headerLogoElement);
 
     await initializeWelcomeModal();

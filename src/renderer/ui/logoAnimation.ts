@@ -1,3 +1,19 @@
+export function loadLogo(logoElement: HTMLImageElement | null): void {
+    if (!logoElement) return;
+    try {
+        logoElement.src = '../../brand/logo_white.png';
+        logoElement.onerror = () => {
+            logoElement.src = 'brand/logo_white.png';
+            logoElement.onerror = () => {
+                logoElement.style.display = 'none';
+            };
+        };
+    } catch (error) {
+        console.warn('Could not load logo:', error);
+        logoElement.style.display = 'none';
+    }
+}
+
 export function startLogoAnimation(logoElement: HTMLImageElement, container: HTMLElement): void {
     const startAnimation = () => {
         setTimeout(() => {
