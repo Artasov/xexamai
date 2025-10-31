@@ -128,10 +128,12 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
 
             <form onSubmit={handleSubmit}>
                 <DialogContent sx={{pt: 1}} dividers>
-                    <Typography variant="body2" color="text.secondary" mt={1}>
-                        Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
-                        feels off so we can fix it quickly.
-                    </Typography>
+                    {!success ? (
+                        <Typography variant="body2" color="text.secondary" mt={1}>
+                            Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
+                            feels off so we can fix it quickly.
+                        </Typography>
+                    ) : null}
                     {!success ? (
                         <Typography variant="body2" color="text.secondary" mt={1} mb={3}>
                             Tell us what happened. Include steps to reproduce if possible.
