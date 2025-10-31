@@ -205,7 +205,7 @@ export type LogEntry = {
     data?: any;
 };
 
-export type AuthProvider = 'google' | 'github' | 'discord' | 'twitter';
+export type AuthProvider = 'google' | 'github' | 'discord';
 
 export type AuthTokensPayload = {
     access: string;

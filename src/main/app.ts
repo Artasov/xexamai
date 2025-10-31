@@ -186,7 +186,7 @@ function registerAuthIpc() {
     ipcMain.handle(IPCChannels.AuthStartOAuth, async (_event, provider: AuthProvider) => {
         try {
             const normalized = String(provider).toLowerCase() as AuthProvider;
-            const supportedProviders: AuthProvider[] = ['google', 'github', 'discord', 'twitter'];
+            const supportedProviders: AuthProvider[] = ['google', 'github', 'discord'];
             if (!supportedProviders.includes(normalized)) {
                 throw new Error(`Unsupported OAuth provider: ${provider}`);
             }

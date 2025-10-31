@@ -3,7 +3,6 @@ import {useAuth} from '../../../auth';
 import type {AuthProvider as OAuthProviderType} from '../../../types';
 import GoogleIcon from '@mui/icons-material/Google';
 import GitHubIcon from '@mui/icons-material/GitHub';
-import XIcon from '@mui/icons-material/X';
 import SvgIcon, {SvgIconProps} from '@mui/material/SvgIcon';
 import {TextField} from '@mui/material';
 import {resolveAuthApiBaseUrl, resolveSiteBaseUrl} from '../../../../shared/appUrls';
@@ -51,12 +50,6 @@ export function LoginView() {
                 label: 'Sign in with Discord',
                 className: 'oauth-button--discord',
                 Icon: DiscordIcon,
-            },
-            {
-                id: 'twitter' as OAuthProviderType,
-                label: 'Sign in with X',
-                className: 'oauth-button--x',
-                Icon: XIcon,
             },
         ],
         [],
