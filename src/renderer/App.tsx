@@ -97,7 +97,7 @@ function AuthenticatedApp() {
 
                 <div className="content-area flex flex-col gap-4 overflow-auto" hidden={activeTab !== 'main'}>
                     <section className="flex flex-col gap-4 overflow-auto md:flex-row">
-                        <div className="card h-min flex-grow md:max-w-[320px]">
+                        <div className="card h-min flex-grow md:max-w-[320px] min-w-[305px]">
                             <div id="send-last-container" className="send-last-container">
                                 <div className="label mb-2">Send the last:</div>
                                 <div id="durations" className="flex flex-wrap gap-2" />
