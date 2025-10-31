@@ -1,7 +1,7 @@
-// const DEFAULT_SITE_BASE_URL = 'https://xldev.ru';
-// const DEFAULT_AUTH_API_BASE_URL = 'https://xldev.ru/api/v1';
-const DEFAULT_SITE_BASE_URL = 'http://localhost:3000';
-const DEFAULT_AUTH_API_BASE_URL = 'http://localhost:8000/api/v1';
+const DEFAULT_SITE_BASE_URL = 'https://xldev.ru';
+const DEFAULT_AUTH_API_BASE_URL = 'https://xldev.ru/api/v1';
+// const DEFAULT_SITE_BASE_URL = 'http://localhost:3000';
+// const DEFAULT_AUTH_API_BASE_URL = 'http://localhost:8000/api/v1';
 
 type EnvRecord = Record<string, string | undefined>;
 
