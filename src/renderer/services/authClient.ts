@@ -7,6 +7,42 @@ export type AuthTokens = {
     refresh?: string | null;
 };
 
+export type FeatureSchema = {
+    id: number;
+    code: string;
+    label: string;
+    description: string;
+    kind: 'boolean' | string;
+};
+
+export type TierFeatures = {
+    history: boolean;
+    promt_presets: boolean;
+    screen_processing: boolean;
+};
+
+export type Tier = {
+    id: number;
+    token_id: number;
+    name: string;
+    slug: string;
+    token_threshold: string;
+    position: number;
+    is_active: boolean;
+    description: string;
+    features: TierFeatures;
+};
+
+export type TiersAndFeatures = {
+    token_id: number;
+    token_ticker: string;
+    balance: string;
+    tiers: Tier[];
+    active_tier: Tier;
+    active_features: TierFeatures;
+    feature_schema: FeatureSchema[];
+};
+
 export type AuthUser = {
     id: number;
     username: string | null;
@@ -18,6 +54,7 @@ export type AuthUser = {
     avatar: string | null;
     timezone: string | Record<string, unknown> | null;
     is_email_confirmed: boolean;
+    tiers_and_features?: TiersAndFeatures[];
 };
 
 export class AuthError extends Error {
@@ -186,7 +223,7 @@ export class AuthClient {
         }
 
         try {
-            const user = await this.getCurrentUser();
+            const user = await this.getCurrentUser(true);
             logger.info('auth', 'User signed in');
             return user;
         } catch (error) {
@@ -195,9 +232,10 @@ export class AuthClient {
         }
     }
 
-    public async getCurrentUser(): Promise<AuthUser> {
+    public async getCurrentUser(includeTiersAndFeatures: boolean = false): Promise<AuthUser> {
+        const url = includeTiersAndFeatures ? '/me/?tiers_and_features=1' : '/me/';
         return this.authenticatedRequest<AuthUser>({
-            url: '/me/',
+            url,
             method: 'GET',
         });
     }

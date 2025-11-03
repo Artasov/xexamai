@@ -128,10 +128,6 @@ export const IPCChannels = {
     AuthConsumeDeepLinks: 'auth:consume-deep-links',
     AuthDeepLink: 'auth:deep-link',
     Log: 'log:entry',
-    HolderGetStatus: 'holder:get-status',
-    HolderCreateChallenge: 'holder:create-challenge',
-    HolderVerifySignature: 'holder:verify-signature',
-    HolderReset: 'holder:reset',
     SetScreenProcessingModel: 'settings:set:screen-processing-model',
     SetScreenProcessingPrompt: 'settings:set:screen-processing-prompt',
     ScreenProcess: 'screen:process',
@@ -225,34 +221,6 @@ export type AuthDeepLinkPayload =
         error: string;
     };
 
-export type HolderChallengeInfo = {
-    deeplink: string;
-    reference: string;
-    createdAt: string;
-    expiresAt: string;
-    qrSvg?: string;
-};
-
-export type HolderStatus = {
-    isAuthorized: boolean;
-    wallet?: string;
-    lastVerified?: string;
-    needsSignature: boolean;
-    challenge?: HolderChallengeInfo;
-    error?: string;
-    checkingBalance?: boolean;
-    tokenBalance?: string;
-    hasToken?: boolean;
-};
-
-export type HolderVerificationResult = {
-    ok: boolean;
-    wallet?: string;
-    lastVerified?: string;
-    message?: string;
-    error?: string;
-};
-
 export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
@@ -321,12 +289,6 @@ export type AssistantAPI = {
     screen: {
         capture: () => Promise<{ base64: string; width: number; height: number; mime: string }>;
         process: (payload: ScreenProcessRequest) => Promise<ScreenProcessResponse>;
-    };
-    holder: {
-        getStatus: (options?: { refreshBalance?: boolean }) => Promise<HolderStatus>;
-        createChallenge: () => Promise<HolderStatus>;
-        verifySignature: (signature: string) => Promise<HolderVerificationResult>;
-        reset: () => Promise<void>;
     };
     google: {
         startLive: (opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) => Promise<void>;

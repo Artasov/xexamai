@@ -1,11 +1,20 @@
 import {useMemo} from 'react';
 import {useAuth} from '../../../auth';
+import {getActiveTier, getUserTiersAndFeatures} from '../../../utils/features';
+import {IconButton, Tooltip} from "@mui/material";
+import {Logout} from "@mui/icons-material";
 
 function formatFullName(user: ReturnType<typeof useAuth>['user']) {
     if (!user) return null;
     const parts = [user.first_name, user.middle_name, user.last_name].filter(Boolean);
     if (!parts.length) return null;
     return parts.join(' ');
+}
+
+function formatBalance(balance: string): string {
+    const num = parseFloat(balance);
+    if (isNaN(num)) return balance;
+    return new Intl.NumberFormat('en-US', {maximumFractionDigits: 2}).format(num);
 }
 
 export function ProfileView() {
@@ -23,6 +32,9 @@ export function ProfileView() {
             .join('');
     }, [fullName, user]);
 
+    const tiersAndFeatures = useMemo(() => getUserTiersAndFeatures(user), [user]);
+    const activeTierInfo = useMemo(() => getActiveTier(user), [user]);
+
     if (!user) {
         return (
             <div className="card fccc gap-4 p-8 text-center">
@@ -32,7 +44,7 @@ export function ProfileView() {
     }
 
     return (
-        <div className="fc gap-4">
+        <div className="fc gap-2">
             <div className="card fc gap-1 p-6 text-center">
                 <div className={'frsc gap-4'}>
                     <div
@@ -41,15 +53,36 @@ export function ProfileView() {
                     </div>
                     <div className={'fc gap-2'}>
                         <div className={'fcss gap-0'}>
-                            <h2 className="text-xl font-semibold text-white">
-                                {user.username || user.email}
-                            </h2>
+                            <div className={'frcc'}>
+                                <h2 className="text-xl font-semibold text-white">
+                                    {user.username || user.email}
+                                </h2>
+                                <div className="frcc mt-2">
+                                    <Tooltip title="Log out" arrow>
+                                        <IconButton
+                                            size={'small'}
+                                            onClick={signOut}
+                                            sx={{
+                                                mb: '4px',
+                                                color: 'rgba(255, 255, 255, 0.7)',
+                                                '&:hover': {
+                                                    color: 'rgba(255, 255, 255, 0.9)',
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                                },
+                                            }}
+                                        >
+                                            <Logout sx={{width: 16, height: 16}}/>
+                                        </IconButton>
+                                    </Tooltip>
+                                </div>
+                            </div>
                             <p className="text-sm text-gray-400">{user.email}</p>
                         </div>
                         <div className="frcc flex-wrap gap-2 text-xs text-gray-300">
-                            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">
-                                Email confirmed: {user.is_email_confirmed ? 'Yes' : 'No'}
-                            </span>
+                            {user.is_email_confirmed &&
+                                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">
+                                Email confirmed
+                            </span>}
                             {user.timezone ? (
                                 <span className="rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-1">
                                     Timezone: {typeof user.timezone === 'string' ? user.timezone : 'Custom'}
@@ -58,10 +91,54 @@ export function ProfileView() {
                         </div>
                     </div>
                 </div>
-                <button className="btn btn-secondary ml-1 mt-2 px-4 py-2 w-fit" type="button" onClick={signOut}>
-                    Log out
-                </button>
             </div>
+
+            {tiersAndFeatures && activeTierInfo ? (
+                <div className="card fc gap-4 p-6">
+                    <h3 className="text-lg font-semibold text-white">XEXAI Token & Tier</h3>
+                    <div className="fc gap-3">
+                        <div className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
+                            <span className="text-sm text-gray-400">Balance</span>
+                            <span className="text-base font-semibold text-white">
+                                {formatBalance(activeTierInfo.balance)} {activeTierInfo.ticker}
+                            </span>
+                        </div>
+                        <div className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
+                            <span className="text-sm text-gray-400">Active Tier</span>
+                            <span className="text-base font-semibold text-white">{activeTierInfo.tier}</span>
+                        </div>
+                        {tiersAndFeatures.active_tier.description ? (
+                            <p className="text-sm text-gray-400 italic">{tiersAndFeatures.active_tier.description}</p>
+                        ) : null}
+                    </div>
+                </div>
+            ) : null}
+
+            {tiersAndFeatures ? (
+                <div className="card fc gap-4 p-6">
+                    <h3 className="text-lg font-semibold text-white">Available Features</h3>
+                    <div className="fc gap-2">
+                        {tiersAndFeatures.feature_schema?.map((feature) => {
+                            const isEnabled = tiersAndFeatures.active_features?.[feature.code as keyof typeof tiersAndFeatures.active_features] === true;
+                            return (
+                                <div key={feature.id}
+                                     className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
+                                    <div className="fc gap-1">
+                                        <span className="text-sm font-medium text-white">{feature.label}</span>
+                                        {feature.description ? (
+                                            <span className="text-xs text-gray-400">{feature.description}</span>
+                                        ) : null}
+                                    </div>
+                                    <span
+                                        className={`text-sm font-semibold ${isEnabled ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                        {isEnabled ? 'Enabled' : 'Disabled'}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : null}
 
             {/*<div className="card grid gap-4 p-5 md:grid-cols-2">*/}
             {/*    <ProfileField label="Username" value={user.username} />*/}

@@ -54,7 +54,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 }
 
                 setStatus('checking');
-                const profile = await authClient.getCurrentUser();
+                const profile = await authClient.getCurrentUser(true);
                 if (cancelled) return;
                 setUser(profile);
                 setStatus('authenticated');
@@ -105,7 +105,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
                 setStatus('checking');
                 setError(null);
-                authClient.getCurrentUser()
+                authClient.getCurrentUser(true)
                     .then((profile) => {
                         if (cancelled) return;
                         setUser(profile);
@@ -195,7 +195,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         setStatus('checking');
         try {
-            const profile = await authClient.getCurrentUser();
+            const profile = await authClient.getCurrentUser(true);
             setUser(profile);
             setStatus('authenticated');
             setError(null);

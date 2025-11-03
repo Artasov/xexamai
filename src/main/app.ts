@@ -6,7 +6,6 @@ import {registerSttIpc} from './ipc/stt.ipc';
 import {registerSettingsIpc} from './ipc/settings.ipc';
 import {createMainWindow} from './windows/MainWindow';
 import {hotkeysService} from './services/hotkeys.service';
-import {registerHolderIpc} from './ipc/holder.ipc';
 import {IPCChannels, AuthDeepLinkPayload, AuthProvider} from '../shared/ipc';
 import {buildOAuthStartUrl} from './services/oauth.service';
 
@@ -227,7 +226,6 @@ function onReady() {
     mainWindow = createMainWindow();
     registerSttIpc();
     registerSettingsIpc();
-    registerHolderIpc();
     registerWindowIpc();
     registerAuthIpc();
     if (mainWindow) {

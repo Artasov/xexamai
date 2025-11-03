@@ -11,6 +11,7 @@ import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
 import {ProfileView} from './components/auth/ProfileView/ProfileView';
 import {BetaFeedbackWidget} from './components/feedback/BetaFeedbackWidget';
 import {muiTheme} from './mui/config.mui';
+import {setCurrentUser} from './utils/featureAccess';
 
 function AuthenticatedApp() {
     const initializedRef = useRef(false);
@@ -233,7 +234,11 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
-    const { status, isAuthenticated } = useAuth();
+    const { status, isAuthenticated, user } = useAuth();
+
+    useEffect(() => {
+        setCurrentUser(user);
+    }, [user]);
 
     if (status === 'initializing' || status === 'checking') {
         return <LoadingScreen message={status === 'checking' ? 'Restoring session…' : 'Launching…'} />;

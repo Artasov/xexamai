@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {TextField} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import { logger } from '../../../utils/logger';
-import { HolderAccess } from '../HolderAccess/HolderAccess';
 import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
 import './GeneralSettings.scss';
 
@@ -178,8 +177,6 @@ export const GeneralSettings = () => {
                     </div>
                 </div>
             </section>
-
-            <HolderAccess />
 
             <section className="settings-card card">
                 <h3 className="settings-card__title">Window Behaviour</h3>
