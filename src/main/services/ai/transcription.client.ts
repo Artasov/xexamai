@@ -1,15 +1,18 @@
 import OpenAI from 'openai';
 import { toFile } from 'openai/uploads';
 import { getConfig } from '../config.service';
+import type { AppConfig } from '../config.service';
 import { withRetry } from '../retry.service';
 import { calculateWhisperTimeout, DefaultTimeoutConfig } from '../timeout.config';
 import { logger } from '../logger.service';
 
 let client: OpenAI | null = null;
+let clientSignature: string | null = null;
 
-function getClient(): OpenAI {
-    if (!client) {
-        const cfg = getConfig();
+function getClient(cfg: AppConfig): OpenAI {
+    const signature = `${cfg.openaiApiKey || ''}|${cfg.openaiBaseUrl || ''}`;
+    if (!client || clientSignature !== signature) {
+        clientSignature = signature;
         client = new OpenAI({
             apiKey: cfg.openaiApiKey,
             baseURL: cfg.openaiBaseUrl,
@@ -27,9 +30,9 @@ export async function transcribeAudio(
     const cfg = getConfig();
 
     if (cfg.transcriptionMode === 'local') {
-        return await transcribeAudioLocal(buffer, filename, _mime, audioSeconds);
+        return await transcribeAudioLocal(buffer, filename, _mime, audioSeconds, cfg);
     } else {
-        return await transcribeAudioApi(buffer, filename, _mime, audioSeconds);
+        return await transcribeAudioApi(buffer, filename, _mime, audioSeconds, cfg);
     }
 }
 
@@ -44,10 +47,9 @@ async function transcribeAudioLocal(
     buffer: Buffer,
     filename = 'audio.webm',
     _mime: string = 'audio/webm',
-    audioSeconds?: number
+    audioSeconds?: number,
+    cfg: AppConfig
 ): Promise<string> {
-    const cfg = getConfig();
-    
     logger.info('transcription', 'Starting local Whisper transcription (local HTTP API)', {
         bufferSize: buffer.length,
         filename, 
@@ -105,9 +107,9 @@ async function transcribeAudioApi(
     buffer: Buffer,
     filename = 'audio.webm',
     _mime: string = 'audio/webm',
-    audioSeconds?: number
+    audioSeconds?: number,
+    cfg: AppConfig
 ): Promise<string> {
-    const cfg = getConfig();
     if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
     logger.info('transcription', 'Starting OpenAI transcription', {
@@ -151,7 +153,7 @@ async function transcribeAudioApi(
                 responseFormat: 'json',
             });
 
-            const res = await getClient().audio.transcriptions.create(transcriptionParams);
+            const res = await getClient(cfg).audio.transcriptions.create(transcriptionParams);
             const text = (res as any).text || '';
 
             logger.info('transcription', 'OpenAI transcription completed', {
@@ -168,4 +170,3 @@ async function transcribeAudioApi(
         timeoutMs
     );
 }
-

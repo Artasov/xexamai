@@ -150,26 +150,37 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
         logger.info('ui', 'Record button clicked', { shouldStart });
         setRecording(shouldStart);
         btnRecord.disabled = true;
+        let startedSuccessfully = false;
         try {
             await onRecordToggle(shouldStart);
-            btnRecord.textContent = shouldStart ? 'Stop' : 'Start Audio Loop';
-            btnRecord.dataset['state'] = shouldStart ? 'rec' : 'idle';
-            if (shouldStart) {
-                try {
-                    const s = await window.api.settings.get();
-                    if ((s.streamMode || 'base') !== 'stream') {
-                        setStatus('Recording...', 'recording');
-                    }
-                    // In stream mode, renderer will set a more specific status
-                } catch {
-                    setStatus('Recording...', 'recording');
-                }
-            } else {
-                setStatus('Ready', 'ready');
-            }
+            startedSuccessfully = true;
+        } catch {
+            setRecording(false);
+            btnRecord.textContent = 'Start Audio Loop';
+            btnRecord.dataset['state'] = 'idle';
         } finally {
             btnRecord.disabled = false;
             updateButtonsState();
+        }
+
+        if (!startedSuccessfully) {
+            return;
+        }
+
+        btnRecord.textContent = shouldStart ? 'Stop' : 'Start Audio Loop';
+        btnRecord.dataset['state'] = shouldStart ? 'rec' : 'idle';
+        if (shouldStart) {
+            try {
+                const s = await window.api.settings.get();
+                if ((s.streamMode || 'base') !== 'stream') {
+                    setStatus('Recording...', 'recording');
+                }
+                // In stream mode, renderer will set a more specific status
+            } catch {
+                setStatus('Recording...', 'recording');
+            }
+        } else {
+            setStatus('Ready', 'ready');
         }
     });
 }

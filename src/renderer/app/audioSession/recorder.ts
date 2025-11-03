@@ -190,72 +190,9 @@ export async function rebuildAudioGraph(stream: MediaStream) {
 }
 
 export async function getSystemAudioStream(): Promise<MediaStream> {
-    try {
-        const audioInputType = audioSessionState.currentAudioInputType || 'microphone';
+    const audioInputType = audioSessionState.currentAudioInputType || 'microphone';
 
-        if (audioInputType === 'system') {
-            try {
-                try {
-                    (window as any).api?.loopback?.enable?.();
-                } catch {
-                }
-                const disp = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
-                const audioTracks = disp.getAudioTracks();
-                const sysTrack = audioTracks[0] || null;
-                let stream: MediaStream;
-                if (sysTrack) {
-                    setPersistentSystemTrack(sysTrack);
-                    const clone = sysTrack.clone();
-                    stream = new MediaStream([clone]);
-                } else {
-                    stream = new MediaStream(audioTracks);
-                }
-                disp.getVideoTracks().forEach((t) => t.stop());
-                try {
-                    await window.api.loopback.enable();
-                } catch {
-                }
-                return stream;
-            } catch (error) {
-                console.error('Error getting system audio:', error);
-                try {
-                    const sourceId = await (window as any).api?.media?.getPrimaryDisplaySourceId?.();
-                    const gumConstraints: any = sourceId
-                        ? {
-                              audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
-                              video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
-                          }
-                        : {
-                              audio: { mandatory: { chromeMediaSource: 'desktop' } },
-                              video: { mandatory: { chromeMediaSource: 'desktop' } },
-                          };
-                    const stream = await navigator.mediaDevices.getUserMedia(gumConstraints as any);
-                    const audioTracks = stream.getAudioTracks();
-                    const sysTrack = audioTracks[0] || null;
-                    let out: MediaStream;
-                    if (sysTrack) {
-                        setPersistentSystemTrack(sysTrack);
-                        const clone = sysTrack.clone();
-                        out = new MediaStream([clone]);
-                    } else {
-                        out = new MediaStream(audioTracks);
-                    }
-                    try {
-                        stream.getVideoTracks().forEach((t) => t.stop());
-                    } catch {
-                    }
-                    try {
-                        await window.api.loopback.enable();
-                    } catch {
-                    }
-                    return out;
-                } catch (fallbackError) {
-                    console.error('desktopCapturer fallback failed', fallbackError);
-                }
-                return navigator.mediaDevices.getUserMedia({ audio: true });
-            }
-        }
-
+    if (audioInputType !== 'system') {
         let deviceId: string | undefined;
         try {
             deviceId = (await window.api.settings.get()).audioInputDeviceId;
@@ -270,9 +207,84 @@ export async function getSystemAudioStream(): Promise<MediaStream> {
             });
         }
         return navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+
+    const errors: unknown[] = [];
+
+    try {
+        try {
+            (window as any).api?.loopback?.enable?.();
+        } catch {
+        }
+        const disp = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+        const audioTracks = disp.getAudioTracks();
+        const sysTrack = audioTracks[0] || null;
+        let stream: MediaStream;
+        if (sysTrack) {
+            setPersistentSystemTrack(sysTrack);
+            const clone = sysTrack.clone();
+            stream = new MediaStream([clone]);
+        } else {
+            stream = new MediaStream(audioTracks);
+        }
+        disp.getVideoTracks().forEach((t) => t.stop());
+        try {
+            await window.api.loopback.enable();
+        } catch {
+        }
+        return stream;
     } catch (error) {
-        console.error('Error getting audio stream:', error);
-        return navigator.mediaDevices.getUserMedia({ audio: true });
+        console.error('Error getting system audio via getDisplayMedia:', error);
+        errors.push(error);
+    }
+
+    try {
+        const sourceId = await (window as any).api?.media?.getPrimaryDisplaySourceId?.();
+        const gumConstraints: any = sourceId
+            ? {
+                  audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+                  video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+              }
+            : {
+                  audio: { mandatory: { chromeMediaSource: 'desktop' } },
+                  video: { mandatory: { chromeMediaSource: 'desktop' } },
+              };
+        const stream = await navigator.mediaDevices.getUserMedia(gumConstraints as any);
+        const audioTracks = stream.getAudioTracks();
+        const sysTrack = audioTracks[0] || null;
+        let out: MediaStream;
+        if (sysTrack) {
+            setPersistentSystemTrack(sysTrack);
+            const clone = sysTrack.clone();
+            out = new MediaStream([clone]);
+        } else {
+            out = new MediaStream(audioTracks);
+        }
+        try {
+            stream.getVideoTracks().forEach((t) => t.stop());
+        } catch {
+        }
+        try {
+            await window.api.loopback.enable();
+        } catch {
+        }
+        return out;
+    } catch (error) {
+        console.error('desktopCapturer fallback failed', error);
+        errors.push(error);
+        try {
+            await window.api.loopback.disable();
+        } catch {
+        }
+        const captureError = new Error('system-audio-capture-failed');
+        (captureError as any).code = 'system-audio-capture-failed';
+        (captureError as any).details = errors
+            .map((err) => {
+                if (!err) return '';
+                return err instanceof Error ? err.message : String(err);
+            })
+            .filter((msg) => typeof msg === 'string' && msg.length > 0);
+        throw captureError;
     }
 }
 

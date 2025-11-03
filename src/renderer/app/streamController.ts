@@ -1,6 +1,6 @@
 import {showAnswer, showError, showText} from '../ui/outputs';
 import {setStatus} from '../ui/status';
-import {setProcessing, state} from '../state/appState';
+import {setProcessing, setRecording, state} from '../state/appState';
 import {updateButtonsState} from '../ui/controls';
 import {floatsToWav} from '../audio/encoder';
 import {logger} from '../utils/logger';
@@ -151,7 +151,16 @@ export class StreamController {
             }
         } catch (error) {
             console.error('Record toggle failed', error);
-            setStatus('Error starting recording', 'error');
+            const message = error instanceof Error ? error.message : String(error);
+            const code = (error as any)?.code;
+            if (code === 'system-audio-capture-failed' || message === 'system-audio-capture-failed') {
+                setStatus('Не удалось захватить системный звук. Разрешите доступ или переключитесь на микрофон.', 'error');
+            } else {
+                setStatus('Ошибка запуска записи', 'error');
+            }
+            setRecording(false);
+            updateButtonsState();
+            throw error;
         }
     }
 
