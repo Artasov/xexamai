@@ -8,7 +8,7 @@ import {awaitPreloadBridge} from './app/preloadBridge';
 import {StreamController} from './app/streamController';
 import {ScreenshotController} from './app/screenshotController';
 import {startLogoAnimation, loadLogo} from './ui/logoAnimation';
-import {checkHolderAccess, showHolderOnlyModal} from './ui/holderOnlyModal';
+import {checkFeatureAccess, showFeatureAccessModal} from './ui/featureAccessModal';
 import {registerStopButton, hideStopButton} from './ui/stopButton';
 import {state} from './state/appState';
 
@@ -53,14 +53,10 @@ export async function initializeRenderer() {
 
     if (btnScreenshot) {
         btnScreenshot.addEventListener('click', async () => {
-            const access = checkHolderAccess();
-            if (access === 'holder') {
+            if (checkFeatureAccess('screen_processing')) {
                 await screenshotController.start();
-            } else if (access === 'non-holder') {
-                showHolderOnlyModal();
             } else {
-                setStatus('Checking holder status...', 'sending');
-                setTimeout(() => setStatus('Ready', 'ready'), 1500);
+                showFeatureAccessModal('screen_processing');
             }
         });
     }

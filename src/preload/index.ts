@@ -7,7 +7,6 @@ import {createScreenBridge} from './api/screen';
 import {createHotkeysBridge} from './api/hotkeys';
 import {createWindowControlsBridge} from './api/windowControls';
 import {createLoopbackBridge} from './api/loopback';
-import {createHolderBridge} from './api/holder';
 import {createMediaBridge} from './api/media';
 import {createLoggerBridge} from './api/logger';
 import {createAuthBridge} from './api/auth';
@@ -20,7 +19,6 @@ const api: AssistantAPI = {
     hotkeys: createHotkeysBridge(),
     window: createWindowControlsBridge(),
     loopback: createLoopbackBridge(),
-    holder: createHolderBridge(),
     auth: createAuthBridge(),
     media: createMediaBridge(),
     log: createLoggerBridge(),
