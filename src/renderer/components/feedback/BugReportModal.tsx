@@ -114,7 +114,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
     };
 
     return (
-        <Dialog open={open} onClose={handleClose} scroll="paper" keepMounted>
+        <Dialog open={open} onClose={handleClose} keepMounted>
             <DialogTitle>
                 <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
                     <Typography variant="h6" component="h3">
@@ -127,7 +127,15 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
             </DialogTitle>
 
             <form onSubmit={handleSubmit}>
-                <DialogContent sx={{pt: 1}} dividers>
+                <DialogContent
+                    sx={{
+                        pt: 1,
+                        maxHeight: '60vh',
+                        overflow: 'auto',
+                    }}
+                    dividers
+                    className="custom-dropdown-scrollbar"
+                >
                     {!success ? (
                         <Typography variant="body2" color="text.secondary" mt={1}>
                             Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
