@@ -30,9 +30,9 @@ export async function transcribeAudio(
     const cfg = getConfig();
 
     if (cfg.transcriptionMode === 'local') {
-        return await transcribeAudioLocal(buffer, filename, _mime, audioSeconds, cfg);
+        return await transcribeAudioLocal(buffer, cfg, filename, _mime, audioSeconds);
     } else {
-        return await transcribeAudioApi(buffer, filename, _mime, audioSeconds, cfg);
+        return await transcribeAudioApi(buffer, cfg, filename, _mime, audioSeconds);
     }
 }
 
@@ -45,10 +45,10 @@ function mapLocalModelName(name?: string): string {
 
 async function transcribeAudioLocal(
     buffer: Buffer,
+    cfg: AppConfig,
     filename = 'audio.webm',
     _mime: string = 'audio/webm',
-    audioSeconds?: number,
-    cfg: AppConfig
+    audioSeconds?: number
 ): Promise<string> {
     logger.info('transcription', 'Starting local Whisper transcription (local HTTP API)', {
         bufferSize: buffer.length,
@@ -105,10 +105,10 @@ async function transcribeAudioLocal(
 
 async function transcribeAudioApi(
     buffer: Buffer,
+    cfg: AppConfig,
     filename = 'audio.webm',
     _mime: string = 'audio/webm',
-    audioSeconds?: number,
-    cfg: AppConfig
+    audioSeconds?: number
 ): Promise<string> {
     if (!cfg.openaiApiKey) throw new Error('OPENAI_API_KEY is not set');
 
