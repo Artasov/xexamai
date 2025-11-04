@@ -1,6 +1,6 @@
 {
   "name": "xexamai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI Interview Assistant",
   "main": "dist/main/app.js",
   "type": "commonjs",
