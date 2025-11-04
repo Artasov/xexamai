@@ -1,4 +1,4 @@
-import type {AuthUser, TiersAndFeatures, TierFeatures} from '../services/authClient';
+import type {AuthUser, TiersAndFeatures, TierFeatures, Tier} from '../services/authClient';
 
 export function getUserTiersAndFeatures(user: AuthUser | null): TiersAndFeatures | null {
     if (!user?.tiers_and_features || !Array.isArray(user.tiers_and_features) || user.tiers_and_features.length === 0) {
@@ -24,6 +24,31 @@ export function getActiveTier(user: AuthUser | null): { tier: string; balance: s
         tier: tiersAndFeatures.active_tier.name,
         balance: tiersAndFeatures.balance,
         ticker: tiersAndFeatures.token_ticker,
+    };
+}
+
+export function getMinTierForFeature(
+    user: AuthUser | null,
+    featureCode: 'screen_processing' | 'history' | 'promt_presets'
+): { tier: Tier; threshold: string } | null {
+    const tiersAndFeatures = getUserTiersAndFeatures(user);
+    if (!tiersAndFeatures?.tiers || !Array.isArray(tiersAndFeatures.tiers)) {
+        return null;
+    }
+
+    // Находим минимальный tier с нужной фичей (сортировка по position)
+    const sortedTiers = [...tiersAndFeatures.tiers]
+        .filter((tier) => tier.is_active && tier.features[featureCode] === true)
+        .sort((a, b) => a.position - b.position);
+
+    if (sortedTiers.length === 0) {
+        return null;
+    }
+
+    const minTier = sortedTiers[0];
+    return {
+        tier: minTier,
+        threshold: minTier.token_threshold,
     };
 }
 
