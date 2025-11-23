@@ -20,22 +20,17 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@main/*": [
-        "src/main/*"
-      ],
       "@renderer/*": [
         "src/renderer/*"
       ],
       "@shared/*": [
         "src/shared/*"
-      ],
-      "@preload/*": [
-        "src/preload/*"
       ]
     }
   },
   "include": [
-    "src/**/*",
+    "src/renderer/**/*",
+    "src/shared/**/*",
     "vite.config.mts"
   ],
   "exclude": [

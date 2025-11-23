@@ -305,5 +305,33 @@ export type AssistantAPI = {
     media: {
         getPrimaryDisplaySourceId: () => Promise<string | null>;
     };
+    localSpeech: {
+        getStatus: () => Promise<FastWhisperStatus>;
+        checkHealth: () => Promise<FastWhisperStatus>;
+        install: () => Promise<FastWhisperStatus>;
+        start: () => Promise<FastWhisperStatus>;
+        restart: () => Promise<FastWhisperStatus>;
+        reinstall: () => Promise<FastWhisperStatus>;
+        stop: () => Promise<FastWhisperStatus>;
+        checkModelDownloaded: (model: string) => Promise<boolean>;
+    };
+    ollama: {
+        checkInstalled: () => Promise<boolean>;
+        listModels: () => Promise<string[]>;
+        pullModel: (model: string) => Promise<void>;
+        warmupModel: (model: string) => Promise<void>;
+    };
     log: (entry: LogEntry) => Promise<void>;
+};
+
+export type FastWhisperStatus = {
+    installed: boolean;
+    running: boolean;
+    phase: string;
+    message: string;
+    error?: string | null;
+    lastAction?: string | null;
+    lastSuccessAt?: number | null;
+    logLine?: string | null;
+    updatedAt: number;
 };
