@@ -838,11 +838,13 @@ export const AiSettings = () => {
                 <div className="ai-settings__grid ai-settings__grid--models">
                     <div className="settings-field">
                         <label className="settings-field__label">Transcription</label>
-                        <CustomSelect
-                            value={settings.transcriptionMode ?? 'api'}
-                            options={TRANSCRIPTION_MODE_OPTIONS}
-                            onChange={(val) => handleTranscriptionModeChange(val as TranscriptionMode)}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <CustomSelect
+                                value={settings.transcriptionMode ?? 'api'}
+                                options={TRANSCRIPTION_MODE_OPTIONS}
+                                onChange={(val) => handleTranscriptionModeChange(val as TranscriptionMode)}
+                            />
+                        </div>
                         {settings.transcriptionMode === 'local' ? (
                             <Box className="ai-settings__local-server" mt={1}>
                                 {localStatus?.running && !localBusyPhase ? (
@@ -975,29 +977,31 @@ export const AiSettings = () => {
 
                     <div className="settings-field">
                         <label className="settings-field__label">Transcription model</label>
-                        <CustomSelect
-                            value={settings.transcriptionMode === 'local' ? localTranscribeModel : apiTranscribeModel}
-                            options={transcribeOptions}
-                            onChange={(val) => {
-                                if (settings.transcriptionMode === 'local') {
-                                    void handleLocalWhisperChange(val);
-                                } else {
-                                    void handleTranscriptionModelChange(val);
-                                }
-                            }}
-                            disabled={settings.transcriptionMode === 'local' && transcribeUnavailable}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <CustomSelect
+                                value={settings.transcriptionMode === 'local' ? localTranscribeModel : apiTranscribeModel}
+                                options={transcribeOptions}
+                                onChange={(val) => {
+                                    if (settings.transcriptionMode === 'local') {
+                                        void handleLocalWhisperChange(val);
+                                    } else {
+                                        void handleTranscriptionModelChange(val);
+                                    }
+                                }}
+                                disabled={settings.transcriptionMode === 'local' && transcribeUnavailable}
+                            />
+                            {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === true ? (
+                                <span className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
+                            ) : null}
+                            {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === false && !checkingLocalModel ? (
+                                <span className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
+                            ) : null}
+                        </div>
                         {settings.transcriptionMode === 'local' ? (
                             <div className="ai-settings__status-block">
                                 {transcribeUnavailable ? (
                                     <Typography variant="body2" color="warning.main">
                                         Install and start the local server to use local transcription.
-                                    </Typography>
-                                ) : null}
-                                {!transcribeUnavailable && checkingLocalModel ? (
-                                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <CircularProgress size={14} thickness={5} />
-                                        Checking model availability...
                                     </Typography>
                                 ) : null}
                                 {!transcribeUnavailable && localModelWarming ? (
@@ -1006,11 +1010,6 @@ export const AiSettings = () => {
                                         {selectedLocalMetadata
                                             ? `${selectedLocalMetadata.label} is warming up. Recording is temporarily disabled.`
                                             : 'Model is warming up. Recording is temporarily disabled.'}
-                                    </Typography>
-                                ) : null}
-                                {!transcribeUnavailable && !checkingLocalModel && !localModelWarming && localModelReady === true ? (
-                                    <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        {selectedLocalMetadata ? `${selectedLocalMetadata.label} ready` : 'Model ready'}
                                     </Typography>
                                 ) : null}
                                 {!transcribeUnavailable && !checkingLocalModel && localModelReady === false ? (
@@ -1049,55 +1048,48 @@ export const AiSettings = () => {
 
                     <div className="settings-field">
                         <label className="settings-field__label">LLM host</label>
-                        <CustomSelect
-                            value={settings.llmHost ?? 'api'}
-                            options={LLM_HOST_OPTIONS}
-                            onChange={(val) => handleLlmHostChange(val as LlmHost)}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <CustomSelect
+                                value={settings.llmHost ?? 'api'}
+                                options={LLM_HOST_OPTIONS}
+                                onChange={(val) => handleLlmHostChange(val as LlmHost)}
+                            />
+                        </div>
                     </div>
 
                     <div className="settings-field">
                         <label className="settings-field__label">LLM model</label>
-                        <CustomSelect
-                            value={settings.llmHost === 'local' ? localLlmModel : apiLlmModel}
-                            options={llmOptions}
-                            onChange={(val) => {
-                                if (settings.llmHost === 'local') {
-                                    void handleLocalLlmModelChange(val);
-                                } else {
-                                    void handleApiLlmModelChange(val);
-                                }
-                            }}
-                            disabled={settings.llmHost === 'local' && (ollamaChecking || !ollamaInstalled)}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <CustomSelect
+                                value={settings.llmHost === 'local' ? localLlmModel : apiLlmModel}
+                                options={llmOptions}
+                                onChange={(val) => {
+                                    if (settings.llmHost === 'local') {
+                                        void handleLocalLlmModelChange(val);
+                                    } else {
+                                        void handleApiLlmModelChange(val);
+                                    }
+                                }}
+                                disabled={settings.llmHost === 'local' && (ollamaChecking || !ollamaInstalled)}
+                            />
+                            {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === true ? (
+                                <span className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
+                            ) : null}
+                            {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === false && !ollamaModelChecking ? (
+                                <span className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
+                            ) : null}
+                        </div>
                         {settings.llmHost === 'local' ? (
                             <div className="ai-settings__status-block">
-                                {ollamaChecking ? (
-                                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <CircularProgress size={14} thickness={5} />
-                                        Checking Ollama...
-                                    </Typography>
-                                ) : null}
                                 {!ollamaChecking && ollamaInstalled === false ? (
                                     <Typography variant="body2" color="warning.main">
                                         Install Ollama CLI to enable local LLMs.
-                                    </Typography>
-                                ) : null}
-                                {ollamaInstalled && (ollamaModelChecking || ollamaModelDownloaded === null) ? (
-                                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <CircularProgress size={14} thickness={5} />
-                                        Checking model availability...
                                     </Typography>
                                 ) : null}
                                 {ollamaInstalled && !ollamaModelChecking && ollamaModelWarming ? (
                                     <Typography variant="body2" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <CircularProgress size={16} thickness={5} sx={{ color: 'warning.main' }} />
                                         {selectedLocalLlmLabel} is warming up.
-                                    </Typography>
-                                ) : null}
-                                {ollamaInstalled && !ollamaModelChecking && !ollamaModelWarming && ollamaModelDownloaded === true ? (
-                                    <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        {selectedLocalLlmLabel} ready
                                     </Typography>
                                 ) : null}
                                 {ollamaInstalled && !ollamaModelChecking && ollamaModelDownloaded === false ? (
