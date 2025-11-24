@@ -837,7 +837,7 @@ export const AiSettings = () => {
                 <h3 className="settings-card__title">Modes & Models</h3>
                 <div className="ai-settings__grid ai-settings__grid--models">
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription</label>
+                        <label className="settings-field__label">Transcription Mode</label>
                         <div className="ai-settings__select-wrapper">
                             <CustomSelect
                                 value={settings.transcriptionMode ?? 'api'}
@@ -1047,7 +1047,7 @@ export const AiSettings = () => {
                     ) : null}
 
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM host</label>
+                        <label className="settings-field__label">LLM Mode</label>
                         <div className="ai-settings__select-wrapper">
                             <CustomSelect
                                 value={settings.llmHost ?? 'api'}
