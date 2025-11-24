@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {TextField} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import { logger } from '../../../utils/logger';
@@ -19,6 +19,9 @@ export const GeneralSettings = () => {
     const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? 420);
     const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? 780);
     const [message, setMessage] = useState<Message | null>(null);
+    const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const restartNoteVisible = useMemo(() => {
         const initial = settings.windowScale ?? 1;
@@ -41,39 +44,31 @@ export const GeneralSettings = () => {
         }, 3000);
     };
 
-    const handleSaveOpenAi = async () => {
-        const key = openaiKey.trim();
-        if (!key) {
-            showMessage('OpenAI API key cannot be empty', 'error');
-            return;
-        }
+    const saveOpenAi = useCallback(async (value: string) => {
+        const key = value.trim();
         try {
             await window.api.settings.setOpenaiApiKey(key);
             patchLocal({ openaiApiKey: key });
             logger.info('settings', 'OpenAI API key saved');
-            showMessage('OpenAI API key saved');
+            showMessage(key ? 'OpenAI API key saved' : 'OpenAI API key cleared');
         } catch (error) {
             logger.error('settings', 'Failed to save OpenAI API key', { error });
             showMessage('Failed to save OpenAI key', 'error');
         }
-    };
+    }, [patchLocal]);
 
-    const handleSaveGoogle = async () => {
-        const key = googleKey.trim();
-        if (!key) {
-            showMessage('Google API key cannot be empty', 'error');
-            return;
-        }
+    const saveGoogle = useCallback(async (value: string) => {
+        const key = value.trim();
         try {
             await window.api.settings.setGoogleApiKey(key);
             patchLocal({ googleApiKey: key });
             logger.info('settings', 'Google API key saved');
-            showMessage('Google API key saved');
+            showMessage(key ? 'Google API key saved' : 'Google API key cleared');
         } catch (error) {
             logger.error('settings', 'Failed to save Google API key', { error });
             showMessage('Failed to save Google key', 'error');
         }
-    };
+    }, [patchLocal]);
 
     const toggleAlwaysOnTop = async (value: boolean) => {
         try {
@@ -118,9 +113,9 @@ export const GeneralSettings = () => {
         }
     };
 
-    const saveWindowSize = async () => {
-        const width = Math.max(MIN_WINDOW_WIDTH, Math.round(windowWidth));
-        const height = Math.max(MIN_WINDOW_HEIGHT, Math.round(windowHeight));
+    const saveWindowSize = useCallback(async (widthValue: number, heightValue: number) => {
+        const width = Math.max(MIN_WINDOW_WIDTH, Math.round(widthValue));
+        const height = Math.max(MIN_WINDOW_HEIGHT, Math.round(heightValue));
         setWindowWidth(width);
         setWindowHeight(height);
         try {
@@ -131,7 +126,49 @@ export const GeneralSettings = () => {
             logger.error('settings', 'Failed to save window size', { error });
             showMessage('Failed to save window size', 'error');
         }
-    };
+    }, [patchLocal]);
+
+    useEffect(() => {
+        if (openAiSaveTimeout.current) {
+            clearTimeout(openAiSaveTimeout.current);
+        }
+        openAiSaveTimeout.current = setTimeout(() => {
+            void saveOpenAi(openaiKey);
+        }, 500);
+        return () => {
+            if (openAiSaveTimeout.current) {
+                clearTimeout(openAiSaveTimeout.current);
+            }
+        };
+    }, [openaiKey, saveOpenAi]);
+
+    useEffect(() => {
+        if (googleSaveTimeout.current) {
+            clearTimeout(googleSaveTimeout.current);
+        }
+        googleSaveTimeout.current = setTimeout(() => {
+            void saveGoogle(googleKey);
+        }, 500);
+        return () => {
+            if (googleSaveTimeout.current) {
+                clearTimeout(googleSaveTimeout.current);
+            }
+        };
+    }, [googleKey, saveGoogle]);
+
+    useEffect(() => {
+        if (sizeSaveTimeout.current) {
+            clearTimeout(sizeSaveTimeout.current);
+        }
+        sizeSaveTimeout.current = setTimeout(() => {
+            void saveWindowSize(windowWidth, windowHeight);
+        }, 600);
+        return () => {
+            if (sizeSaveTimeout.current) {
+                clearTimeout(sizeSaveTimeout.current);
+            }
+        };
+    }, [windowWidth, windowHeight, saveWindowSize]);
 
     const openConfigFolder = async () => {
         try {
@@ -158,9 +195,6 @@ export const GeneralSettings = () => {
                             placeholder="Enter your OpenAI API key"
                             onChange={(event) => setOpenaiKey(event.target.value)}
                         />
-                        <button type="button" className="btn btn-sm" onClick={handleSaveOpenAi}>
-                            Save
-                        </button>
                     </div>
                     <div className="settings-field">
                         <label className="settings-field__label">Google AI</label>
@@ -171,9 +205,6 @@ export const GeneralSettings = () => {
                             placeholder="Enter your Google API key"
                             onChange={(event) => setGoogleKey(event.target.value)}
                         />
-                        <button type="button" className="btn btn-sm" onClick={handleSaveGoogle}>
-                            Save
-                        </button>
                     </div>
                 </div>
             </section>
@@ -260,9 +291,6 @@ export const GeneralSettings = () => {
                         />
                     </div>
                 </div>
-                <button type="button" className="btn btn-sm" onClick={saveWindowSize}>
-                    Save
-                </button>
             </section>
 
             <section className="settings-card card">
