@@ -500,6 +500,90 @@ async function chatWithOllama(
     }
 }
 
+async function streamOllamaChatCompletion(
+    prompt: string,
+    requestId: string,
+    settings: AppSettings,
+    controller: AbortController
+): Promise<void> {
+    const model = settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM;
+    const systemPrompt = (settings.llmPrompt || '').trim();
+    const messages = [
+        ...(systemPrompt ? [{role: 'system', content: systemPrompt}] : []),
+        {role: 'user', content: prompt},
+    ];
+    logRequest('llm:ollama:stream', 'start', {requestId, model});
+
+    const response = await fetchWithTimeout(
+        'http://localhost:11434/v1/chat/completions',
+        {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model, messages, stream: true}),
+            signal: controller.signal,
+        },
+        Math.max(settings.apiLlmTimeoutMs || 0, 600_000)
+    );
+    if (!response.ok || !response.body) {
+        logRequest('llm:ollama:stream', 'error', {requestId, status: response.status});
+        const text = await response.text();
+        throw new Error(text || 'Local LLM streaming failed');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let full = '';
+
+    const flushBuffer = () => {
+        const parts = buffer.split('\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+            const line = part.trim();
+            if (!line || line === 'data: [DONE]' || line === '[DONE]') continue;
+            const jsonLine = line.startsWith('data:') ? line.slice(5).trim() : line;
+            if (!jsonLine) continue;
+            try {
+                const json = JSON.parse(jsonLine);
+                const deltaRaw =
+                    json?.message?.content ||
+                    json?.choices?.[0]?.delta?.content ||
+                    json?.choices?.[0]?.message?.content;
+                let text = '';
+                if (Array.isArray(deltaRaw)) {
+                    text = deltaRaw
+                        .map((item: any) => {
+                            if (typeof item === 'string') return item;
+                            if (item?.text) return item.text;
+                            if (item?.content) return item.content;
+                            return '';
+                        })
+                        .join('');
+                } else if (typeof deltaRaw === 'string') {
+                    text = deltaRaw;
+                } else if (deltaRaw?.content) {
+                    text = deltaRaw.content;
+                }
+                if (!text) continue;
+                full += text;
+                emit('delta', {requestId, delta: text});
+            } catch (error) {
+                console.warn('[assistantBridge] failed to parse ollama chunk', error, jsonLine);
+            }
+        }
+    };
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        flushBuffer();
+    }
+    flushBuffer();
+    emit('done', {requestId, full});
+    logRequest('llm:ollama:stream', 'ok', {requestId, model, streaming: true});
+}
+
 async function streamChatCompletion(
     prompt: string,
     requestId: string,
@@ -513,10 +597,13 @@ async function streamChatCompletion(
 
     logRequest('llm:stream', 'start', {requestId, host, model});
 
-    if (host !== 'api' || GEMINI_LLM_SET.has(model)) {
-        const full = host === 'api'
-            ? await chatWithGemini(prompt, settings, model, controller.signal)
-            : await chatWithOllama(prompt, settings, model, controller.signal);
+    if (host === 'local') {
+        await streamOllamaChatCompletion(prompt, requestId, settings, controller);
+        return;
+    }
+
+    if (GEMINI_LLM_SET.has(model)) {
+        const full = await chatWithGemini(prompt, settings, model, controller.signal);
         emit('delta', {requestId, delta: full});
         emit('done', {requestId, full});
         logRequest('llm:stream', 'ok', {requestId, host, model, streaming: false});
