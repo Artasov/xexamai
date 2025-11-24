@@ -79,15 +79,34 @@ function ensureGoogleKey(settings: AppSettings): string {
 }
 
 const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs?: number) => {
-    if (!timeoutMs || timeoutMs <= 0) {
+    const hasTimeout = typeof timeoutMs === 'number' && timeoutMs > 0;
+    if (!hasTimeout && !init.signal) {
         return fetch(input, init);
     }
+
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const userSignal = init.signal;
+
+    if (userSignal) {
+        if (userSignal.aborted) {
+            controller.abort((userSignal as any).reason);
+        } else {
+            const abortHandler = () => controller.abort((userSignal as any).reason);
+            userSignal.addEventListener('abort', abortHandler, { once: true });
+        }
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (hasTimeout) {
+        timeoutId = setTimeout(() => controller.abort('timeout'), timeoutMs);
+    }
+
     try {
-        return await fetch(input, {...init, signal: controller.signal});
+        return await fetch(input, { ...init, signal: controller.signal });
     } finally {
-        clearTimeout(id);
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
     }
 };
 
@@ -101,7 +120,8 @@ async function transcribeWithOpenAi(
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/audio/transcriptions`;
     const form = new FormData();
-    form.append('model', model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE);
+    const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+    form.append('model', resolvedModel);
 
     const file = new File([buffer], filename, { type: mime || 'audio/webm' });
     form.append('file', file);
@@ -109,6 +129,8 @@ async function transcribeWithOpenAi(
     if (settings.transcriptionPrompt?.trim()) {
         form.append('prompt', settings.transcriptionPrompt.trim());
     }
+
+    logRequest('transcribe:openai', 'start', {model: resolvedModel, mime});
 
     const response = await fetchWithTimeout(
         url,
@@ -124,11 +146,13 @@ async function transcribeWithOpenAi(
 
     const data = await response.json().catch(async () => ({ text: await response.text() }));
     if (!response.ok) {
+        logRequest('transcribe:openai', 'error', {status: response.status, data});
         const message = typeof data === 'string'
             ? data
             : data?.error?.message || 'Transcription failed';
         throw new Error(message);
     }
+    logRequest('transcribe:openai', 'ok', {model: resolvedModel, status: response.status});
     return (data as any)?.text || '';
 }
 
@@ -157,6 +181,7 @@ async function transcribeWithLocal(
         form.append('prompt', settings.transcriptionPrompt.trim());
     }
     form.append('response_format', 'json');
+    logRequest('transcribe:local', 'start', {model, mime});
     const response = await fetchWithTimeout(
         `${FAST_WHISPER_BASE_URL}/v1/audio/transcriptions`,
         {
@@ -167,11 +192,13 @@ async function transcribeWithLocal(
     );
     const data = await response.json().catch(async () => ({ text: await response.text() }));
     if (!response.ok) {
+        logRequest('transcribe:local', 'error', {status: response.status, data});
         const message = typeof data === 'string'
             ? data
             : data?.error?.message || data?.detail || 'Local transcription failed';
         throw new Error(message);
     }
+    logRequest('transcribe:local', 'ok', {model, status: response.status});
     const text = extractSpeechText(data);
     return text;
 }
@@ -189,6 +216,21 @@ async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
     });
 }
 
+const logRequest = (
+    label: string,
+    status: 'start' | 'ok' | 'error',
+    details: Record<string, unknown> = {}
+) => {
+    const meta = {...details};
+    if (status === 'start') {
+        console.log(`[assistant] ${label}: start`, meta);
+    } else if (status === 'ok') {
+        console.log(`[assistant] ${label}: ok`, meta);
+    } else {
+        console.error(`[assistant] ${label}: error`, meta);
+    }
+};
+
 async function transcribeWithGoogle(
     buffer: ArrayBuffer,
     mime: string,
@@ -196,9 +238,11 @@ async function transcribeWithGoogle(
     model?: string
 ): Promise<string> {
     const key = ensureGoogleKey(settings);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE}:generateContent?key=${key}`;
+    const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${key}`;
     const base64Audio = await arrayBufferToBase64(buffer);
     const prompt = settings.transcriptionPrompt?.trim();
+    logRequest('transcribe:google', 'start', {model: resolvedModel, mime});
 
     const body: any = {
         contents: [
@@ -245,11 +289,13 @@ async function transcribeWithGoogle(
     );
     const data = await response.json().catch(async () => ({ text: await response.text() }));
     if (!response.ok) {
+        logRequest('transcribe:google', 'error', {status: response.status, data});
         const message = typeof data === 'string'
             ? data
             : data?.error?.message || 'Gemini transcription failed';
         throw new Error(message);
     }
+    logRequest('transcribe:google', 'ok', {model: resolvedModel, status: response.status});
     const candidates = (data as any)?.candidates;
     if (Array.isArray(candidates) && candidates.length) {
         const parts = candidates[0]?.content?.parts;
@@ -270,7 +316,8 @@ async function transcribeWithGoogle(
 async function chatCompletion(
     prompt: string,
     settings: AppSettings,
-    model?: string
+    model?: string,
+    signal?: AbortSignal
 ): Promise<string> {
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/chat/completions`;
@@ -288,36 +335,52 @@ async function chatCompletion(
             },
         ].filter(Boolean),
     };
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
+    logRequest('llm:openai', 'start', {model: body.model});
+    let logged = false;
+    try {
+        const response = await fetchWithTimeout(
+            url,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+                signal,
             },
-            body: JSON.stringify(body),
-        },
-        settings.apiLlmTimeoutMs
-    );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'LLM request failed';
-        throw new Error(message);
+            settings.apiLlmTimeoutMs
+        );
+        const data = await response.json().catch(async () => ({ text: await response.text() }));
+        if (!response.ok) {
+            logRequest('llm:openai', 'error', {status: response.status, data});
+            logged = true;
+            const message = typeof data === 'string'
+                ? data
+                : data?.error?.message || 'LLM request failed';
+            throw new Error(message);
+        }
+        logRequest('llm:openai', 'ok', {model: body.model, status: response.status});
+        return data?.choices?.[0]?.message?.content?.trim() || '';
+    } catch (error) {
+        const aborted = signal?.aborted || (error instanceof DOMException && error.name === 'AbortError');
+        if (!aborted && !logged) {
+            logRequest('llm:openai', 'error', {model: body.model, error: error instanceof Error ? error.message : String(error)});
+        }
+        throw error;
     }
-    return data?.choices?.[0]?.message?.content?.trim() || '';
 }
 
 async function chatWithGemini(
     prompt: string,
     settings: AppSettings,
-    model?: string
+    model?: string,
+    signal?: AbortSignal
 ): Promise<string> {
     const accessToken = ensureGoogleKey(settings);
     const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${accessToken}`;
+    logRequest('llm:gemini', 'start', {model: resolvedModel});
     const body: any = {
         contents: [
             {
@@ -332,43 +395,57 @@ async function chatWithGemini(
             parts: [{text: settings.llmPrompt.trim()}],
         };
     }
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body),
-        },
-        settings.apiLlmTimeoutMs
-    );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'Gemini request failed';
-        throw new Error(message);
-    }
-    const candidates = (data as any)?.candidates;
-    if (Array.isArray(candidates) && candidates.length) {
-        const parts = candidates[0]?.content?.parts;
-        if (Array.isArray(parts)) {
-            const text = parts
-                .map((part: any) => part?.text ?? '')
-                .filter(Boolean)
-                .join('\n')
-                .trim();
-            if (text) return text;
+    let logged = false;
+    try {
+        const response = await fetchWithTimeout(
+            url,
+            {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+                signal,
+            },
+            settings.apiLlmTimeoutMs
+        );
+        const data = await response.json().catch(async () => ({ text: await response.text() }));
+        if (!response.ok) {
+            logRequest('llm:gemini', 'error', {status: response.status, data});
+            logged = true;
+            const message = typeof data === 'string'
+                ? data
+                : data?.error?.message || 'Gemini request failed';
+            throw new Error(message);
         }
+        logRequest('llm:gemini', 'ok', {model: resolvedModel, status: response.status});
+        const candidates = (data as any)?.candidates;
+        if (Array.isArray(candidates) && candidates.length) {
+            const parts = candidates[0]?.content?.parts;
+            if (Array.isArray(parts)) {
+                const text = parts
+                    .map((part: any) => part?.text ?? '')
+                    .filter(Boolean)
+                    .join('\n')
+                    .trim();
+                if (text) return text;
+            }
+        }
+        const text = extractSpeechText(data);
+        if (text) return text;
+        throw new Error('Gemini returned an empty response.');
+    } catch (error) {
+        const aborted = signal?.aborted || (error instanceof DOMException && error.name === 'AbortError');
+        if (!aborted && !logged) {
+            logRequest('llm:gemini', 'error', {model: resolvedModel, error: error instanceof Error ? error.message : String(error)});
+        }
+        throw error;
     }
-    const text = extractSpeechText(data);
-    if (text) return text;
-    throw new Error('Gemini returned an empty response.');
 }
 
 async function chatWithOllama(
     prompt: string,
     settings: AppSettings,
-    model?: string
+    model?: string,
+    signal?: AbortSignal
 ): Promise<string> {
     const resolvedModel = model || settings.localLlmModel || DEFAULT_LOCAL_LLM;
     const systemPrompt = (settings.llmPrompt || '').trim();
@@ -376,37 +453,51 @@ async function chatWithOllama(
         ...(systemPrompt ? [{role: 'system', content: systemPrompt}] : []),
         {role: 'user', content: prompt},
     ];
-    const response = await fetchWithTimeout(
-        'http://localhost:11434/v1/chat/completions',
-        {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                model: resolvedModel,
-                messages,
-            }),
-        },
-        settings.apiLlmTimeoutMs
-    );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'Local LLM request failed';
-        throw new Error(message);
+    logRequest('llm:ollama', 'start', {model: resolvedModel});
+    let logged = false;
+    try {
+        const response = await fetchWithTimeout(
+            'http://localhost:11434/v1/chat/completions',
+            {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    model: resolvedModel,
+                    messages,
+                }),
+                signal,
+            },
+            Math.max(settings.apiLlmTimeoutMs || 0, 600_000)
+        );
+        const data = await response.json().catch(async () => ({ text: await response.text() }));
+        if (!response.ok) {
+            logRequest('llm:ollama', 'error', {status: response.status, data});
+            logged = true;
+            const message = typeof data === 'string'
+                ? data
+                : data?.error?.message || 'Local LLM request failed';
+            throw new Error(message);
+        }
+        logRequest('llm:ollama', 'ok', {model: resolvedModel, status: response.status});
+        const message = (data as any)?.message?.content;
+        if (Array.isArray(message)) {
+            return message.map((item: any) => item?.text ?? item?.content ?? '').join('\n').trim();
+        }
+        if (typeof message === 'string') {
+            return message.trim();
+        }
+        const text = (data as any)?.choices?.[0]?.message?.content;
+        if (typeof text === 'string') {
+            return text.trim();
+        }
+        return extractSpeechText(data);
+    } catch (error) {
+        const aborted = signal?.aborted || (error instanceof DOMException && error.name === 'AbortError');
+        if (!aborted && !logged) {
+            logRequest('llm:ollama', 'error', {model: resolvedModel, error: error instanceof Error ? error.message : String(error)});
+        }
+        throw error;
     }
-    const message = (data as any)?.message?.content;
-    if (Array.isArray(message)) {
-        return message.map((item: any) => item?.text ?? item?.content ?? '').join('\n').trim();
-    }
-    if (typeof message === 'string') {
-        return message.trim();
-    }
-    const text = (data as any)?.choices?.[0]?.message?.content;
-    if (typeof text === 'string') {
-        return text.trim();
-    }
-    return extractSpeechText(data);
 }
 
 async function streamChatCompletion(
@@ -415,17 +506,20 @@ async function streamChatCompletion(
     settings: AppSettings,
     controller: AbortController
 ): Promise<void> {
-    const host = settings.llmHost || 'api';
+    const host = settings.llmHost === 'local' ? 'local' : 'api';
     const model = host === 'local'
-        ? settings.localLlmModel || DEFAULT_LOCAL_LLM
-        : settings.llmModel || settings.apiLlmModel || DEFAULT_API_LLM;
+        ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
+        : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+
+    logRequest('llm:stream', 'start', {requestId, host, model});
 
     if (host !== 'api' || GEMINI_LLM_SET.has(model)) {
         const full = host === 'api'
-            ? await chatWithGemini(prompt, settings, model)
-            : await chatWithOllama(prompt, settings, model);
+            ? await chatWithGemini(prompt, settings, model, controller.signal)
+            : await chatWithOllama(prompt, settings, model, controller.signal);
         emit('delta', {requestId, delta: full});
         emit('done', {requestId, full});
+        logRequest('llm:stream', 'ok', {requestId, host, model, streaming: false});
         return;
     }
 
@@ -460,6 +554,7 @@ async function streamChatCompletion(
         settings.apiLlmTimeoutMs
     );
     if (!response.ok || !response.body) {
+        logRequest('llm:stream', 'error', {requestId, status: response.status});
         const text = await response.text();
         throw new Error(text || 'Streaming request failed');
     }
@@ -515,6 +610,7 @@ async function streamChatCompletion(
     }
     flushBuffer();
     emit('done', { requestId, full });
+    logRequest('llm:stream', 'ok', {requestId, host, model, streaming: true});
 }
 
 export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<AssistantResponse> {
@@ -527,6 +623,8 @@ export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<Ass
     const transcriptionModel = transcriptionMode === 'local'
         ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
         : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+
+    logRequest('transcribe', 'start', {mode: transcriptionMode, model: transcriptionModel, mime: args.mime});
 
     let text = '';
     if (transcriptionMode === 'local') {
@@ -543,10 +641,18 @@ export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<Ass
         );
     }
 
-    const llmHost = settings.llmHost || 'api';
+    const llmHost = settings.llmHost === 'local' ? 'local' : 'api';
     const llmModel = llmHost === 'local'
-        ? settings.localLlmModel || DEFAULT_LOCAL_LLM
-        : settings.llmModel || settings.apiLlmModel || DEFAULT_API_LLM;
+        ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
+        : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+    logRequest('llm:select', 'start', {
+        host: llmHost,
+        model: llmModel,
+        rawHost: settings.llmHost,
+        rawApiModel: settings.apiLlmModel,
+        rawLocalModel: settings.localLlmModel,
+        rawLlmModel: settings.llmModel,
+    });
     let answer = '';
     if (text) {
         if (llmHost === 'local') {
@@ -557,6 +663,7 @@ export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<Ass
             answer = await chatCompletion(text, settings, llmModel);
         }
     }
+    logRequest('transcribe+llm', 'ok', {mode: transcriptionMode, model: transcriptionModel, llmHost, llmModel});
     return { ok: true, text, answer };
 }
 
@@ -570,6 +677,7 @@ export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{
     const transcriptionModel = transcriptionMode === 'local'
         ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
         : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+    logRequest('transcribe', 'start', {mode: transcriptionMode, model: transcriptionModel, mime: args.mime});
     const text = await (async () => {
         if (transcriptionMode === 'local') {
             return transcribeWithLocal(buffer, args.mime, args.filename || 'lastN.webm', settings);
@@ -585,6 +693,7 @@ export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{
             transcriptionModel
         );
     })();
+    logRequest('transcribe', 'ok', {mode: transcriptionMode, model: transcriptionModel});
     return { ok: true, text };
 }
 
@@ -600,6 +709,7 @@ export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promi
     const transcriptionModel = transcriptionMode === 'local'
         ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
         : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+    logRequest('transcribe', 'start', {mode: transcriptionMode, model: transcriptionModel, mime: args.mime, stream: true});
     const text = await (async () => {
         if (transcriptionMode === 'local') {
             return transcribeWithLocal(buffer, args.mime, args.filename || 'lastN.webm', settings);
@@ -618,8 +728,24 @@ export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promi
     emit('transcript', { requestId, delta: text });
     const controller = new AbortController();
     activeStreams.set(requestId, controller);
+
+    const llmHost = settings.llmHost === 'local' ? 'local' : 'api';
+    const llmModel = llmHost === 'local'
+        ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
+        : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+    logRequest('llm:stream', 'start', {
+        requestId,
+        host: llmHost,
+        model: llmModel,
+        rawHost: settings.llmHost,
+        rawApiModel: settings.apiLlmModel,
+        rawLocalModel: settings.localLlmModel,
+        rawLlmModel: settings.llmModel,
+    });
+
     streamChatCompletion(text, requestId, settings, controller).catch((error) => {
         if (controller.signal.aborted) return;
+        logRequest('llm:stream', 'error', {requestId, error: error instanceof Error ? error.message : String(error)});
         emit('error', {
             requestId,
             error: error instanceof Error ? error.message : String(error),
@@ -637,6 +763,7 @@ export async function assistantAskChat(args: { text: string; requestId?: string 
     activeStreams.set(requestId, controller);
     streamChatCompletion(args.text, requestId, settings, controller).catch((error) => {
         if (controller.signal.aborted) return;
+        logRequest('llm:stream', 'error', {requestId, error: error instanceof Error ? error.message : String(error)});
         emit('error', {
             requestId,
             error: error instanceof Error ? error.message : String(error),

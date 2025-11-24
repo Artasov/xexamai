@@ -7,6 +7,14 @@ import {logger} from '../utils/logger';
 import {settingsStore} from '../state/settingsStore';
 import {GoogleStreamingService} from '../services/googleStreamingService';
 import {
+    checkOllamaInstalled,
+    checkOllamaModelDownloaded,
+    isOllamaModelDownloading,
+    isOllamaModelWarming,
+    normalizeOllamaModelName
+} from '../services/ollama';
+import {LOCAL_LLM_MODELS} from '@shared/constants';
+import {
     startRecording as startAudioRecording,
     stopRecording as stopAudioRecording,
     switchAudioInput as switchAudioInputDevice,
@@ -358,29 +366,14 @@ export class StreamController {
         }
     }
 
-    private async finalizeStreamIfActive(localRequestId?: string): Promise<void> {
-        try {
-            if (!this.currentRequestId) return;
-            if (localRequestId && this.currentRequestId !== localRequestId) return;
-            this.currentRequestId = null;
-            try {
-                setStatus('Done', 'ready');
-            } catch {
-            }
-            setProcessing(false);
-            hideStopButton();
-            updateButtonsState();
-            this.removeStreamHandlers();
-        } catch {
-        }
-    }
-
     private async sendChatRequest(requestId: string, text: string): Promise<void> {
+        if (!(await this.ensureLlmReady())) {
+            return;
+        }
         this.currentRequestId = requestId;
         this.prepareStreamHandlers(requestId);
         showStopButton();
         await window.api.assistant.askChat({ text, requestId });
-        await this.finalizeStreamIfActive(requestId);
     }
 
     private prepareStreamHandlers(requestId: string): void {
@@ -426,6 +419,57 @@ export class StreamController {
         window.api.assistant.onStreamDelta(this.streamDeltaHandler);
         window.api.assistant.onStreamDone(this.streamDoneHandler);
         window.api.assistant.onStreamError(this.streamErrorHandler);
+    }
+
+    private async ensureLlmReady(): Promise<boolean> {
+        let settings: any;
+        try {
+            settings = settingsStore.get();
+        } catch {
+            settings = await settingsStore.load();
+        }
+
+        if (settings.llmHost !== 'local') {
+            return true;
+        }
+
+        const model = normalizeOllamaModelName(
+            settings.localLlmModel || settings.llmModel || LOCAL_LLM_MODELS[0] || 'gpt-oss:20b'
+        );
+
+        try {
+            const installed = await checkOllamaInstalled();
+            if (!installed) {
+                setStatus('Install Ollama to use local LLMs', 'error');
+                return false;
+            }
+        } catch (error) {
+            logger.error('llm', 'Failed to detect Ollama', {error});
+            setStatus('Failed to detect Ollama installation', 'error');
+            return false;
+        }
+
+        try {
+            const downloaded = await checkOllamaModelDownloaded(model, {force: true});
+            if (!downloaded) {
+                setStatus(`Download the ${model} LLM model first`, 'error');
+                return false;
+            }
+            if (isOllamaModelDownloading(model)) {
+                setStatus(`The ${model} model is downloading`, 'error');
+                return false;
+            }
+            if (isOllamaModelWarming(model)) {
+                setStatus(`The ${model} model is warming up`, 'error');
+                return false;
+            }
+        } catch (error) {
+            logger.error('llm', 'Failed to verify Ollama model', {error});
+            setStatus('Failed to verify local LLM model', 'error');
+            return false;
+        }
+
+        return true;
     }
 
     private removeStreamHandlers(): void {

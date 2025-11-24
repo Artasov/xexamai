@@ -90,8 +90,14 @@ const settingsApi: AssistantAPI['settings'] = {
     setTranscriptionPrompt: async (prompt) => {
         await patchSettings({ transcriptionPrompt: prompt });
     },
-    setLlmModel: async (model) => {
-        await patchSettings({ llmModel: model });
+    setLlmModel: async (model, host) => {
+        const payload: Record<string, unknown> = { llmModel: model };
+        if (host === 'local') {
+            payload.localLlmModel = model;
+        } else if (host === 'api') {
+            payload.apiLlmModel = model;
+        }
+        await patchSettings(payload);
     },
     setLlmPrompt: async (prompt) => {
         await patchSettings({ llmPrompt: prompt });

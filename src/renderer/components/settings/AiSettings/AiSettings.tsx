@@ -579,7 +579,7 @@ export const AiSettings = () => {
         if (needsOpenAi && !requireOpenAi()) return;
         if (needsGoogle && !requireGoogle()) return;
         try {
-            await window.api.settings.setLlmModel(model);
+            await window.api.settings.setLlmModel(model, 'api');
             const isApiHost = settings.llmHost !== 'local';
             patchLocal({
                 llmModel: isApiHost ? model : settings.llmModel,
@@ -594,7 +594,7 @@ export const AiSettings = () => {
 
     const handleLocalLlmModelChange = async (model: string) => {
         try {
-            await window.api.settings.setLlmModel(model);
+            await window.api.settings.setLlmModel(model, 'local');
             const isLocalHost = settings.llmHost === 'local';
             patchLocal({
                 llmModel: isLocalHost ? model : settings.llmModel,
@@ -638,9 +638,9 @@ export const AiSettings = () => {
                 await warmupLocalSpeechModel(model, settings.localDevice);
             } catch (error) {
                 logger.error('settings', 'Warmup failed after download', { error });
-                setLocalModelError('Model downloaded but warmup failed. Try again.');
+                setLocalModelError('Model ready but warmup failed. Try again.');
             }
-            showMessage('Local model downloaded');
+            showMessage('Local model ready');
         } catch (error: any) {
             const detail = error?.response?.data?.detail;
             setLocalModelError(detail || (error instanceof Error ? error.message : 'Failed to download model'));
@@ -678,9 +678,9 @@ export const AiSettings = () => {
                 await warmupOllamaModel(model);
             } catch (error) {
                 logger.error('settings', 'Ollama warmup failed', { error });
-                setOllamaModelError('Model downloaded but warmup failed.');
+                setOllamaModelError('Model ready but warmup failed.');
             }
-            showMessage('LLM model downloaded');
+            showMessage('LLM model ready');
         } catch (error) {
             logger.error('settings', 'Failed to download Ollama model', { error });
             setOllamaModelError(error instanceof Error ? error.message : 'Failed to download model');
@@ -1010,7 +1010,7 @@ export const AiSettings = () => {
                                 ) : null}
                                 {!transcribeUnavailable && !checkingLocalModel && !localModelWarming && localModelReady === true ? (
                                     <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        {selectedLocalMetadata ? `${selectedLocalMetadata.label} ready` : 'Model downloaded'}
+                                        {selectedLocalMetadata ? `${selectedLocalMetadata.label} ready` : 'Model ready'}
                                     </Typography>
                                 ) : null}
                                 {!transcribeUnavailable && !checkingLocalModel && localModelReady === false ? (

@@ -54,8 +54,17 @@
 }
 
 .custom-select__chevron {
-    font-size: 0.85rem;
-    color: rgba(226, 232, 240, 0.5);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 7px solid rgba(226, 232, 240, 0.6);
+    transition: transform 0.16s ease, border-top-color 0.16s ease;
+}
+
+.custom-select--open .custom-select__chevron {
+    transform: rotate(180deg);
+    border-top-color: #e2e8f0;
 }
 
 .custom-select__dropdown-container {
@@ -75,17 +84,27 @@
     gap: 0.25rem;
     border-radius: 0.75rem;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    background: transparent;
+    background: linear-gradient(150deg, rgba(12, 18, 32, 0.94), rgba(11, 18, 28, 0.92));
     backdrop-filter: blur(28px) saturate(165%);
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 28px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.02);
     max-height: 280px;
     overflow: auto;
-    pointer-events: auto;
+    pointer-events: none;
     z-index: 9999;
     opacity: 0;
     transform: translateY(6px) scale(0.98);
     transform-origin: top;
-    animation: cs-dropdown-in 150ms ease forwards;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.custom-select__dropdown--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.custom-select__dropdown--closing {
+    pointer-events: none;
 }
 
 .custom-select__option {
@@ -152,15 +171,4 @@
 
 .custom-dropdown-scrollbar::-webkit-scrollbar-corner {
     background: #00000005;
-}
-
-@keyframes cs-dropdown-in {
-    from {
-        opacity: 0;
-        transform: translateY(6px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
 }
