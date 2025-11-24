@@ -1,6 +1,7 @@
 ﻿import {setRecording, state} from '../state/appState';
 import {setStatus} from './status';
 import {logger} from '../utils/logger';
+import {ensureTranscriptionReady} from '../utils/transcriptionGuards';
 
 type ControlsInitArgs = {
     onRecordToggle: (shouldRecord: boolean) => Promise<void> | void;
@@ -147,6 +148,13 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
         }
 
         const shouldStart = !state.isRecording;
+        if (shouldStart) {
+            const ready = await ensureTranscriptionReady();
+            if (!ready) {
+                updateButtonsState();
+                return;
+            }
+        }
         logger.info('ui', 'Record button clicked', { shouldStart });
         setRecording(shouldStart);
         btnRecord.disabled = true;

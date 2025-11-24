@@ -82,6 +82,10 @@
     overflow: auto;
     pointer-events: auto;
     z-index: 9999;
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+    transform-origin: top;
+    animation: cs-dropdown-in 150ms ease forwards;
 }
 
 .custom-select__option {
@@ -148,4 +152,15 @@
 
 .custom-dropdown-scrollbar::-webkit-scrollbar-corner {
     background: #00000005;
+}
+
+@keyframes cs-dropdown-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }

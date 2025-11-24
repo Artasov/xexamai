@@ -45,12 +45,7 @@ async fn config_update(
         .map_err(|error| error.to_string())?;
     app.emit("config:updated", &updated)
         .map_err(|error| error.to_string())?;
-    handle_config_effects(
-        &app,
-        &updated,
-        hotkeys.inner().clone(),
-        app.state::<Arc<FastWhisperManager>>().inner().clone(),
-    );
+    handle_config_effects(&app, &updated, hotkeys.inner().clone());
     Ok(updated)
 }
 
@@ -66,12 +61,7 @@ async fn config_reset(
         .map_err(|error| error.to_string())?;
     app.emit("config:updated", &updated)
         .map_err(|error| error.to_string())?;
-    handle_config_effects(
-        &app,
-        &updated,
-        hotkeys.inner().clone(),
-        app.state::<Arc<FastWhisperManager>>().inner().clone(),
-    );
+    handle_config_effects(&app, &updated, hotkeys.inner().clone());
     Ok(updated)
 }
 
@@ -221,29 +211,10 @@ fn handle_config_effects(
     app: &AppHandle,
     config: &AppConfig,
     hotkeys: Arc<HotkeyManager>,
-    fast_whisper: Arc<FastWhisperManager>,
 ) {
     hotkeys.apply_config(app, config);
     if let Err(error) = apply_window_preferences(app, config) {
         eprintln!("[window] failed to apply preferences: {error}");
-    }
-
-    if config.transcription_mode == "local" {
-        let manager = fast_whisper.clone();
-        let handle = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Err(error) = manager.start_existing(&handle).await {
-                eprintln!("[local-speech] failed to start: {error}");
-            }
-        });
-    } else {
-        let manager = fast_whisper.clone();
-        let handle = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Err(error) = manager.stop(&handle).await {
-                eprintln!("[local-speech] failed to stop: {error}");
-            }
-        });
     }
 }
 
@@ -339,7 +310,7 @@ fn main() {
             app.manage(auth_queue.clone());
 
             tray::setup(&app_handle)?;
-            handle_config_effects(&app_handle, &initial_config, hotkeys, fast_whisper);
+            handle_config_effects(&app_handle, &initial_config, hotkeys);
             flush_pending_deep_links(&app_handle, auth_queue.clone());
             setup_deep_link_listener(&app_handle, auth_queue);
 

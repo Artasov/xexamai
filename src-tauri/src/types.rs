@@ -368,6 +368,8 @@ pub struct FastWhisperStatus {
     pub last_action: Option<String>,
     pub last_success_at: Option<i64>,
     pub log_line: Option<String>,
+    #[serde(default)]
+    pub install_dir: Option<String>,
     pub updated_at: i64,
 }
 
@@ -382,6 +384,7 @@ impl FastWhisperStatus {
             last_action: None,
             last_success_at: None,
             log_line: None,
+            install_dir: None,
             updated_at: Utc::now().timestamp_millis(),
         }
     }

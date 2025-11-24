@@ -36,6 +36,9 @@ pub const DEFAULT_SCREEN_PROMPT: &str = "You are assisting with a technical inte
 pub const SITE_BASE_URL: &str = "https://xldev.ru";
 pub const OAUTH_APP_NAME: &str = "xexamai";
 pub const OAUTH_SCHEME: &str = "xexamai";
+// Shared install location hint for the local speech server so multiple apps reuse one copy.
+pub const FAST_WHISPER_INSTALL_ENV_VAR: &str = "WINKY_LOCAL_SPEECH_DIR";
+pub const FAST_WHISPER_INSTALL_HINT_FILE: &str = "local-speech-path.txt";
 pub const FAST_WHISPER_REPO_URL: &str = "https://github.com/Artasov/fast-fast-whisper.git";
 pub const FAST_WHISPER_REPO_NAME: &str = "fast-fast-whisper";
 pub const FAST_WHISPER_REPO_ARCHIVE_URL: &str =

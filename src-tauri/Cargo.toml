@@ -33,6 +33,7 @@ zip = "0.6"
 flate2 = "1.0"
 futures-util = "0.3"
 image = "0.25"
+winreg = "0.52"
 
 [features]
 default = ["custom-protocol"]

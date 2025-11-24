@@ -8,7 +8,7 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
@@ -22,8 +22,8 @@ use tokio::time::sleep;
 use zip::ZipArchive;
 
 use crate::constants::{
-    FAST_WHISPER_HEALTH_ENDPOINT, FAST_WHISPER_PORT, FAST_WHISPER_REPO_ARCHIVE_URL,
-    FAST_WHISPER_REPO_NAME, FAST_WHISPER_REPO_URL,
+    FAST_WHISPER_HEALTH_ENDPOINT, FAST_WHISPER_INSTALL_ENV_VAR, FAST_WHISPER_INSTALL_HINT_FILE,
+    FAST_WHISPER_PORT, FAST_WHISPER_REPO_ARCHIVE_URL, FAST_WHISPER_REPO_NAME, FAST_WHISPER_REPO_URL,
 };
 use crate::types::FastWhisperStatus;
 
@@ -33,10 +33,144 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+fn install_hint_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|mut dir| {
+            dir.push(FAST_WHISPER_INSTALL_HINT_FILE);
+            dir
+        })
+}
+
+fn normalize_install_dir(raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    #[cfg(windows)]
+    {
+        if trimmed.len() == 2 {
+            let mut chars = trimmed.chars();
+            if let (Some(drive), Some(':')) = (chars.next(), chars.next()) {
+                if drive.is_ascii_alphabetic() {
+                    return Some(PathBuf::from(format!(r"{}:\", drive)));
+                }
+            }
+        }
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        std::env::current_dir().ok().map(|cwd| cwd.join(path))
+    }
+}
+
+fn normalize_saved_path(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(stripped) = text.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{}", stripped));
+        }
+        if let Some(stripped) = text.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped.to_string());
+        }
+    }
+    path
+}
+
+fn load_install_dir_from_env() -> Option<PathBuf> {
+    std::env::var(FAST_WHISPER_INSTALL_ENV_VAR)
+        .ok()
+        .and_then(|value| normalize_install_dir(&value))
+        .map(normalize_saved_path)
+}
+
+#[cfg(windows)]
+fn load_install_dir_from_registry() -> Option<PathBuf> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(env) = hkcu.open_subkey("Environment") {
+        if let Ok(value) = env.get_value::<String, _>(FAST_WHISPER_INSTALL_ENV_VAR) {
+            return normalize_install_dir(&value).map(normalize_saved_path);
+        }
+    }
+    None
+}
+
+fn load_install_dir_from_hint(app: &AppHandle) -> Option<PathBuf> {
+    let hint_path = install_hint_path(app)?;
+    let contents = fs::read_to_string(&hint_path).ok()?;
+    normalize_install_dir(&contents).map(normalize_saved_path)
+}
+
+fn paths_equal(lhs: &PathBuf, rhs: &PathBuf) -> bool {
+    #[cfg(windows)]
+    {
+        lhs.to_string_lossy().to_lowercase() == rhs.to_string_lossy().to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        lhs == rhs
+    }
+}
+
+fn remember_install_dir(path: &PathBuf) {
+    let value = path.to_string_lossy();
+    std::env::set_var(FAST_WHISPER_INSTALL_ENV_VAR, value.as_ref());
+}
+
+fn load_saved_install_root(app: &AppHandle) -> Option<PathBuf> {
+    load_install_dir_from_env()
+        .or_else(|| {
+            #[cfg(windows)]
+            {
+                if let Some(reg) = load_install_dir_from_registry() {
+                    return Some(reg);
+                }
+            }
+            None
+        })
+        .or_else(|| load_install_dir_from_hint(app))
+}
+
+async fn write_install_hint(app: &AppHandle, path: &Path) -> Result<()> {
+    if let Some(hint_path) = install_hint_path(app) {
+        if let Some(parent) = hint_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let value = path.to_string_lossy().to_string();
+        tokio::fs::write(&hint_path, value).await?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+async fn persist_windows_env_var(path: PathBuf) -> Result<()> {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_WRITE};
+    use winreg::RegKey;
+
+    let value = path.to_string_lossy().to_string();
+    let env_var = FAST_WHISPER_INSTALL_ENV_VAR.to_string();
+    spawn_blocking(move || -> Result<()> {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let env = hkcu.open_subkey_with_flags("Environment", KEY_WRITE)?;
+        env.set_value(&env_var, &value)?;
+        Ok(())
+    })
+    .await??;
+    Ok(())
+}
+
 #[derive(Default)]
 pub struct FastWhisperManager {
     status: Mutex<FastWhisperStatus>,
     lock: Mutex<()>,
+    install_override: StdMutex<Option<PathBuf>>,
 }
 
 impl FastWhisperManager {
@@ -44,6 +178,13 @@ impl FastWhisperManager {
         Self {
             status: Mutex::new(FastWhisperStatus::new("Local server is not installed.")),
             lock: Mutex::new(()),
+            install_override: StdMutex::new(None),
+        }
+    }
+
+    pub async fn set_install_override(&self, path: Option<PathBuf>) {
+        if let Ok(mut guard) = self.install_override.lock() {
+            *guard = path;
         }
     }
 
@@ -218,8 +359,10 @@ impl FastWhisperManager {
     where
         F: FnMut(&mut FastWhisperStatus),
     {
+        let install_dir = self.install_root(app);
         let mut guard = self.status.lock().await;
         update(&mut guard);
+        guard.install_dir = Some(install_dir.to_string_lossy().to_string());
         guard.updated_at = chrono::Utc::now().timestamp_millis();
         let _ = app.emit("local-speech:status", guard.clone());
     }
@@ -238,7 +381,13 @@ impl FastWhisperManager {
         if repo_dir.exists() {
             return Ok(());
         }
-        tokio::fs::create_dir_all(self.install_root(app)).await?;
+        let install_root = self.install_root(app);
+        tokio::fs::create_dir_all(&install_root).await?;
+        let _ = write_install_hint(app, &install_root).await;
+        #[cfg(windows)]
+        {
+            let _ = persist_windows_env_var(install_root.clone()).await;
+        }
         self.update_status(app, |state| {
             state.phase = "installing".into();
             state.installed = false;
@@ -510,9 +659,31 @@ impl FastWhisperManager {
     }
 
     fn install_root(&self, app: &AppHandle) -> PathBuf {
-        app.path()
+        if let Ok(guard) = self.install_override.lock() {
+            if let Some(path) = guard.clone() {
+                return path;
+            }
+        }
+
+        if let Some(saved) = self.load_saved_install_root(app) {
+            self.remember_install_dir(&saved);
+            return saved;
+        }
+
+        let fallback = app
+            .path()
             .app_local_data_dir()
-            .unwrap_or_else(|_| std::env::current_dir().unwrap())
+            .unwrap_or_else(|_| std::env::current_dir().unwrap());
+        self.remember_install_dir(&fallback);
+        fallback
+    }
+
+    fn load_saved_install_root(&self, app: &AppHandle) -> Option<PathBuf> {
+        load_saved_install_root(app)
+    }
+
+    fn remember_install_dir(&self, path: &PathBuf) {
+        remember_install_dir(path);
     }
 
     fn repo_path(&self, app: &AppHandle) -> PathBuf {

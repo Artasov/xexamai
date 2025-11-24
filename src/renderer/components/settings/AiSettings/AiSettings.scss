@@ -14,6 +14,10 @@
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+.ai-settings__grid--models {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
 .ai-settings__grid--timeouts {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
@@ -58,11 +62,30 @@
     color: rgba(255, 255, 255, 0.8);
 }
 
+.ai-settings__status-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+}
+
 .ai-settings__actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: 0.75rem;
+}
+
+.ai-settings__local-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+}
+
+.ai-settings__local-server {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
 }
 
 .ai-settings__inline-input {
