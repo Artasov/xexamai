@@ -111,7 +111,10 @@ export const AiSettings = () => {
     const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
     const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
     const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
+    const [transcriptionPrompt, setTranscriptionPrompt] = useState(settings.transcriptionPrompt ?? '');
+    const [llmPrompt, setLlmPrompt] = useState(settings.llmPrompt ?? '');
     const timeoutSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const promptSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [localStatus, setLocalStatus] = useState<FastWhisperStatus | null>(null);
     const [localAction, setLocalAction] = useState<LocalAction | null>(null);
@@ -136,7 +139,9 @@ export const AiSettings = () => {
         setApiSttTimeout(settings.apiSttTimeoutMs ?? 30000);
         setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 30000);
         setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
-    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.screenProcessingTimeoutMs]);
+        setTranscriptionPrompt(settings.transcriptionPrompt ?? '');
+        setLlmPrompt(settings.llmPrompt ?? '');
+    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.screenProcessingTimeoutMs, settings.transcriptionPrompt, settings.llmPrompt]);
 
     const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
         toast[tone](text);
@@ -660,6 +665,41 @@ export const AiSettings = () => {
         settings.screenProcessingTimeoutMs,
         patchLocal,
     ]);
+    useEffect(() => {
+        if (
+            transcriptionPrompt === (settings.transcriptionPrompt ?? '') &&
+            llmPrompt === (settings.llmPrompt ?? '')
+        ) {
+            return;
+        }
+        if (promptSaveRef.current) {
+            clearTimeout(promptSaveRef.current);
+            promptSaveRef.current = null;
+        }
+        promptSaveRef.current = setTimeout(() => {
+            void (async () => {
+                try {
+                    await Promise.all([
+                        window.api.settings.setTranscriptionPrompt(transcriptionPrompt ?? ''),
+                        window.api.settings.setLlmPrompt(llmPrompt ?? ''),
+                    ]);
+                    patchLocal({
+                        transcriptionPrompt: transcriptionPrompt ?? '',
+                        llmPrompt: llmPrompt ?? '',
+                    });
+                } catch (error) {
+                    logger.error('settings', 'Failed to save prompts', {error});
+                    showMessage('Failed to save prompts', 'error');
+                }
+            })();
+        }, 500);
+        return () => {
+            if (promptSaveRef.current) {
+                clearTimeout(promptSaveRef.current);
+                promptSaveRef.current = null;
+            }
+        };
+    }, [transcriptionPrompt, llmPrompt, patchLocal, settings.llmPrompt, settings.transcriptionPrompt]);
     const hasOpenAiKey = Boolean(settings.openaiApiKey?.trim());
     const hasGoogleKey = Boolean(settings.googleApiKey?.trim());
 
@@ -1170,6 +1210,36 @@ export const AiSettings = () => {
                         </div>
                     )}
 
+                </div>
+            </section>
+
+            <section className="settings-card card">
+                <h3 className="settings-card__title">Prompts</h3>
+                <div className="ai-settings__grid">
+                    <div className="settings-field">
+                        <TextField
+                            label="Transcription prompt"
+                            value={transcriptionPrompt}
+                            onChange={(event) => setTranscriptionPrompt(event.target.value)}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            placeholder="Опционально: добавляется к запросам транскрибации"
+                            helperText="Используется для OpenAI, Gemini и локальной транскрибации."
+                        />
+                    </div>
+                    <div className="settings-field">
+                        <TextField
+                            label="LLM prompt"
+                            value={llmPrompt}
+                            onChange={(event) => setLlmPrompt(event.target.value)}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            placeholder="Опционально: системное сообщение для LLM"
+                            helperText="Применяется к API и локальным моделям."
+                        />
+                    </div>
                 </div>
             </section>
 
