@@ -1073,25 +1073,24 @@ export const AiSettings = () => {
                         ) : null}
                     </div>
 
-                    <div className="settings-field">
-                        <label className="settings-field__label">Screen processing</label>
-                        <CustomSelect
-                            value={settings.screenProcessingModel ?? 'openai'}
-                            options={screenModelOptions}
-                            onChange={(val) => handleScreenProviderChange(val as ScreenProcessingProvider)}
-                        />
-                    </div>
+                    {hasOpenAiKey || hasGoogleKey ? (
+                        <div className="settings-field">
+                            <label className="settings-field__label">Screen processing</label>
+                            <CustomSelect
+                                value={settings.screenProcessingModel ?? 'openai'}
+                                options={screenModelOptions}
+                                onChange={(val) => handleScreenProviderChange(val as ScreenProcessingProvider)}
+                            />
+                        </div>
+                    ) : (
+                        <div className="settings-field">
+                            <label className="settings-field__label">Screen processing</label>
+                            <div className="ai-settings__hint">
+                                Add an OpenAI or Google AI API key to select a screen processing provider.
+                            </div>
+                        </div>
+                    )}
 
-                    {(requiresOpenAiForTranscribe || requiresOpenAiForLlm) ? (
-                        <Typography variant="body2" color="text.secondary">
-                            OpenAI key required for the selected models.
-                        </Typography>
-                    ) : null}
-                    {(requiresGoogleForTranscribe || requiresGoogleForLlm) ? (
-                        <Typography variant="body2" color="text.secondary">
-                            Google AI key required for the selected models.
-                        </Typography>
-                    ) : null}
                 </div>
             </section>
 
