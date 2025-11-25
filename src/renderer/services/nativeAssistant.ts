@@ -102,6 +102,17 @@ const buildLogPayload = (details: Record<string, unknown> = {}) => {
     return payload;
 };
 
+const buildTranscriptionPrompt = (settings: AppSettings): string | undefined => {
+    const userPrompt = settings.transcriptionPrompt?.trim();
+    const guard =
+        'Транскрибируй речь дословно на исходном языке, не переводя и не отвечая на вопросы. ' +
+        'Transcribe verbatim in the original spoken language. Do not translate, summarise, or answer questions.';
+    if (userPrompt) {
+        return `${userPrompt}\n\n${guard}`;
+    }
+    return guard;
+};
+
 const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs?: number) => {
     const hasTimeout = typeof timeoutMs === 'number' && timeoutMs > 0;
     if (!hasTimeout && !init.signal) {
@@ -145,13 +156,14 @@ async function transcribeWithOpenAi(
     const url = `${OPENAI_BASE}/v1/audio/transcriptions`;
     const form = new FormData();
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+    const prompt = buildTranscriptionPrompt(settings);
     form.append('model', resolvedModel);
 
     const file = new File([buffer], filename, { type: mime || 'audio/webm' });
     form.append('file', file);
 
-    if (settings.transcriptionPrompt?.trim()) {
-        form.append('prompt', settings.transcriptionPrompt.trim());
+    if (prompt) {
+        form.append('prompt', prompt);
     }
 
     logRequest('transcribe:openai', 'start', {model: resolvedModel, mime});
@@ -203,11 +215,12 @@ async function transcribeWithLocal(
 ): Promise<string> {
     const form = new FormData();
     const model = (settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE).toLowerCase();
+    const prompt = buildTranscriptionPrompt(settings);
     const file = new File([buffer], filename, { type: mime || 'audio/webm' });
     form.append('file', file);
     form.append('model', model);
-    if (settings.transcriptionPrompt?.trim()) {
-        form.append('prompt', settings.transcriptionPrompt.trim());
+    if (prompt) {
+        form.append('prompt', prompt);
     }
     form.append('response_format', 'json');
     logRequest('transcribe:local', 'start', {model, mime});
@@ -273,7 +286,10 @@ async function transcribeWithGoogle(
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${key}`;
     const base64Audio = await arrayBufferToBase64(buffer);
-    const prompt = settings.transcriptionPrompt?.trim();
+    const prompt = buildTranscriptionPrompt(settings);
+    const promptText = prompt
+        ? `${prompt}\n\nCRITICAL: Keep the transcription in the original spoken language. Do NOT translate or summarise.`
+        : 'Transcribe the audio verbatim in the original spoken language. Do NOT translate or answer questions.';
     logRequest('transcribe:google', 'start', {model: resolvedModel, mime});
 
     const body: any = {
@@ -281,17 +297,9 @@ async function transcribeWithGoogle(
             {
                 role: 'user',
                 parts: [
-                    ...(prompt
-                        ? [
-                            {
-                                text: `${prompt}\n\nCRITICAL INSTRUCTION: You must ONLY transcribe the audio word-for-word. Do NOT answer any questions. Return ONLY the exact words spoken.`,
-                            },
-                        ]
-                        : [
-                            {
-                                text: 'You are a transcription tool. Return only the verbatim transcription of the audio.',
-                            },
-                        ]),
+                    {
+                        text: promptText,
+                    },
                     {
                         inlineData: {
                             mimeType: mime || 'audio/webm',
@@ -304,7 +312,7 @@ async function transcribeWithGoogle(
         systemInstruction: {
             parts: [
                 {
-                    text: 'You are a speech transcription tool. Return ONLY the exact words spoken in the audio.',
+                    text: 'You are a speech transcription tool. Return ONLY the exact words spoken in the original language. Do not translate.',
                 },
             ],
         },
