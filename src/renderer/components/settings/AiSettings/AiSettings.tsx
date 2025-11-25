@@ -1,10 +1,8 @@
-
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Button, CircularProgress, IconButton, MenuItem, TextField, Typography} from '@mui/material';
 import {listen, type UnlistenFn} from '@tauri-apps/api/event';
 import {
     API_LLM_MODELS,
-    FAST_WHISPER_HEALTH_ENDPOINT,
     GEMINI_LLM_MODELS,
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_MODELS,
@@ -18,7 +16,7 @@ import type {FastWhisperStatus} from '@shared/ipc';
 import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '../../../types';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
-import { toast } from 'react-toastify';
+import {toast} from 'react-toastify';
 import {
     checkLocalModelDownloaded,
     downloadLocalSpeechModel,
@@ -59,18 +57,18 @@ const OPENAI_LLM_SET = new Set<string>(OPENAI_LLM_MODELS as readonly string[]);
 const GEMINI_LLM_SET = new Set<string>(GEMINI_LLM_MODELS as readonly string[]);
 
 const TRANSCRIPTION_MODE_OPTIONS: WithLabel[] = [
-    { value: 'api', label: 'API' },
-    { value: 'local', label: 'Local' },
+    {value: 'api', label: 'API'},
+    {value: 'local', label: 'Local'},
 ];
 
 const LLM_HOST_OPTIONS: WithLabel[] = [
-    { value: 'api', label: 'API' },
-    { value: 'local', label: 'Local' },
+    {value: 'api', label: 'API'},
+    {value: 'local', label: 'Local'},
 ];
 
 const SCREEN_MODEL_OPTIONS: WithLabel[] = [
-    { value: 'openai', label: 'OpenAI' },
-    { value: 'google', label: 'Google Gemini' },
+    {value: 'openai', label: 'OpenAI'},
+    {value: 'google', label: 'Google Gemini'},
 ];
 
 const toTitle = (value: string): string =>
@@ -108,7 +106,7 @@ const formatLlmLabel = (value: string): string => {
     return size ? `${toTitle(value)} - ${size}` : toTitle(value);
 };
 export const AiSettings = () => {
-    const { settings, patchLocal } = useSettingsContext();
+    const {settings, patchLocal} = useSettingsContext();
 
     const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
     const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
@@ -168,7 +166,7 @@ export const AiSettings = () => {
                 : await window.api.localSpeech.getStatus();
             setLocalStatus(status);
         } catch (error) {
-            logger.error('settings', 'Failed to fetch local speech status', { error });
+            logger.error('settings', 'Failed to fetch local speech status', {error});
         }
     }, []);
 
@@ -185,7 +183,7 @@ export const AiSettings = () => {
                     setLocalStatus(event.payload);
                 });
             } catch (error) {
-                logger.error('settings', 'Failed to subscribe to local speech status', { error });
+                logger.error('settings', 'Failed to subscribe to local speech status', {error});
             }
         })();
 
@@ -252,7 +250,7 @@ export const AiSettings = () => {
         let cancelled = false;
         setCheckingLocalModel(true);
         setLocalModelError(null);
-        checkLocalModelDownloaded(model, { force: true })
+        checkLocalModelDownloaded(model, {force: true})
             .then((downloaded) => {
                 if (cancelled) return;
                 setLocalModelReady(downloaded);
@@ -305,14 +303,14 @@ export const AiSettings = () => {
                     setOllamaModels([]);
                     setOllamaModelDownloaded(null);
                 } else {
-                    void listInstalledOllamaModels({ force: true })
+                    void listInstalledOllamaModels({force: true})
                         .then((models) => {
                             if (!cancelled) {
                                 setOllamaModels(models);
                             }
                         })
                         .catch((error) => {
-                            logger.error('settings', 'Failed to list Ollama models', { error });
+                            logger.error('settings', 'Failed to list Ollama models', {error});
                             if (!cancelled) {
                                 setOllamaModelError(error instanceof Error ? error.message : 'Failed to list models');
                             }
@@ -325,7 +323,7 @@ export const AiSettings = () => {
                 }
             })
             .catch((error) => {
-                logger.error('settings', 'Failed to detect Ollama', { error });
+                logger.error('settings', 'Failed to detect Ollama', {error});
                 if (!cancelled) {
                     setOllamaInstalled(false);
                     setOllamaModelError(error instanceof Error ? error.message : 'Failed to detect Ollama');
@@ -374,7 +372,7 @@ export const AiSettings = () => {
                 setOllamaModelDownloaded(models.includes(normalized));
             })
             .catch((error) => {
-                logger.error('settings', 'Failed to verify Ollama model', { error });
+                logger.error('settings', 'Failed to verify Ollama model', {error});
                 setOllamaModelError(error instanceof Error ? error.message : 'Failed to verify model');
                 setOllamaModelDownloaded(false);
             })
@@ -392,7 +390,7 @@ export const AiSettings = () => {
             setLocalStatus(status);
             showMessage(`${action[0].toUpperCase()}${action.slice(1)} complete`);
         } catch (error) {
-            logger.error('settings', `Local speech action failed (${action})`, { error });
+            logger.error('settings', `Local speech action failed (${action})`, {error});
             showMessage(`Failed to ${action}`, 'error');
         } finally {
             setLocalAction(null);
@@ -420,13 +418,13 @@ export const AiSettings = () => {
         try {
             await window.api.settings.setTranscriptionMode(mode);
             if (mode === 'local') {
-                patchLocal({ transcriptionMode: mode, localWhisperModel: targetModel as any });
+                patchLocal({transcriptionMode: mode, localWhisperModel: targetModel as any});
             } else {
-                patchLocal({ transcriptionMode: mode, transcriptionModel: targetModel });
+                patchLocal({transcriptionMode: mode, transcriptionModel: targetModel});
             }
             showMessage(`Transcription mode switched to ${mode.toUpperCase()}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set transcription mode', { error });
+            logger.error('settings', 'Failed to set transcription mode', {error});
             showMessage('Failed to update transcription mode', 'error');
         }
     };
@@ -442,10 +440,10 @@ export const AiSettings = () => {
         }
         try {
             await window.api.settings.setTranscriptionModel(model);
-            patchLocal({ transcriptionModel: model });
+            patchLocal({transcriptionModel: model});
             showMessage(`Transcription model set to ${model}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set transcription model', { error });
+            logger.error('settings', 'Failed to set transcription model', {error});
             showMessage('Failed to update transcription model', 'error');
         }
     };
@@ -454,10 +452,10 @@ export const AiSettings = () => {
         const normalized = normalizeLocalWhisperModel(model) || DEFAULT_LOCAL_TRANSCRIBE_MODEL;
         try {
             await window.api.settings.setLocalWhisperModel(normalized as any);
-            patchLocal({ localWhisperModel: normalized as any });
+            patchLocal({localWhisperModel: normalized as any});
             showMessage(`Local Whisper model set to ${normalized}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set local whisper model', { error });
+            logger.error('settings', 'Failed to set local whisper model', {error});
             showMessage('Failed to update local whisper model', 'error');
         }
     };
@@ -475,10 +473,10 @@ export const AiSettings = () => {
         setCheckingLocalModel(true);
         setLocalModelError(null);
         try {
-            const downloaded = await checkLocalModelDownloaded(model, { force: true });
+            const downloaded = await checkLocalModelDownloaded(model, {force: true});
             setLocalModelReady(downloaded);
         } catch (error) {
-            logger.error('settings', 'Failed to check local model', { error });
+            logger.error('settings', 'Failed to check local model', {error});
             setLocalModelError(error instanceof Error ? error.message : 'Failed to check model');
             setLocalModelReady(false);
         } finally {
@@ -507,13 +505,13 @@ export const AiSettings = () => {
         try {
             await window.api.settings.setLlmHost(host);
             if (host === 'local') {
-                patchLocal({ llmHost: host, llmModel: targetModel, localLlmModel: targetModel });
+                patchLocal({llmHost: host, llmModel: targetModel, localLlmModel: targetModel});
             } else {
-                patchLocal({ llmHost: host, llmModel: targetModel, apiLlmModel: targetModel });
+                patchLocal({llmHost: host, llmModel: targetModel, apiLlmModel: targetModel});
             }
             showMessage(`LLM host set to ${host.toUpperCase()}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set LLM host', { error });
+            logger.error('settings', 'Failed to set LLM host', {error});
             showMessage('Failed to update LLM host', 'error');
         }
     };
@@ -536,7 +534,7 @@ export const AiSettings = () => {
             });
             showMessage(`LLM model set to ${model}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set LLM model', { error });
+            logger.error('settings', 'Failed to set LLM model', {error});
             showMessage('Failed to update LLM model', 'error');
         }
     };
@@ -551,7 +549,7 @@ export const AiSettings = () => {
             });
             showMessage(`Local LLM model set to ${model}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set local LLM model', { error });
+            logger.error('settings', 'Failed to set local LLM model', {error});
             showMessage('Failed to update local LLM model', 'error');
         }
     };
@@ -561,10 +559,10 @@ export const AiSettings = () => {
         if (provider === 'google' && !requireGoogle()) return;
         try {
             await window.api.settings.setScreenProcessingModel(provider);
-            patchLocal({ screenProcessingModel: provider });
+            patchLocal({screenProcessingModel: provider});
             showMessage(`Screen processing model set to ${provider}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set screen processing model', { error });
+            logger.error('settings', 'Failed to set screen processing model', {error});
             showMessage('Failed to update screen processing model', 'error');
         }
     };
@@ -581,12 +579,12 @@ export const AiSettings = () => {
         setDownloadingLocalModel(true);
         try {
             await downloadLocalSpeechModel(model);
-            const downloaded = await checkLocalModelDownloaded(model, { force: true });
+            const downloaded = await checkLocalModelDownloaded(model, {force: true});
             setLocalModelReady(downloaded);
             try {
                 await warmupLocalSpeechModel(model);
             } catch (error) {
-                logger.error('settings', 'Warmup failed after download', { error });
+                logger.error('settings', 'Warmup failed after download', {error});
                 setLocalModelError('Model ready but warmup failed. Try again.');
             }
             showMessage('Local model ready');
@@ -607,7 +605,7 @@ export const AiSettings = () => {
             lastLocalWarmupRef.current = model;
             showMessage('Warmup started');
         } catch (error) {
-            logger.error('settings', 'Warmup failed', { error });
+            logger.error('settings', 'Warmup failed', {error});
             setLocalModelError(error instanceof Error ? error.message : 'Failed to warmup model');
             lastLocalWarmupRef.current = null;
         }
@@ -620,18 +618,18 @@ export const AiSettings = () => {
         setOllamaDownloading(true);
         try {
             await downloadOllamaModel(model);
-            const models = await listInstalledOllamaModels({ force: true });
+            const models = await listInstalledOllamaModels({force: true});
             setOllamaModels(models);
             setOllamaModelDownloaded(models.includes(normalizeOllamaModelName(model)));
             try {
                 await warmupOllamaModel(model);
             } catch (error) {
-                logger.error('settings', 'Ollama warmup failed', { error });
+                logger.error('settings', 'Ollama warmup failed', {error});
                 setOllamaModelError('Model ready but warmup failed.');
             }
             showMessage('LLM model ready');
         } catch (error) {
-            logger.error('settings', 'Failed to download Ollama model', { error });
+            logger.error('settings', 'Failed to download Ollama model', {error});
             setOllamaModelError(error instanceof Error ? error.message : 'Failed to download model');
         } finally {
             setOllamaDownloading(false);
@@ -664,7 +662,7 @@ export const AiSettings = () => {
                         screenProcessingTimeoutMs: screenTimeout,
                     });
                 } catch (error) {
-                    logger.error('settings', 'Failed to save timeout values', { error });
+                    logger.error('settings', 'Failed to save timeout values', {error});
                     showMessage('Failed to save timeouts', 'error');
                 }
             })();
@@ -716,7 +714,7 @@ export const AiSettings = () => {
 
     const transcribeOptions = useMemo(() => {
         if (settings.transcriptionMode === 'local') {
-            return LOCAL_TRANSCRIBE_MODELS.map((model) => ({ value: model, label: formatTranscribeLabel(model) }));
+            return LOCAL_TRANSCRIBE_MODELS.map((model) => ({value: model, label: formatTranscribeLabel(model)}));
         }
         const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
         return models.map((model) => ({
@@ -731,7 +729,7 @@ export const AiSettings = () => {
 
     const llmOptions = useMemo(() => {
         if (settings.llmHost === 'local') {
-            return LOCAL_LLM_MODELS.map((model) => ({ value: model, label: formatLlmLabel(model) }));
+            return LOCAL_LLM_MODELS.map((model) => ({value: model, label: formatLlmLabel(model)}));
         }
         const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
         return models.map((model) => ({
@@ -857,7 +855,7 @@ export const AiSettings = () => {
                                         }}
                                     >
                                         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-                                            <CheckCircleIcon fontSize="small" color="success" />
+                                            <CheckCircleIcon fontSize="small" color="success"/>
                                             <Typography fontWeight={700} color="success.main">
                                                 Running
                                             </Typography>
@@ -870,9 +868,9 @@ export const AiSettings = () => {
                                                 onClick={() => void handleLocalAction('restart', () => window.api.localSpeech.restart())}
                                             >
                                                 {localAction === 'restart' ? (
-                                                    <CircularProgress size={16} sx={{color: 'success.main'}} />
+                                                    <CircularProgress size={16} sx={{color: 'success.main'}}/>
                                                 ) : (
-                                                    <RestartAltIcon fontSize="small" />
+                                                    <RestartAltIcon fontSize="small"/>
                                                 )}
                                             </IconButton>
                                             <IconButton
@@ -881,13 +879,16 @@ export const AiSettings = () => {
                                                 onClick={() => void handleLocalAction('stop', () => window.api.localSpeech.stop())}
                                                 sx={{
                                                     color: localAction ? 'text.disabled' : 'text.primary',
-                                                    '&:hover': {color: 'error.main', backgroundColor: 'rgba(239,68,68,0.12)'},
+                                                    '&:hover': {
+                                                        color: 'error.main',
+                                                        backgroundColor: 'rgba(239,68,68,0.12)'
+                                                    },
                                                 }}
                                             >
                                                 {localAction === 'stop' ? (
-                                                    <CircularProgress size={16} sx={{color: 'error.main'}} />
+                                                    <CircularProgress size={16} sx={{color: 'error.main'}}/>
                                                 ) : (
-                                                    <StopCircleIcon fontSize="small" />
+                                                    <StopCircleIcon fontSize="small"/>
                                                 )}
                                             </IconButton>
                                         </Box>
@@ -907,7 +908,7 @@ export const AiSettings = () => {
                                         }}
                                     >
                                         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-                                            <StopCircleIcon fontSize="small" sx={{color: 'text.secondary'}} />
+                                            <StopCircleIcon fontSize="small" sx={{color: 'text.secondary'}}/>
                                             <Typography fontWeight={700} color="text.secondary">
                                                 Stopped
                                             </Typography>
@@ -920,9 +921,9 @@ export const AiSettings = () => {
                                                 onClick={() => void handleLocalAction('start', () => window.api.localSpeech.start())}
                                             >
                                                 {localAction === 'start' ? (
-                                                    <CircularProgress size={16} color="inherit" />
+                                                    <CircularProgress size={16} color="inherit"/>
                                                 ) : (
-                                                    <PlayArrowIcon fontSize="small" />
+                                                    <PlayArrowIcon fontSize="small"/>
                                                 )}
                                             </IconButton>
                                             <Button
@@ -938,28 +939,29 @@ export const AiSettings = () => {
                                     </Box>
                                 ) : (
                                     <Button
-                                    variant="contained"
-                                    size="small"
-                                    color={localStatus?.running ? 'success' : 'primary'}
-                                    disabled={localPrimaryDisabled}
-                                    onClick={() => {
-                                        if (localPrimaryDisabled) {
-                                            return;
-                                        }
-                                        const action = localPrimaryAction;
-                                        const fn = action === 'install'
-                                            ? () => window.api.localSpeech.install()
-                                            : action === 'start'
-                                                ? () => window.api.localSpeech.start()
-                                                : action === 'restart'
-                                                    ? () => window.api.localSpeech.restart()
-                                                    : () => window.api.localSpeech.reinstall();
-                                        void handleLocalAction(action, fn);
-                                    }}
-                                >
-                                    {localAction || localBusyPhase ? <CircularProgress size={16} color="inherit" /> : null}
-                                    {localAction || localBusyPhase ? localBusyLabel : localPrimaryLabel}
-                                </Button>
+                                        variant="contained"
+                                        size="small"
+                                        color={localStatus?.running ? 'success' : 'primary'}
+                                        disabled={localPrimaryDisabled}
+                                        onClick={() => {
+                                            if (localPrimaryDisabled) {
+                                                return;
+                                            }
+                                            const action = localPrimaryAction;
+                                            const fn = action === 'install'
+                                                ? () => window.api.localSpeech.install()
+                                                : action === 'start'
+                                                    ? () => window.api.localSpeech.start()
+                                                    : action === 'restart'
+                                                        ? () => window.api.localSpeech.restart()
+                                                        : () => window.api.localSpeech.reinstall();
+                                            void handleLocalAction(action, fn);
+                                        }}
+                                    >
+                                        {localAction || localBusyPhase ?
+                                            <CircularProgress size={16} color="inherit"/> : null}
+                                        {localAction || localBusyPhase ? localBusyLabel : localPrimaryLabel}
+                                    </Button>
                                 )}
                                 {localMessage ? (
                                     <div className="ai-settings__hint">
@@ -1007,10 +1009,12 @@ export const AiSettings = () => {
                                 ))}
                             </TextField>
                             {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === true ? (
-                                <span className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
                             ) : null}
                             {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === false && !checkingLocalModel ? (
-                                <span className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
                             ) : null}
                         </div>
                         {settings.transcriptionMode === 'local' ? (
@@ -1021,8 +1025,9 @@ export const AiSettings = () => {
                                     </Typography>
                                 ) : null}
                                 {!transcribeUnavailable && localModelWarming ? (
-                                    <Typography variant="body2" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <CircularProgress size={16} thickness={5} sx={{ color: 'warning.main' }} />
+                                    <Typography variant="body2" color="warning.main"
+                                                sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                        <CircularProgress size={16} thickness={5} sx={{color: 'warning.main'}}/>
                                         {selectedLocalMetadata
                                             ? `${selectedLocalMetadata.label} is warming up. Recording is temporarily disabled.`
                                             : 'Model is warming up. Recording is temporarily disabled.'}
@@ -1035,15 +1040,16 @@ export const AiSettings = () => {
                                         color="primary"
                                         onClick={handleLocalModelDownload}
                                         disabled={downloadingLocalModel}
-                                        startIcon={downloadingLocalModel ? <CircularProgress size={14} color="inherit" /> : undefined}
-                                        sx={{ mt: 0.5 }}
+                                        startIcon={downloadingLocalModel ?
+                                            <CircularProgress size={14} color="inherit"/> : undefined}
+                                        sx={{mt: 0.5}}
                                     >
                                         {selectedLocalMetadata ? `Download ${selectedLocalMetadata.label}` : 'Download model'}
                                     </Button>
                                 ) : null}
                                 {/* Warmup теперь автоматический, ручной кнопки нет */}
                                 {localModelError ? (
-                                    <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+                                    <Typography variant="body2" color="error" sx={{mt: 0.5}}>
                                         {localModelError}
                                     </Typography>
                                 ) : null}
@@ -1105,22 +1111,25 @@ export const AiSettings = () => {
                                 ))}
                             </TextField>
                             {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === true ? (
-                                <span className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
                             ) : null}
                             {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === false && !ollamaModelChecking ? (
-                                <span className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
                             ) : null}
                         </div>
                         {settings.llmHost === 'local' ? (
-                            <div className="ai-settings__status-block">
+                            <Box sx={{mt: -.9}} className="ai-settings__status-block">
                                 {!ollamaChecking && ollamaInstalled === false ? (
                                     <Typography variant="body2" color="warning.main">
                                         Install Ollama CLI to enable local LLMs.
                                     </Typography>
                                 ) : null}
                                 {ollamaInstalled && !ollamaModelChecking && ollamaModelWarming ? (
-                                    <Typography variant="body2" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <CircularProgress size={16} thickness={5} sx={{ color: 'warning.main' }} />
+                                    <Typography variant="body2" color="warning.main"
+                                                sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                        <CircularProgress size={16} thickness={5} sx={{color: 'warning.main'}}/>
                                         {selectedLocalLlmLabel} is warming up.
                                     </Typography>
                                 ) : null}
@@ -1131,18 +1140,18 @@ export const AiSettings = () => {
                                         color="primary"
                                         onClick={handleOllamaDownload}
                                         disabled={ollamaDownloading}
-                                        startIcon={ollamaDownloading ? <CircularProgress size={14} color="inherit" /> : undefined}
-                                        sx={{ mt: 0.5 }}
+                                        startIcon={ollamaDownloading ?
+                                            <CircularProgress size={14} color="inherit"/> : undefined}
                                     >
                                         Download {selectedLocalLlmLabel}
                                     </Button>
                                 ) : null}
                                 {ollamaModelError ? (
-                                    <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+                                    <Typography variant="body2" color="error" sx={{mt: 0.5}}>
                                         {ollamaModelError}
                                     </Typography>
                                 ) : null}
-                            </div>
+                            </Box>
                         ) : null}
                     </div>
 
@@ -1196,7 +1205,7 @@ export const AiSettings = () => {
                             value={apiSttTimeout}
                             size="small"
                             onChange={(event) => setApiSttTimeout(Number(event.target.value))}
-                            inputProps={{ min: 1000, max: 600000, step: 500 }}
+                            inputProps={{min: 1000, max: 600000, step: 500}}
                         />
                     </div>
                     <div className="settings-field">
@@ -1206,7 +1215,7 @@ export const AiSettings = () => {
                             value={apiLlmTimeout}
                             size="small"
                             onChange={(event) => setApiLlmTimeout(Number(event.target.value))}
-                            inputProps={{ min: 1000, max: 600000, step: 500 }}
+                            inputProps={{min: 1000, max: 600000, step: 500}}
                         />
                     </div>
                     <div className="settings-field">
@@ -1216,7 +1225,7 @@ export const AiSettings = () => {
                             size="small"
                             value={screenTimeout}
                             onChange={(event) => setScreenTimeout(Number(event.target.value))}
-                            inputProps={{ min: 1000, max: 600000, step: 500 }}
+                            inputProps={{min: 1000, max: 600000, step: 500}}
                         />
                     </div>
                 </div>
