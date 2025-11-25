@@ -548,6 +548,14 @@ export class StreamController {
     }
 
     private async prepareSystemStreamWithGesture(): Promise<MediaStream | null> {
+        const persisted = clonePersistentSystemTrack();
+        if (persisted) {
+            try {
+                (window as any).api?.loopback?.enable?.();
+            } catch {
+            }
+            return new MediaStream([persisted]);
+        }
         try {
             try {
                 (window as any).api?.loopback?.enable?.();
