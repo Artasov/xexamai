@@ -39,13 +39,14 @@ async fn config_update(
     hotkeys: State<'_, Arc<HotkeyManager>>,
     payload: serde_json::Value,
 ) -> Result<AppConfig, String> {
+    let apply_window_size = payload.get("windowWidth").is_some() || payload.get("windowHeight").is_some();
     let updated = state
         .update(payload)
         .await
         .map_err(|error| error.to_string())?;
     app.emit("config:updated", &updated)
         .map_err(|error| error.to_string())?;
-    handle_config_effects(&app, &updated, hotkeys.inner().clone());
+    handle_config_effects(&app, &updated, hotkeys.inner().clone(), apply_window_size);
     Ok(updated)
 }
 
@@ -61,7 +62,7 @@ async fn config_reset(
         .map_err(|error| error.to_string())?;
     app.emit("config:updated", &updated)
         .map_err(|error| error.to_string())?;
-    handle_config_effects(&app, &updated, hotkeys.inner().clone());
+    handle_config_effects(&app, &updated, hotkeys.inner().clone(), true);
     Ok(updated)
 }
 
@@ -211,32 +212,35 @@ fn handle_config_effects(
     app: &AppHandle,
     config: &AppConfig,
     hotkeys: Arc<HotkeyManager>,
+    apply_window_size: bool,
 ) {
     hotkeys.apply_config(app, config);
-    if let Err(error) = apply_window_preferences(app, config) {
+    if let Err(error) = apply_window_preferences(app, config, apply_window_size) {
         eprintln!("[window] failed to apply preferences: {error}");
     }
 }
 
-fn apply_window_preferences(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
+fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_size: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
-        let width = config
-            .window_width
-            .max(DEFAULT_WINDOW_MIN_WIDTH)
-            .min(4000) as f64;
-        let height = config
-            .window_height
-            .max(DEFAULT_WINDOW_MIN_HEIGHT)
-            .min(4000) as f64;
-        window
-            .set_size(LogicalSize::new(width, height))
-            .map_err(|error| error.to_string())?;
-        window
-            .set_min_size(Some(LogicalSize::new(
-                DEFAULT_WINDOW_MIN_WIDTH as f64,
-                DEFAULT_WINDOW_MIN_HEIGHT as f64,
-            )))
-            .map_err(|error| error.to_string())?;
+        if apply_window_size {
+            let width = config
+                .window_width
+                .max(DEFAULT_WINDOW_MIN_WIDTH)
+                .min(4000) as f64;
+            let height = config
+                .window_height
+                .max(DEFAULT_WINDOW_MIN_HEIGHT)
+                .min(4000) as f64;
+            window
+                .set_size(LogicalSize::new(width, height))
+                .map_err(|error| error.to_string())?;
+            window
+                .set_min_size(Some(LogicalSize::new(
+                    DEFAULT_WINDOW_MIN_WIDTH as f64,
+                    DEFAULT_WINDOW_MIN_HEIGHT as f64,
+                )))
+                .map_err(|error| error.to_string())?;
+        }
         window
             .set_always_on_top(config.always_on_top)
             .map_err(|error| error.to_string())?;
@@ -310,7 +314,7 @@ fn main() {
             app.manage(auth_queue.clone());
 
             tray::setup(&app_handle)?;
-            handle_config_effects(&app_handle, &initial_config, hotkeys);
+            handle_config_effects(&app_handle, &initial_config, hotkeys, true);
             flush_pending_deep_links(&app_handle, auth_queue.clone());
             setup_deep_link_listener(&app_handle, auth_queue);
 

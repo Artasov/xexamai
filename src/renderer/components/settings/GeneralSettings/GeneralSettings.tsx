@@ -40,6 +40,10 @@ export const GeneralSettings = () => {
     const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastWindowSizeRef = useRef<{ width: number; height: number }>({
+        width: settings.windowWidth ?? DEFAULT_WINDOW_WIDTH,
+        height: settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT,
+    });
 
     const restartNoteVisible = useMemo(() => {
         const initial = settings.windowScale ?? 1;
@@ -51,8 +55,14 @@ export const GeneralSettings = () => {
         setGoogleKey(settings.googleApiKey ?? '');
         setWindowOpacity(settings.windowOpacity ?? 100);
         setWindowScale(settings.windowScale ?? 1);
-        setWindowWidth(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
-        setWindowHeight(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
+        const nextWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
+        const nextHeight = settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT;
+        const { width: prevWidth, height: prevHeight } = lastWindowSizeRef.current;
+        if (nextWidth !== prevWidth || nextHeight !== prevHeight) {
+            lastWindowSizeRef.current = { width: nextWidth, height: nextHeight };
+            setWindowWidth(nextWidth);
+            setWindowHeight(nextHeight);
+        }
     }, [settings]);
 
     const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
