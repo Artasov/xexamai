@@ -290,50 +290,54 @@ export const AiSettings = () => {
             setOllamaModelDownloaded(null);
             setOllamaModelError(null);
             setOllamaModelWarming(false);
+            setOllamaChecking(false);
+            setOllamaModelChecking(false);
+            setOllamaDownloading(false);
             return;
         }
 
         let cancelled = false;
-        setOllamaChecking(true);
-        checkOllamaInstalled()
-            .then((installed) => {
+
+        const refreshOllamaState = async (forceModels = false) => {
+            setOllamaModelError(null);
+            setOllamaChecking(true);
+            setOllamaModelChecking(true);
+            try {
+                const installed = await checkOllamaInstalled();
                 if (cancelled) return;
                 setOllamaInstalled(installed);
                 if (!installed) {
                     setOllamaModels([]);
-                    setOllamaModelDownloaded(null);
-                } else {
-                    void listInstalledOllamaModels({force: true})
-                        .then((models) => {
-                            if (!cancelled) {
-                                setOllamaModels(models);
-                            }
-                        })
-                        .catch((error) => {
-                            logger.error('settings', 'Failed to list Ollama models', {error});
-                            if (!cancelled) {
-                                setOllamaModelError(error instanceof Error ? error.message : 'Failed to list models');
-                            }
-                        })
-                        .finally(() => {
-                            if (!cancelled) {
-                                setOllamaModelChecking(false);
-                            }
-                        });
+                    setOllamaModelDownloaded(false);
+                    return;
                 }
-            })
-            .catch((error) => {
-                logger.error('settings', 'Failed to detect Ollama', {error});
-                if (!cancelled) {
-                    setOllamaInstalled(false);
-                    setOllamaModelError(error instanceof Error ? error.message : 'Failed to detect Ollama');
-                }
-            })
-            .finally(() => {
+                const models = await listInstalledOllamaModels({force: forceModels});
+                if (cancelled) return;
+                setOllamaModels(models);
+                const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
+                setOllamaModelDownloaded(normalized ? models.includes(normalized) : false);
+            } catch (error) {
+                if (cancelled) return;
+                logger.error('settings', 'Failed to refresh Ollama status', {error});
+                setOllamaModelError(error instanceof Error ? error.message : 'Failed to refresh Ollama status');
+                setOllamaModelDownloaded(false);
+            } finally {
                 if (!cancelled) {
                     setOllamaChecking(false);
+                    setOllamaModelChecking(false);
                 }
-            });
+            }
+        };
+
+        void refreshOllamaState(true);
+
+        const handleVisibility = () => {
+            if (!cancelled && !document.hidden) {
+                void refreshOllamaState(true);
+            }
+        };
+        window.addEventListener('focus', handleVisibility);
+        document.addEventListener('visibilitychange', handleVisibility);
 
         const unsubscribeDownload = subscribeToOllamaDownloads((models) => {
             const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
@@ -348,36 +352,10 @@ export const AiSettings = () => {
             cancelled = true;
             unsubscribeDownload();
             unsubscribeWarmup();
+            window.removeEventListener('focus', handleVisibility);
+            document.removeEventListener('visibilitychange', handleVisibility);
         };
     }, [settings.llmHost, settings.localLlmModel]);
-
-    useEffect(() => {
-        if (settings.llmHost !== 'local') {
-            setOllamaModelDownloaded(null);
-            return;
-        }
-        if (!ollamaInstalled) {
-            setOllamaModelDownloaded(false);
-            return;
-        }
-        const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
-        if (!normalized) {
-            setOllamaModelDownloaded(false);
-            return;
-        }
-        setOllamaModelChecking(true);
-        listInstalledOllamaModels()
-            .then((models) => {
-                setOllamaModels(models);
-                setOllamaModelDownloaded(models.includes(normalized));
-            })
-            .catch((error) => {
-                logger.error('settings', 'Failed to verify Ollama model', {error});
-                setOllamaModelError(error instanceof Error ? error.message : 'Failed to verify model');
-                setOllamaModelDownloaded(false);
-            })
-            .finally(() => setOllamaModelChecking(false));
-    }, [settings.llmHost, settings.localLlmModel, ollamaInstalled]);
 
     const handleLocalAction = async (action: LocalAction, fn: () => Promise<FastWhisperStatus>) => {
         if (!window.api?.localSpeech) {
