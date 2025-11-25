@@ -415,17 +415,14 @@ export const AiSettings = () => {
                 showMessage('Add an API key first', 'error');
                 return;
             }
-            let preferred = apiTranscribeOptions.includes(targetModel) ? targetModel : apiTranscribeOptions[0];
-            if (!hasOpenAiKey && hasGoogleKey) {
-                preferred = apiTranscribeOptions.find((value) => GOOGLE_TRANSCRIBE_SET.has(value)) || preferred;
+            if (!isTranscribeAllowed(targetModel)) {
+                const fallback = apiTranscribeOptions.find((value) => isTranscribeAllowed(value));
+                if (!fallback) {
+                    showMessage('No API models available', 'error');
+                    return;
+                }
+                targetModel = fallback;
             }
-            if (!preferred) {
-                showMessage('No API models available', 'error');
-                return;
-            }
-            if (GOOGLE_TRANSCRIBE_SET.has(preferred) && !requireGoogle()) return;
-            if (OPENAI_TRANSCRIBE_SET.has(preferred) && !requireOpenAi()) return;
-            targetModel = preferred;
         }
         try {
             await window.api.settings.setTranscriptionMode(mode);
@@ -442,6 +439,10 @@ export const AiSettings = () => {
     };
 
     const handleTranscriptionModelChange = async (model: string) => {
+        if (settings.transcriptionMode === 'api' && !isTranscribeAllowed(model)) {
+            showMessage('Model is unavailable without the required API key', 'error');
+            return;
+        }
         if (settings.transcriptionMode === 'api') {
             if (GOOGLE_TRANSCRIBE_SET.has(model) && !requireGoogle()) return;
             if (OPENAI_TRANSCRIBE_SET.has(model) && !requireOpenAi()) return;
@@ -501,17 +502,14 @@ export const AiSettings = () => {
                 showMessage('Add an API key first', 'error');
                 return;
             }
-            let preferred = apiLlmOptions.includes(targetModel) ? targetModel : apiLlmOptions[0];
-            if (!hasOpenAiKey && hasGoogleKey) {
-                preferred = apiLlmOptions.find((value) => GEMINI_LLM_SET.has(value)) || preferred;
+            if (!isLlmAllowed(targetModel)) {
+                const fallback = apiLlmOptions.find((value) => isLlmAllowed(value));
+                if (!fallback) {
+                    showMessage('No API LLM models available', 'error');
+                    return;
+                }
+                targetModel = fallback;
             }
-            if (!preferred) {
-                showMessage('No API LLM models available', 'error');
-                return;
-            }
-            if (GEMINI_LLM_SET.has(preferred) && !requireGoogle()) return;
-            if (OPENAI_LLM_SET.has(preferred) && !requireOpenAi()) return;
-            targetModel = preferred;
         }
         try {
             await window.api.settings.setLlmHost(host);
@@ -528,6 +526,10 @@ export const AiSettings = () => {
     };
 
     const handleApiLlmModelChange = async (model: string) => {
+        if (settings.llmHost === 'api' && !isLlmAllowed(model)) {
+            showMessage('Model is unavailable without the required API key', 'error');
+            return;
+        }
         const needsOpenAi = OPENAI_LLM_SET.has(model);
         const needsGoogle = GEMINI_LLM_SET.has(model);
         if (needsOpenAi && !requireOpenAi()) return;
@@ -664,21 +666,27 @@ export const AiSettings = () => {
     const hasOpenAiKey = Boolean(settings.openaiApiKey?.trim());
     const hasGoogleKey = Boolean(settings.googleApiKey?.trim());
 
+    const isTranscribeAllowed = useCallback((model: string) => {
+        if (OPENAI_TRANSCRIBE_SET.has(model)) return hasOpenAiKey;
+        if (GOOGLE_TRANSCRIBE_SET.has(model)) return hasGoogleKey;
+        return true;
+    }, [hasGoogleKey, hasOpenAiKey]);
+
+    const isLlmAllowed = useCallback((model: string) => {
+        if (OPENAI_LLM_SET.has(model)) return hasOpenAiKey;
+        if (GEMINI_LLM_SET.has(model)) return hasGoogleKey;
+        return true;
+    }, [hasGoogleKey, hasOpenAiKey]);
+
     const apiTranscribeOptions = useMemo(() => {
-        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS];
-        if (hasGoogleKey) {
-            models.push(...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[]));
-        }
+        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
         return models;
-    }, [hasGoogleKey]);
+    }, []);
 
     const apiLlmOptions = useMemo(() => {
-        const models: string[] = [...OPENAI_LLM_MODELS];
-        if (hasGoogleKey) {
-            models.push(...(GEMINI_LLM_MODELS as unknown as string[]));
-        }
+        const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
         return models;
-    }, [hasGoogleKey]);
+    }, []);
 
     const apiTranscribeModel = settings.transcriptionModel ?? DEFAULT_API_TRANSCRIBE_MODEL;
     const localTranscribeModel = settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL;
@@ -689,23 +697,39 @@ export const AiSettings = () => {
         if (settings.transcriptionMode === 'local') {
             return LOCAL_TRANSCRIBE_MODELS.map((model) => ({ value: model, label: formatTranscribeLabel(model) }));
         }
-        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS];
-        if (hasGoogleKey) {
-            models.push(...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[]));
-        }
-        return models.map((model) => ({ value: model, label: formatTranscribeLabel(model) }));
-    }, [settings.transcriptionMode, hasGoogleKey]);
+        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
+        return models.map((model) => ({
+            value: model,
+            label: formatTranscribeLabel(model),
+            disabled: !isTranscribeAllowed(model),
+            description: !isTranscribeAllowed(model)
+                ? (OPENAI_TRANSCRIBE_SET.has(model) ? 'Requires OpenAI key' : 'Requires Google AI key')
+                : undefined,
+        }));
+    }, [settings.transcriptionMode, isTranscribeAllowed]);
 
     const llmOptions = useMemo(() => {
         if (settings.llmHost === 'local') {
             return LOCAL_LLM_MODELS.map((model) => ({ value: model, label: formatLlmLabel(model) }));
         }
-        const models: string[] = [...OPENAI_LLM_MODELS];
-        if (hasGoogleKey) {
-            models.push(...(GEMINI_LLM_MODELS as unknown as string[]));
-        }
-        return models.map((model) => ({ value: model, label: formatLlmLabel(model) }));
-    }, [settings.llmHost, hasGoogleKey]);
+        const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
+        return models.map((model) => ({
+            value: model,
+            label: formatLlmLabel(model),
+            disabled: !isLlmAllowed(model),
+            description: !isLlmAllowed(model)
+                ? (OPENAI_LLM_SET.has(model) ? 'Requires OpenAI key' : 'Requires Google AI key')
+                : undefined,
+        }));
+    }, [settings.llmHost, isLlmAllowed]);
+
+    const screenModelOptions = useMemo(() => SCREEN_MODEL_OPTIONS.map((option) => ({
+        ...option,
+        disabled: option.value === 'openai' ? !hasOpenAiKey : !hasGoogleKey,
+        description: option.value === 'openai'
+            ? (!hasOpenAiKey ? 'Requires OpenAI key' : undefined)
+            : (!hasGoogleKey ? 'Requires Google AI key' : undefined),
+    })), [hasGoogleKey, hasOpenAiKey]);
 
     const requiresOpenAiForTranscribe = settings.transcriptionMode === 'api' && OPENAI_TRANSCRIBE_SET.has(apiTranscribeModel);
     const requiresGoogleForTranscribe = settings.transcriptionMode === 'api' && GOOGLE_TRANSCRIBE_SET.has(apiTranscribeModel);
@@ -755,33 +779,25 @@ export const AiSettings = () => {
 
     useEffect(() => {
         if (settings.transcriptionMode !== 'api') return;
-        if (!hasOpenAiKey && !hasGoogleKey) return;
         if (!transcribeOptions.length) return;
-        if (!transcribeOptions.some((option) => option.value === apiTranscribeModel)) {
-            const fallback =
-                (!hasOpenAiKey && hasGoogleKey
-                    ? transcribeOptions.find((option) => GOOGLE_TRANSCRIBE_SET.has(option.value))
-                    : null) || transcribeOptions[0];
-            if (fallback) {
-                void handleTranscriptionModelChange(fallback.value);
-            }
+        const currentAllowed = isTranscribeAllowed(apiTranscribeModel);
+        if (currentAllowed) return;
+        const fallback = transcribeOptions.find((option) => !option.disabled);
+        if (fallback) {
+            void handleTranscriptionModelChange(fallback.value);
         }
-    }, [settings.transcriptionMode, apiTranscribeModel, transcribeOptions, hasOpenAiKey, hasGoogleKey]);
+    }, [settings.transcriptionMode, apiTranscribeModel, transcribeOptions, isTranscribeAllowed]);
 
     useEffect(() => {
         if (settings.llmHost !== 'api') return;
-        if (!hasOpenAiKey && !hasGoogleKey) return;
         if (!llmOptions.length) return;
-        if (!llmOptions.some((option) => option.value === apiLlmModel)) {
-            const fallback =
-                (!hasOpenAiKey && hasGoogleKey
-                    ? llmOptions.find((option) => GEMINI_LLM_SET.has(option.value))
-                    : null) || llmOptions[0];
-            if (fallback) {
-                void handleApiLlmModelChange(fallback.value);
-            }
+        const currentAllowed = isLlmAllowed(apiLlmModel);
+        if (currentAllowed) return;
+        const fallback = llmOptions.find((option) => !option.disabled);
+        if (fallback) {
+            void handleApiLlmModelChange(fallback.value);
         }
-    }, [settings.llmHost, apiLlmModel, llmOptions, hasOpenAiKey, hasGoogleKey]);
+    }, [settings.llmHost, apiLlmModel, llmOptions, isLlmAllowed]);
 
     return (
         <div className="ai-settings">
@@ -1061,7 +1077,7 @@ export const AiSettings = () => {
                         <label className="settings-field__label">Screen processing</label>
                         <CustomSelect
                             value={settings.screenProcessingModel ?? 'openai'}
-                            options={SCREEN_MODEL_OPTIONS}
+                            options={screenModelOptions}
                             onChange={(val) => handleScreenProviderChange(val as ScreenProcessingProvider)}
                         />
                     </div>
