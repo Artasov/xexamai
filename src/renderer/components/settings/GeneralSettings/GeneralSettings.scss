@@ -1,202 +1,193 @@
-.settings-sections {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
 
 .settings-card {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .settings-card__title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #e2e8f0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
 }
 
 .settings-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
 }
 
 .settings-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .settings-field__label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(148, 163, 184, 0.8);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(148, 163, 184, 0.8);
 }
 
-.settings-toggle {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
 
 .settings-toggle__label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #e2e8f0;
 }
 
 .settings-slider {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .settings-slider__control {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .settings-range {
-    flex: 1;
-    height: 0.4rem;
-    appearance: none;
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  flex: 1;
+  height: 0.4rem;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .settings-range:focus-visible {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.12);
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .settings-range:hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .settings-range::-webkit-slider-runnable-track {
-    height: 0.4rem;
-    border-radius: 999px;
-    background: transparent;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: transparent;
 }
 
 .settings-range::-webkit-slider-thumb {
-    appearance: none;
-    width: 0.9rem;
-    height: 0.9rem;
-    border-radius: 50%;
-    background: #d1d5db;
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-    margin-top: -0.28rem;
+  appearance: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: #d1d5db;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  margin-top: -0.28rem;
 }
 
 .settings-range::-webkit-slider-thumb:hover {
-    transform: scale(1.05);
-    background: #f9fafb;
-    border-color: rgba(255, 255, 255, 0.45);
+  transform: scale(1.05);
+  background: #f9fafb;
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .settings-range::-moz-range-track {
-    height: 0.4rem;
-    border-radius: 999px;
-    background: transparent;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: transparent;
 }
 
 .settings-range::-moz-range-progress {
-    height: 0.4rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.2);
+  height: 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .settings-range::-moz-range-thumb {
-    width: 0.9rem;
-    height: 0.9rem;
-    border-radius: 50%;
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    background: #d1d5db;
-    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: #d1d5db;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .settings-range::-moz-range-thumb:hover {
-    transform: scale(1.05);
-    background: #f9fafb;
-    border-color: rgba(255, 255, 255, 0.45);
+  transform: scale(1.05);
+  background: #f9fafb;
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .settings-slider__label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(148, 163, 184, 0.8);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(148, 163, 184, 0.8);
 }
 
 .settings-slider__value {
-    font-size: 0.875rem;
-    color: #cbd5f5;
+  font-size: 0.875rem;
+  color: #cbd5f5;
 }
 
 .winky-checkbox__control {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 1.5px solid rgba(255, 255, 255, 0.18);
-    background-color: rgba(255, 255, 255, 0.08);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease;
-    box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease;
+  box-shadow: 0 0 0 rgba(139, 92, 246, 0);
 }
 
 .winky-checkbox__control--checked {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(192, 132, 252, 0.95));
-    border-color: rgba(139, 92, 246, 0.95);
-    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.38);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(192, 132, 252, 0.95));
+  border-color: rgba(139, 92, 246, 0.95);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.38);
 }
 
 .winky-checkbox__check {
-    width: 14px;
-    height: 14px;
-    stroke: #0b1022;
+  width: 14px;
+  height: 14px;
+  stroke: #0b1022;
 }
 
 .MuiCheckbox-root:hover .winky-checkbox__control {
-    boxShadow: 0 0 16px rgba(139, 92, 246, 0.35);
-    border-color: rgba(139, 92, 246, 0.9);
+  boxShadow: 0 0 16px rgba(139, 92, 246, 0.35);
+  border-color: rgba(139, 92, 246, 0.9);
 }
 
 .MuiCheckbox-root.Mui-focusVisible .winky-checkbox__control {
-    box-shadow: 0 0 18px rgba(139, 92, 246, 0.5);
-    border-color: rgba(139, 92, 246, 0.9);
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.5);
+  border-color: rgba(139, 92, 246, 0.9);
 }
 
 .MuiCheckbox-root.Mui-disabled .winky-checkbox__control {
-    border-color: rgba(148, 163, 184, 0.3);
-    background-color: rgba(148, 163, 184, 0.12);
-    box-shadow: none;
+  border-color: rgba(148, 163, 184, 0.3);
+  background-color: rgba(148, 163, 184, 0.12);
+  box-shadow: none;
 }
 
 .MuiCheckbox-root.Mui-disabled .winky-checkbox__check {
-    stroke: rgba(11, 16, 34, 0.4);
+  stroke: rgba(11, 16, 34, 0.4);
 }
+
 .settings-note {
-    font-size: 0.75rem;
-    color: #facc15;
+  font-size: 0.75rem;
+  color: #facc15;
 }
 
 .settings-window-size {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
 }

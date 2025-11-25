@@ -841,7 +841,7 @@ export const AiSettings = () => {
                             ))}
                         </TextField>
                         {settings.transcriptionMode === 'local' ? (
-                            <Box className="ai-settings__local-server" mt={1}>
+                            <Box className="ai-settings__local-server" mt={-.8}>
                                 {localStatus?.running && !localBusyPhase ? (
                                     <Box
                                         sx={{
@@ -849,7 +849,7 @@ export const AiSettings = () => {
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
                                             borderRadius: 2,
-                                            border: '1px solid rgba(16,185,129,0.4)',
+                                            border: '0',
                                             backgroundColor: 'rgba(16,185,129,0.08)',
                                             px: 1.5,
                                             py: 1,
@@ -899,7 +899,7 @@ export const AiSettings = () => {
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
                                             borderRadius: 2,
-                                            border: '1px solid rgba(107,114,128,0.3)',
+                                            border: '0',
                                             backgroundColor: 'rgba(107,114,128,0.08)',
                                             px: 1.5,
                                             py: 1,
@@ -1014,9 +1014,9 @@ export const AiSettings = () => {
                             ) : null}
                         </div>
                         {settings.transcriptionMode === 'local' ? (
-                            <div className="ai-settings__status-block">
+                            <div className="ai-settings__status-block -mt-4">
                                 {transcribeUnavailable ? (
-                                    <Typography variant="body2" color="warning.main">
+                                    <Typography variant="body2" mt={-1.1} ml={.2} color="warning.main">
                                         Install and start the local server to use local transcription.
                                     </Typography>
                                 ) : null}

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
-import { useSettingsContext } from '../SettingsView/SettingsView';
-import { logger } from '../../../utils/logger';
-import { toast } from 'react-toastify';
+import {useSettingsContext} from '../SettingsView/SettingsView';
+import {logger} from '../../../utils/logger';
+import {toast} from 'react-toastify';
 import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
@@ -30,7 +30,7 @@ const checkedCheckboxIcon = (
 );
 
 export const GeneralSettings = () => {
-    const { settings, patchLocal } = useSettingsContext();
+    const {settings, patchLocal} = useSettingsContext();
     const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey ?? '');
     const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
     const [windowOpacity, setWindowOpacity] = useState(settings.windowOpacity ?? 100);
@@ -57,9 +57,9 @@ export const GeneralSettings = () => {
         setWindowScale(settings.windowScale ?? 1);
         const nextWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
         const nextHeight = settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT;
-        const { width: prevWidth, height: prevHeight } = lastWindowSizeRef.current;
+        const {width: prevWidth, height: prevHeight} = lastWindowSizeRef.current;
         if (nextWidth !== prevWidth || nextHeight !== prevHeight) {
-            lastWindowSizeRef.current = { width: nextWidth, height: nextHeight };
+            lastWindowSizeRef.current = {width: nextWidth, height: nextHeight};
             setWindowWidth(nextWidth);
             setWindowHeight(nextHeight);
         }
@@ -73,11 +73,11 @@ export const GeneralSettings = () => {
         const key = value.trim();
         try {
             await window.api.settings.setOpenaiApiKey(key);
-            patchLocal({ openaiApiKey: key });
+            patchLocal({openaiApiKey: key});
             logger.info('settings', 'OpenAI API key saved');
             showMessage(key ? 'OpenAI API key saved' : 'OpenAI API key cleared');
         } catch (error) {
-            logger.error('settings', 'Failed to save OpenAI API key', { error });
+            logger.error('settings', 'Failed to save OpenAI API key', {error});
             showMessage('Failed to save OpenAI key', 'error');
         }
     }, [patchLocal]);
@@ -86,11 +86,11 @@ export const GeneralSettings = () => {
         const key = value.trim();
         try {
             await window.api.settings.setGoogleApiKey(key);
-            patchLocal({ googleApiKey: key });
+            patchLocal({googleApiKey: key});
             logger.info('settings', 'Google API key saved');
             showMessage(key ? 'Google API key saved' : 'Google API key cleared');
         } catch (error) {
-            logger.error('settings', 'Failed to save Google API key', { error });
+            logger.error('settings', 'Failed to save Google API key', {error});
             showMessage('Failed to save Google key', 'error');
         }
     }, [patchLocal]);
@@ -98,10 +98,10 @@ export const GeneralSettings = () => {
     const toggleAlwaysOnTop = async (value: boolean) => {
         try {
             await window.api.settings.setAlwaysOnTop(value);
-            patchLocal({ alwaysOnTop: value });
+            patchLocal({alwaysOnTop: value});
             showMessage(`Always on top ${value ? 'enabled' : 'disabled'}`);
         } catch (error) {
-            logger.error('settings', 'Failed to update always on top', { error });
+            logger.error('settings', 'Failed to update always on top', {error});
             showMessage('Failed to update always on top', 'error');
         }
     };
@@ -109,10 +109,10 @@ export const GeneralSettings = () => {
     const toggleHideApp = async (value: boolean) => {
         try {
             await window.api.settings.setHideApp(value);
-            patchLocal({ hideApp: value });
+            patchLocal({hideApp: value});
             showMessage(`Hide app ${value ? 'enabled' : 'disabled'}`);
         } catch (error) {
-            logger.error('settings', 'Failed to update hide app', { error });
+            logger.error('settings', 'Failed to update hide app', {error});
             showMessage('Failed to update hide app', 'error');
         }
     };
@@ -121,9 +121,9 @@ export const GeneralSettings = () => {
         setWindowOpacity(value);
         try {
             await window.api.settings.setWindowOpacity(value);
-            patchLocal({ windowOpacity: value });
+            patchLocal({windowOpacity: value});
         } catch (error) {
-            logger.error('settings', 'Failed to update window opacity', { error });
+            logger.error('settings', 'Failed to update window opacity', {error});
         }
     };
 
@@ -131,9 +131,9 @@ export const GeneralSettings = () => {
         setWindowScale(value);
         try {
             await window.api.settings.setWindowScale(value);
-            patchLocal({ windowScale: value });
+            patchLocal({windowScale: value});
         } catch (error) {
-            logger.error('settings', 'Failed to update window scale', { error });
+            logger.error('settings', 'Failed to update window scale', {error});
             showMessage('Failed to update window scale', 'error');
         }
     };
@@ -144,11 +144,11 @@ export const GeneralSettings = () => {
         setWindowWidth(width);
         setWindowHeight(height);
         try {
-            await window.api.settings.setWindowSize({ width, height });
-            patchLocal({ windowWidth: width, windowHeight: height });
+            await window.api.settings.setWindowSize({width, height});
+            patchLocal({windowWidth: width, windowHeight: height});
             showMessage('Window size saved');
         } catch (error) {
-            logger.error('settings', 'Failed to save window size', { error });
+            logger.error('settings', 'Failed to save window size', {error});
             showMessage('Failed to save window size', 'error');
         }
     }, [patchLocal]);
@@ -230,13 +230,13 @@ export const GeneralSettings = () => {
         try {
             await window.api.settings.openConfigFolder();
         } catch (error) {
-            logger.error('settings', 'Failed to open config folder', { error });
+            logger.error('settings', 'Failed to open config folder', {error});
             showMessage('Unable to open config folder', 'error');
         }
     };
 
     return (
-        <div className="settings-sections">
+        <div className="settings-sections fc gap-3">
             <section className="settings-card card">
                 <h3 className="settings-card__title">API Keys</h3>
                 <div className="settings-grid">
@@ -265,7 +265,7 @@ export const GeneralSettings = () => {
 
             <section className="settings-card card">
                 <h3 className="settings-card__title">Window Behaviour</h3>
-                <div className="settings-toggle">
+                <div className="fc -mt-2">
                     <FormControlLabel
                         control={
                             <Checkbox
@@ -294,9 +294,9 @@ export const GeneralSettings = () => {
                     />
                 </div>
 
-                <div className="settings-slider">
+                <div className="settings-slider -mt-2">
                     <span className="settings-slider__label">Window opacity</span>
-                    <div className="settings-slider__control">
+                    <div className="settings-slider__control -mt-2">
                         <Slider
                             min={5}
                             max={100}
@@ -309,9 +309,9 @@ export const GeneralSettings = () => {
                     </div>
                 </div>
 
-                <div className="settings-slider">
+                <div className="settings-slider -mt-3">
                     <span className="settings-slider__label">Window scale</span>
-                    <div className="settings-slider__control">
+                    <div className="settings-slider__control -mt-2">
                         <Slider
                             min={0.5}
                             max={3}
@@ -341,7 +341,7 @@ export const GeneralSettings = () => {
                             value={windowWidth}
                             size={'small'}
                             onChange={(event) => setWindowWidth(Number(event.target.value))}
-                            inputProps={{ min: MIN_WINDOW_WIDTH }}
+                            inputProps={{min: MIN_WINDOW_WIDTH}}
                         />
                     </div>
                     <div className="settings-field">
@@ -351,14 +351,14 @@ export const GeneralSettings = () => {
                             size={'small'}
                             value={windowHeight}
                             onChange={(event) => setWindowHeight(Number(event.target.value))}
-                            inputProps={{ min: MIN_WINDOW_HEIGHT }}
+                            inputProps={{min: MIN_WINDOW_HEIGHT}}
                         />
                     </div>
                 </div>
             </section>
 
             <section className="settings-card card">
-            <h3 className="settings-card__title">Config folder</h3>
+                <h3 className="settings-card__title">Config folder</h3>
                 <button type="button" className="btn btn-sm" onClick={openConfigFolder}>
                     Open config folder
                 </button>
