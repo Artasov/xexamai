@@ -1133,31 +1133,6 @@ export const AiSettings = () => {
                     Save timeouts
                 </button>
             </section>
-
-            <section className="settings-card card">
-                <h3 className="settings-card__title">Local server status</h3>
-                <div className="ai-settings__status-grid">
-                    <div className="ai-settings__status-card">
-                        <span>Installed</span>
-                        <strong>{localStatus?.installed ? 'Yes' : 'No'}</strong>
-                    </div>
-                    <div className="ai-settings__status-card">
-                        <span>Running</span>
-                        <strong>{localStatus?.running ? 'Yes' : 'No'}</strong>
-                    </div>
-                    <div className="ai-settings__status-card">
-                        <span>Phase</span>
-                        <strong>{localStatus?.phase ?? 'Unknown'}</strong>
-                    </div>
-                    <div className="ai-settings__status-card">
-                        <span>Message</span>
-                        <strong>{localStatus?.message ?? 'N/A'}</strong>
-                    </div>
-                </div>
-                <p className="ai-settings__hint">
-                    Health endpoint: {FAST_WHISPER_HEALTH_ENDPOINT}
-                </p>
-            </section>
         </div>
     );
 };
