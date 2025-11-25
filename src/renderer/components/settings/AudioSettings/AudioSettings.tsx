@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import {TextField, MenuItem} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import type { AudioDevice } from '../../../types';
 import { logger } from '../../../utils/logger';
 import { emitSettingsChange } from '../../../utils/settingsEvents';
-import CustomSelect from '../../common/CustomSelect/CustomSelect';
 import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
 import './AudioSettings.scss';
 
@@ -78,22 +78,40 @@ export const AudioSettings = () => {
             <section className="settings-card card">
                 <h3 className="settings-card__title">Audio input</h3>
                 <div className="settings-field">
-                    <label className="settings-field__label">Input type</label>
-                    <CustomSelect
+                    <TextField
+                        select
+                        size="small"
+                        label="Input type"
                         value={settings.audioInputType ?? 'microphone'}
-                        options={AUDIO_INPUT_TYPES}
-                        onChange={(val) => handleInputTypeChange(val as 'microphone' | 'system')}
-                    />
+                        onChange={(event) => handleInputTypeChange(event.target.value as 'microphone' | 'system')}
+                        fullWidth
+                    >
+                        {AUDIO_INPUT_TYPES.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>
+                                {option.label}
+                            </MenuItem>
+                        ))}
+                    </TextField>
                 </div>
 
                 <div className="settings-field">
-                    <label className="settings-field__label">Device</label>
-                    <CustomSelect
+                    <TextField
+                        select
+                        size="small"
+                        label="Device"
                         value={currentDeviceId}
-                        options={[{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.deviceId, label: device.label }))]}
+                        onChange={(event) => handleDeviceChange(event.target.value)}
+                        fullWidth
                         disabled={settings.audioInputType === 'system'}
-                        onChange={handleDeviceChange}
-                    />
+                    >
+                        {[{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.deviceId, label: device.label }))].map(
+                            (option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </MenuItem>
+                            )
+                        )}
+                    </TextField>
                     <div className="audio-settings__actions">
                         <button type="button" className="btn btn-sm" onClick={loadDevices} disabled={loading}>
                             Refresh devices

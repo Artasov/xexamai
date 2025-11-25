@@ -1,6 +1,6 @@
 
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Box, Button, CircularProgress, IconButton, TextField, Typography} from '@mui/material';
+import {Box, Button, CircularProgress, IconButton, MenuItem, TextField, Typography} from '@mui/material';
 import {listen, type UnlistenFn} from '@tauri-apps/api/event';
 import {
     API_LLM_MODELS,
@@ -18,7 +18,6 @@ import type {FastWhisperStatus} from '@shared/ipc';
 import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '../../../types';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
-import CustomSelect from '../../common/CustomSelect/CustomSelect';
 import {SettingsToast} from '../shared/SettingsToast/SettingsToast';
 import {
     checkLocalModelDownloaded,
@@ -836,14 +835,20 @@ export const AiSettings = () => {
                 <h3 className="settings-card__title">Modes & Models</h3>
                 <div className="ai-settings__grid ai-settings__grid--models">
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription Mode</label>
-                        <div className="ai-settings__select-wrapper">
-                            <CustomSelect
-                                value={settings.transcriptionMode ?? 'api'}
-                                options={TRANSCRIPTION_MODE_OPTIONS}
-                                onChange={(val) => handleTranscriptionModeChange(val as TranscriptionMode)}
-                            />
-                        </div>
+                        <TextField
+                            select
+                            size="small"
+                            label={'Transcription Mode'}
+                            value={settings.transcriptionMode ?? 'api'}
+                            onChange={(event) => handleTranscriptionModeChange(event.target.value as TranscriptionMode)}
+                            fullWidth
+                        >
+                            {TRANSCRIPTION_MODE_OPTIONS.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </MenuItem>
+                            ))}
+                        </TextField>
                         {settings.transcriptionMode === 'local' ? (
                             <Box className="ai-settings__local-server" mt={1}>
                                 {localStatus?.running && !localBusyPhase ? (
@@ -975,12 +980,15 @@ export const AiSettings = () => {
                     </div>
 
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription model</label>
                         <div className="ai-settings__select-wrapper">
-                            <CustomSelect
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="Transcription model"
                                 value={settings.transcriptionMode === 'local' ? localTranscribeModel : apiTranscribeModel}
-                                options={transcribeOptions}
-                                onChange={(val) => {
+                                onChange={(event) => {
+                                    const val = event.target.value;
                                     if (settings.transcriptionMode === 'local') {
                                         void handleLocalWhisperChange(val);
                                     } else {
@@ -988,7 +996,25 @@ export const AiSettings = () => {
                                     }
                                 }}
                                 disabled={settings.transcriptionMode === 'local' && transcribeUnavailable}
-                            />
+                            >
+                                {transcribeOptions.map((option) => (
+                                    <MenuItem
+                                        key={option.value}
+                                        value={option.value}
+                                        disabled={option.disabled}
+                                        sx={option.disabled ? {opacity: 0.6} : undefined}
+                                    >
+                                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                            <span>{option.label}</span>
+                                            {option.description ? (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {option.description}
+                                                </Typography>
+                                            ) : null}
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </TextField>
                             {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === true ? (
                                 <span className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
                             ) : null}
@@ -1035,23 +1061,32 @@ export const AiSettings = () => {
                     </div>
 
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM Mode</label>
-                        <div className="ai-settings__select-wrapper">
-                            <CustomSelect
-                                value={settings.llmHost ?? 'api'}
-                                options={LLM_HOST_OPTIONS}
-                                onChange={(val) => handleLlmHostChange(val as LlmHost)}
-                            />
-                        </div>
+                        <TextField
+                            select
+                            size="small"
+                            fullWidth
+                            label="LLM Mode"
+                            value={settings.llmHost ?? 'api'}
+                            onChange={(event) => handleLlmHostChange(event.target.value as LlmHost)}
+                        >
+                            {LLM_HOST_OPTIONS.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </MenuItem>
+                            ))}
+                        </TextField>
                     </div>
 
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM model</label>
                         <div className="ai-settings__select-wrapper">
-                            <CustomSelect
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="LLM model"
                                 value={settings.llmHost === 'local' ? localLlmModel : apiLlmModel}
-                                options={llmOptions}
-                                onChange={(val) => {
+                                onChange={(event) => {
+                                    const val = event.target.value;
                                     if (settings.llmHost === 'local') {
                                         void handleLocalLlmModelChange(val);
                                     } else {
@@ -1059,7 +1094,25 @@ export const AiSettings = () => {
                                     }
                                 }}
                                 disabled={settings.llmHost === 'local' && (ollamaChecking || !ollamaInstalled)}
-                            />
+                            >
+                                {llmOptions.map((option) => (
+                                    <MenuItem
+                                        key={option.value}
+                                        value={option.value}
+                                        disabled={option.disabled}
+                                        sx={option.disabled ? {opacity: 0.6} : undefined}
+                                    >
+                                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                            <span>{option.label}</span>
+                                            {option.description ? (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {option.description}
+                                                </Typography>
+                                            ) : null}
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </TextField>
                             {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === true ? (
                                 <span className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
                             ) : null}
@@ -1104,16 +1157,35 @@ export const AiSettings = () => {
 
                     {hasOpenAiKey || hasGoogleKey ? (
                         <div className="settings-field">
-                            <label className="settings-field__label">Screen processing</label>
-                            <CustomSelect
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="Screen processing"
                                 value={settings.screenProcessingModel ?? 'openai'}
-                                options={screenModelOptions}
-                                onChange={(val) => handleScreenProviderChange(val as ScreenProcessingProvider)}
-                            />
+                                onChange={(event) => handleScreenProviderChange(event.target.value as ScreenProcessingProvider)}
+                            >
+                                {screenModelOptions.map((option) => (
+                                    <MenuItem
+                                        key={option.value}
+                                        value={option.value}
+                                        disabled={option.disabled}
+                                        sx={option.disabled ? {opacity: 0.6} : undefined}
+                                    >
+                                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                            <span>{option.label}</span>
+                                            {option.description ? (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {option.description}
+                                                </Typography>
+                                            ) : null}
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </TextField>
                         </div>
                     ) : (
                         <div className="settings-field">
-                            <label className="settings-field__label">Screen processing</label>
                             <div className="ai-settings__hint">
                                 Add an OpenAI or Google AI API key to select a screen processing provider.
                             </div>
@@ -1127,30 +1199,30 @@ export const AiSettings = () => {
                 <h3 className="settings-card__title">API timeouts (ms)</h3>
                 <div className="ai-settings__grid ai-settings__grid--timeouts">
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription</label>
                         <TextField
+                            label="Transcription"
                             type="number"
                             value={apiSttTimeout}
-                            size={'small'}
+                            size="small"
                             onChange={(event) => setApiSttTimeout(Number(event.target.value))}
                             inputProps={{ min: 1000, max: 600000, step: 500 }}
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM</label>
                         <TextField
+                            label="LLM"
                             type="number"
                             value={apiLlmTimeout}
-                            size={'small'}
+                            size="small"
                             onChange={(event) => setApiLlmTimeout(Number(event.target.value))}
                             inputProps={{ min: 1000, max: 600000, step: 500 }}
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">Screen processing</label>
                         <TextField
+                            label="Screen processing"
                             type="number"
-                            size={'small'}
+                            size="small"
                             value={screenTimeout}
                             onChange={(event) => setScreenTimeout(Number(event.target.value))}
                             inputProps={{ min: 1000, max: 600000, step: 500 }}

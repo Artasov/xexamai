@@ -220,8 +220,8 @@ export const GeneralSettings = () => {
                 <h3 className="settings-card__title">API Keys</h3>
                 <div className="settings-grid">
                     <div className="settings-field">
-                        <label className="settings-field__label">OpenAI</label>
                         <TextField
+                            label="OpenAI"
                             type="password"
                             size={'small'}
                             value={openaiKey}
@@ -230,8 +230,8 @@ export const GeneralSettings = () => {
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">Google AI</label>
                         <TextField
+                            label="Google AI"
                             type="password"
                             size={'small'}
                             value={googleKey}
@@ -304,8 +304,8 @@ export const GeneralSettings = () => {
                 <h3 className="settings-card__title">Window size on startup</h3>
                 <div className="settings-window-size">
                     <div className="settings-field">
-                        <label className="settings-field__label">Width (min {MIN_WINDOW_WIDTH})</label>
                         <TextField
+                            label={`Width (min ${MIN_WINDOW_WIDTH})`}
                             type="number"
                             value={windowWidth}
                             size={'small'}
@@ -314,8 +314,8 @@ export const GeneralSettings = () => {
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">Height (min {MIN_WINDOW_HEIGHT})</label>
                         <TextField
+                            label={`Height (min ${MIN_WINDOW_HEIGHT})`}
                             type="number"
                             size={'small'}
                             value={windowHeight}
