@@ -18,7 +18,7 @@ import type {FastWhisperStatus} from '@shared/ipc';
 import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '../../../types';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
-import {SettingsToast} from '../shared/SettingsToast/SettingsToast';
+import { toast } from 'react-toastify';
 import {
     checkLocalModelDownloaded,
     downloadLocalSpeechModel,
@@ -41,9 +41,6 @@ import StopCircleIcon from '@mui/icons-material/StopCircle';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import './AiSettings.scss';
-
-type MessageTone = 'success' | 'error';
-type Message = { text: string; tone: MessageTone } | null;
 
 type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
 
@@ -116,7 +113,6 @@ export const AiSettings = () => {
     const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
     const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
     const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
-    const [message, setMessage] = useState<Message>(null);
     const timeoutSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [localStatus, setLocalStatus] = useState<FastWhisperStatus | null>(null);
@@ -144,11 +140,8 @@ export const AiSettings = () => {
         setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
     }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.screenProcessingTimeoutMs]);
 
-    const showMessage = (text: string, tone: MessageTone = 'success') => {
-        setMessage({ text, tone });
-        setTimeout(() => {
-            setMessage((prev) => (prev?.text === text ? null : prev));
-        }, 3200);
+    const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
+        toast[tone](text);
     };
 
     const requireOpenAi = () => {
@@ -829,8 +822,6 @@ export const AiSettings = () => {
 
     return (
         <div className="ai-settings">
-            <SettingsToast message={message} />
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">Modes & Models</h3>
                 <div className="ai-settings__grid ai-settings__grid--models">

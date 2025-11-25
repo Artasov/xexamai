@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import {TextField, MenuItem} from '@mui/material';
+import { toast } from 'react-toastify';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import type { AudioDevice } from '../../../types';
 import { logger } from '../../../utils/logger';
 import { emitSettingsChange } from '../../../utils/settingsEvents';
-import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
 import './AudioSettings.scss';
 
 const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system'; label: string }[] = [
@@ -13,23 +13,18 @@ const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system'; label: string }[] = [
 ];
 
 type MessageTone = 'success' | 'error';
-type Message = { text: string; tone: MessageTone } | null;
 
 export const AudioSettings = () => {
     const { settings, patchLocal } = useSettingsContext();
     const [devices, setDevices] = useState<AudioDevice[]>([]);
     const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState<Message>(null);
 
     useEffect(() => {
         void loadDevices();
     }, []);
 
     const showMessage = (text: string, tone: MessageTone = 'success') => {
-        setMessage({ text, tone });
-        setTimeout(() => {
-            setMessage((prev) => (prev?.text === text ? null : prev));
-        }, 2800);
+        toast[tone](text);
     };
 
     const loadDevices = async () => {
@@ -73,8 +68,6 @@ export const AudioSettings = () => {
 
     return (
         <div className="audio-settings">
-            <SettingsToast message={message} />
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">Audio input</h3>
                 <div className="settings-field">

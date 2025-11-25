@@ -2,15 +2,13 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import { logger } from '../../../utils/logger';
-import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
+import { toast } from 'react-toastify';
 import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
 const MIN_WINDOW_HEIGHT = 500;
 const DEFAULT_WINDOW_WIDTH = 420;
 const DEFAULT_WINDOW_HEIGHT = 780;
-
-type Message = { text: string; tone: 'success' | 'error' };
 
 const baseCheckboxIcon = (
     <span className="winky-checkbox__control">
@@ -39,7 +37,6 @@ export const GeneralSettings = () => {
     const [windowScale, setWindowScale] = useState(settings.windowScale ?? 1);
     const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
     const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
-    const [message, setMessage] = useState<Message | null>(null);
     const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,11 +55,8 @@ export const GeneralSettings = () => {
         setWindowHeight(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
     }, [settings]);
 
-    const showMessage = (text: string, tone: Message['tone'] = 'success') => {
-        setMessage({ text, tone });
-        setTimeout(() => {
-            setMessage((current) => (current?.text === text ? null : current));
-        }, 3000);
+    const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
+        toast[tone](text);
     };
 
     const saveOpenAi = useCallback(async (value: string) => {
@@ -233,8 +227,6 @@ export const GeneralSettings = () => {
 
     return (
         <div className="settings-sections">
-            <SettingsToast message={message} />
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">API Keys</h3>
                 <div className="settings-grid">

@@ -1,13 +1,10 @@
 import {useMemo, useState} from 'react';
 import {TextField} from '@mui/material';
+import {toast} from 'react-toastify';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
 import {emitSettingsChange} from '../../../utils/settingsEvents';
-import {SettingsToast} from '../shared/SettingsToast/SettingsToast';
 import './HotkeysSettings.scss';
-
-type MessageTone = 'success' | 'error';
-type Message = { text: string; tone: MessageTone } | null;
 
 const clampDuration = (duration: number) => Math.max(1, Math.min(300, duration));
 
@@ -17,15 +14,11 @@ export const HotkeysSettings = () => {
     const [durationHotkeys, setDurationHotkeys] = useState<Record<number, string>>(settings.durationHotkeys ?? {});
     const [toggleHotkey, setToggleHotkey] = useState(settings.toggleInputHotkey ?? 'g');
     const [streamSendHotkey, setStreamSendHotkey] = useState(settings.streamSendHotkey ?? '~');
-    const [message, setMessage] = useState<Message>(null);
 
     const durations = useMemo(() => [...(settings.durations ?? [])].sort((a, b) => a - b), [settings.durations]);
 
-    const showMessage = (text: string, tone: MessageTone = 'success') => {
-        setMessage({text, tone});
-        setTimeout(() => {
-            setMessage((prev) => (prev?.text === text ? null : prev));
-        }, 2600);
+    const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
+        toast[tone](text);
     };
 
     const updateDurations = async (next: number[]) => {
@@ -129,7 +122,6 @@ export const HotkeysSettings = () => {
 
     return (
         <div className="hotkeys-settings">
-            <SettingsToast message={message}/>
 
             <section className="settings-card card">
                 <h3 className="settings-card__title">Recording durations</h3>
