@@ -146,6 +146,50 @@
     color: #cbd5f5;
 }
 
+.winky-checkbox__control {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.08);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease;
+    box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+}
+
+.winky-checkbox__control--checked {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(192, 132, 252, 0.95));
+    border-color: rgba(139, 92, 246, 0.95);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.38);
+}
+
+.winky-checkbox__check {
+    width: 14px;
+    height: 14px;
+    stroke: #0b1022;
+}
+
+.MuiCheckbox-root:hover .winky-checkbox__control {
+    boxShadow: 0 0 16px rgba(139, 92, 246, 0.35);
+    border-color: rgba(139, 92, 246, 0.9);
+}
+
+.MuiCheckbox-root.Mui-focusVisible .winky-checkbox__control {
+    box-shadow: 0 0 18px rgba(139, 92, 246, 0.5);
+    border-color: rgba(139, 92, 246, 0.9);
+}
+
+.MuiCheckbox-root.Mui-disabled .winky-checkbox__control {
+    border-color: rgba(148, 163, 184, 0.3);
+    background-color: rgba(148, 163, 184, 0.12);
+    box-shadow: none;
+}
+
+.MuiCheckbox-root.Mui-disabled .winky-checkbox__check {
+    stroke: rgba(11, 16, 34, 0.4);
+}
 .settings-note {
     font-size: 0.75rem;
     color: #facc15;

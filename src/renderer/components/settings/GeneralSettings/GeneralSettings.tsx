@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import {TextField} from '@mui/material';
+import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
 import { useSettingsContext } from '../SettingsView/SettingsView';
 import { logger } from '../../../utils/logger';
 import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
@@ -11,6 +11,25 @@ const DEFAULT_WINDOW_WIDTH = 420;
 const DEFAULT_WINDOW_HEIGHT = 780;
 
 type Message = { text: string; tone: 'success' | 'error' };
+
+const baseCheckboxIcon = (
+    <span className="winky-checkbox__control">
+    </span>
+);
+
+const checkedCheckboxIcon = (
+    <span className="winky-checkbox__control winky-checkbox__control--checked">
+        <svg className="winky-checkbox__check" viewBox="0 0 16 16" aria-hidden focusable="false">
+            <polyline
+                points="3.5 8.5 6.5 11.5 12.5 4.5"
+                fill="none"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    </span>
+);
 
 export const GeneralSettings = () => {
     const { settings, patchLocal } = useSettingsContext();
@@ -245,34 +264,44 @@ export const GeneralSettings = () => {
             <section className="settings-card card">
                 <h3 className="settings-card__title">Window Behaviour</h3>
                 <div className="settings-toggle">
-                    <label className="settings-toggle__label">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(settings.alwaysOnTop)}
-                            onChange={(event) => toggleAlwaysOnTop(event.target.checked)}
-                        />
-                        Always on top
-                    </label>
-                    <label className="settings-toggle__label">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(settings.hideApp)}
-                            onChange={(event) => toggleHideApp(event.target.checked)}
-                        />
-                        Hide app from screen recording
-                    </label>
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                size="small"
+                                checked={Boolean(settings.alwaysOnTop)}
+                                onChange={(event) => toggleAlwaysOnTop(event.target.checked)}
+                                icon={baseCheckboxIcon}
+                                checkedIcon={checkedCheckboxIcon}
+                                disableRipple
+                            />
+                        }
+                        label="Always on top"
+                    />
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                size="small"
+                                checked={Boolean(settings.hideApp)}
+                                onChange={(event) => toggleHideApp(event.target.checked)}
+                                icon={baseCheckboxIcon}
+                                checkedIcon={checkedCheckboxIcon}
+                                disableRipple
+                            />
+                        }
+                        label="Hide app from screen recording"
+                    />
                 </div>
 
                 <div className="settings-slider">
                     <span className="settings-slider__label">Window opacity</span>
                     <div className="settings-slider__control">
-                        <input
-                            type="range"
+                        <Slider
                             min={5}
                             max={100}
                             value={windowOpacity}
-                            className="settings-range"
-                            onChange={(event) => updateOpacity(Number(event.target.value))}
+                            onChange={(_event, value) => updateOpacity(Number(value))}
+                            valueLabelDisplay="auto"
+                            size="small"
                         />
                         <span className="settings-slider__value">{windowOpacity}%</span>
                     </div>
@@ -281,14 +310,14 @@ export const GeneralSettings = () => {
                 <div className="settings-slider">
                     <span className="settings-slider__label">Window scale</span>
                     <div className="settings-slider__control">
-                        <input
-                            type="range"
+                        <Slider
                             min={0.5}
                             max={3}
                             step={0.1}
                             value={windowScale}
-                            className="settings-range"
-                            onChange={(event) => updateScale(Number(event.target.value))}
+                            onChange={(_event, value) => updateScale(Number(value))}
+                            valueLabelDisplay="auto"
+                            size="small"
                         />
                         <span className="settings-slider__value">{windowScale.toFixed(1)}x</span>
                     </div>
