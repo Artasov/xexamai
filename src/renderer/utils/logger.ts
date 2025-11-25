@@ -22,16 +22,19 @@ class RendererLogger {
         };
 
         // Отправляем в main процесс через IPC
-        if (window.api?.log) {
+        const hasBridgeLogger = Boolean(window.api?.log);
+        if (hasBridgeLogger) {
             window.api.log(entry);
         }
 
         // Также выводим в консоль для разработки
-        const consoleMethod = level === 'error' ? console.error : 
-                             level === 'warn' ? console.warn : 
-                             level === 'debug' ? console.debug : console.log;
-        
-        consoleMethod(`[${category}] ${message}`, data || '');
+        if (!hasBridgeLogger) {
+            const consoleMethod = level === 'error' ? console.error :
+                level === 'warn' ? console.warn :
+                    level === 'debug' ? console.debug : console.log;
+
+            consoleMethod(`[${category}] ${message}`, data || '');
+        }
     }
 
     public info(category: string, message: string, data?: any): void {

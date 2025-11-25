@@ -233,11 +233,25 @@ export class AuthClient {
     }
 
     public async getCurrentUser(includeTiersAndFeatures: boolean = false): Promise<AuthUser> {
-        const url = includeTiersAndFeatures ? '/me/?tiers_and_features=1' : '/me/';
-        return this.authenticatedRequest<AuthUser>({
-            url,
-            method: 'GET',
-        });
+        const path = includeTiersAndFeatures ? '/me/?tiers_and_features=1' : '/me/';
+        const label = `GET ${path}`;
+
+        logger.info('auth', `${label} → start`);
+        try {
+            const user = await this.authenticatedRequest<AuthUser>({
+                url: path,
+                method: 'GET',
+            });
+            logger.info('auth', `${label} → success`, user);
+            return user;
+        } catch (error) {
+            const normalized = normalizeError(error);
+            logger.error('auth', `${label} → error`, {
+                status: normalized.status,
+                message: normalized.message,
+            });
+            throw normalized;
+        }
     }
 
     public async refreshAccessToken(): Promise<string | null> {

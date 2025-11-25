@@ -325,7 +325,15 @@ const api: AssistantAPI = {
     localSpeech: localSpeechApi,
     ollama: ollamaApi,
     log: async (entry) => {
-        console.info(`[${entry.category}] ${entry.message}`, entry.data ?? {});
+        const prefix = `[${entry.category}] ${entry.message}`;
+        const data = entry.data;
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+            console.groupCollapsed(prefix);
+            console.log(data);
+            console.groupEnd();
+        } else {
+            console.info(prefix);
+        }
     },
 };
 
