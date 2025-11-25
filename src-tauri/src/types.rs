@@ -9,8 +9,8 @@ use crate::constants::{
     DEFAULT_DURATIONS, DEFAULT_LLM_HOST, DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE,
     DEFAULT_LOCAL_LLM_MODEL, DEFAULT_LOCAL_WHISPER_MODEL, DEFAULT_OPENAI_MODEL,
     DEFAULT_OPENAI_TRANSCRIPTION_MODEL, DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS,
-    DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER, DEFAULT_STREAM_MODE,
-    DEFAULT_STREAM_SEND_HOTKEY, DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE,
+    DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER, DEFAULT_STREAM_SEND_HOTKEY,
+    DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE,
     DEFAULT_TRANSCRIPTION_PROMPT, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT,
     DEFAULT_WINDOW_MIN_WIDTH, DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE,
     DEFAULT_WINDOW_WIDTH,
@@ -75,10 +75,6 @@ fn default_local_device() -> String {
 
 fn default_window_scale() -> f32 {
     DEFAULT_WINDOW_SCALE
-}
-
-fn default_stream_mode() -> String {
-    DEFAULT_STREAM_MODE.to_string()
 }
 
 fn default_stream_hotkey() -> String {
@@ -150,8 +146,6 @@ pub struct AppConfig {
     pub api_llm_timeout_ms: u32,
     #[serde(default = "default_screen_timeout")]
     pub screen_processing_timeout_ms: u32,
-    #[serde(default = "default_stream_mode")]
-    pub stream_mode: String,
     #[serde(default = "default_stream_hotkey")]
     pub stream_send_hotkey: String,
     #[serde(default = "default_screen_model")]
@@ -218,7 +212,6 @@ impl Default for AppConfig {
             api_stt_timeout_ms: DEFAULT_API_STT_TIMEOUT_MS,
             api_llm_timeout_ms: DEFAULT_API_LLM_TIMEOUT_MS,
             screen_processing_timeout_ms: DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS,
-            stream_mode: default_stream_mode(),
             stream_send_hotkey: default_stream_hotkey(),
             screen_processing_model: default_screen_model(),
             screen_processing_prompt: default_screen_prompt(),
@@ -303,9 +296,6 @@ impl AppConfig {
             self.screen_processing_timeout_ms = DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS;
         }
 
-        if self.stream_mode != "base" && self.stream_mode != "stream" {
-            self.stream_mode = DEFAULT_STREAM_MODE.to_string();
-        }
         if self.stream_send_hotkey.trim().is_empty() {
             self.stream_send_hotkey = DEFAULT_STREAM_SEND_HOTKEY.to_string();
         }

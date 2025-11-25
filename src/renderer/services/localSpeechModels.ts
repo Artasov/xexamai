@@ -136,7 +136,6 @@ export const downloadLocalSpeechModel = async (model: string): Promise<LocalMode
 
 export const warmupLocalSpeechModel = async (
     model: string,
-    device?: string,
 ): Promise<LocalModelWarmupResponse> => {
     const normalized = normalizeLocalWhisperModel(model);
     if (!normalized) {
@@ -148,13 +147,9 @@ export const warmupLocalSpeechModel = async (
     warmupModels.add(normalized);
     notifyWarmup();
     try {
-        const payload: Record<string, string> = {model: normalized};
-        if (device) {
-            payload.device = device;
-        }
         const {data} = await localSpeechClient.post<LocalModelWarmupResponse>(
             MODELS_WARMUP_ENDPOINT,
-            payload,
+            {model: normalized},
             {
                 headers: {'Content-Type': 'application/json'},
                 timeout: 2 * 60 * 1000,

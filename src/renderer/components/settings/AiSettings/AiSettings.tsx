@@ -18,7 +18,6 @@ import type {FastWhisperStatus} from '@shared/ipc';
 import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '../../../types';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
-import {emitSettingsChange} from '../../../utils/settingsEvents';
 import CustomSelect from '../../common/CustomSelect/CustomSelect';
 import {SettingsToast} from '../shared/SettingsToast/SettingsToast';
 import {
@@ -73,19 +72,9 @@ const LLM_HOST_OPTIONS: WithLabel[] = [
     { value: 'local', label: 'Local' },
 ];
 
-const STREAM_MODE_OPTIONS: WithLabel[] = [
-    { value: 'base', label: 'Base mode' },
-    { value: 'stream', label: 'Google stream' },
-];
-
 const SCREEN_MODEL_OPTIONS: WithLabel[] = [
     { value: 'openai', label: 'OpenAI' },
     { value: 'google', label: 'Google Gemini' },
-];
-
-const LOCAL_DEVICE_OPTIONS: WithLabel[] = [
-    { value: 'cpu', label: 'CPU' },
-    { value: 'gpu', label: 'GPU' },
 ];
 
 const toTitle = (value: string): string =>
@@ -276,7 +265,7 @@ export const AiSettings = () => {
                 setLocalModelReady(downloaded);
                 if (downloaded && !localModelWarming && lastLocalWarmupRef.current !== model) {
                     lastLocalWarmupRef.current = model;
-                    return warmupLocalSpeechModel(model, settings.localDevice).catch((error) => {
+                    return warmupLocalSpeechModel(model).catch((error) => {
                         lastLocalWarmupRef.current = null;
                         setLocalModelError(error instanceof Error ? error.message : 'Failed to warmup model');
                     });
@@ -298,7 +287,6 @@ export const AiSettings = () => {
     }, [
         settings.transcriptionMode,
         settings.localWhisperModel,
-        settings.localDevice,
         localStatus?.installed,
         localStatus?.running,
         localModelWarming,
@@ -419,10 +407,6 @@ export const AiSettings = () => {
     };
 
     const handleTranscriptionModeChange = async (mode: TranscriptionMode) => {
-        if (mode === 'local' && settings.streamMode === 'stream') {
-            showMessage('Disable Google stream before switching to local transcription', 'error');
-            return;
-        }
         let targetModel = mode === 'local'
             ? (settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL)
             : (settings.transcriptionModel ?? DEFAULT_API_TRANSCRIBE_MODEL);
@@ -484,17 +468,6 @@ export const AiSettings = () => {
         }
     };
 
-    const handleLocalDeviceChange = async (device: 'cpu' | 'gpu') => {
-        try {
-            await window.api.settings.setLocalDevice(device);
-            patchLocal({ localDevice: device });
-            showMessage(`Local device set to ${device.toUpperCase()}`);
-        } catch (error) {
-            logger.error('settings', 'Failed to set local device', { error });
-            showMessage('Failed to update local device', 'error');
-        }
-    };
-
     const handleVerifyLocalModel = async () => {
         const model = normalizeLocalWhisperModel(settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL);
         if (!model) {
@@ -516,25 +489,6 @@ export const AiSettings = () => {
             setLocalModelReady(false);
         } finally {
             setCheckingLocalModel(false);
-        }
-    };
-
-    const handleStreamModeChange = async (mode: 'base' | 'stream') => {
-        if (mode === 'stream') {
-            if (settings.transcriptionMode === 'local') {
-                showMessage('Stream mode requires API transcription', 'error');
-                return;
-            }
-            if (!requireGoogle()) return;
-        }
-        try {
-            await window.api.settings.setStreamMode(mode);
-            patchLocal({ streamMode: mode });
-            emitSettingsChange('streamMode', mode);
-            showMessage(`Stream mode changed to ${mode}`);
-        } catch (error) {
-            logger.error('settings', 'Failed to set stream mode', { error });
-            showMessage('Failed to update stream mode', 'error');
         }
     };
 
@@ -635,7 +589,7 @@ export const AiSettings = () => {
             const downloaded = await checkLocalModelDownloaded(model, { force: true });
             setLocalModelReady(downloaded);
             try {
-                await warmupLocalSpeechModel(model, settings.localDevice);
+                await warmupLocalSpeechModel(model);
             } catch (error) {
                 logger.error('settings', 'Warmup failed after download', { error });
                 setLocalModelError('Model ready but warmup failed. Try again.');
@@ -654,7 +608,7 @@ export const AiSettings = () => {
         if (!model) return;
         setLocalModelError(null);
         try {
-            await warmupLocalSpeechModel(model, settings.localDevice);
+            await warmupLocalSpeechModel(model);
             lastLocalWarmupRef.current = model;
             showMessage('Warmup started');
         } catch (error) {
@@ -1035,17 +989,6 @@ export const AiSettings = () => {
                         ) : null}
                     </div>
 
-                    {settings.transcriptionMode === 'local' ? (
-                        <div className="settings-field">
-                            <label className="settings-field__label">Local device</label>
-                            <CustomSelect
-                                value={settings.localDevice ?? 'cpu'}
-                                options={LOCAL_DEVICE_OPTIONS}
-                                onChange={(val) => handleLocalDeviceChange(val as 'cpu' | 'gpu')}
-                            />
-                        </div>
-                    ) : null}
-
                     <div className="settings-field">
                         <label className="settings-field__label">LLM Mode</label>
                         <div className="ai-settings__select-wrapper">
@@ -1112,15 +1055,6 @@ export const AiSettings = () => {
                                 ) : null}
                             </div>
                         ) : null}
-                    </div>
-
-                    <div className="settings-field">
-                        <label className="settings-field__label">Stream mode</label>
-                        <CustomSelect
-                            value={settings.streamMode ?? 'base'}
-                            options={STREAM_MODE_OPTIONS}
-                            onChange={(val) => handleStreamModeChange(val as 'base' | 'stream')}
-                        />
                     </div>
 
                     <div className="settings-field">

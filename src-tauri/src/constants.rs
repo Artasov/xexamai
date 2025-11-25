@@ -17,7 +17,6 @@ pub const DEFAULT_LOCAL_DEVICE: &str = "cpu";
 pub const DEFAULT_TRANSCRIPTION_MODE: &str = "api";
 pub const DEFAULT_LLM_HOST: &str = "api";
 pub const DEFAULT_AUDIO_INPUT_TYPE: &str = "microphone";
-pub const DEFAULT_STREAM_MODE: &str = "base";
 pub const DEFAULT_STREAM_SEND_HOTKEY: &str = "~";
 pub const DEFAULT_TOGGLE_INPUT_HOTKEY: &str = "g";
 

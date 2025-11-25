@@ -7,6 +7,8 @@ import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
 const MIN_WINDOW_HEIGHT = 500;
+const DEFAULT_WINDOW_WIDTH = 420;
+const DEFAULT_WINDOW_HEIGHT = 780;
 
 type Message = { text: string; tone: 'success' | 'error' };
 
@@ -16,8 +18,8 @@ export const GeneralSettings = () => {
     const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
     const [windowOpacity, setWindowOpacity] = useState(settings.windowOpacity ?? 100);
     const [windowScale, setWindowScale] = useState(settings.windowScale ?? 1);
-    const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? 420);
-    const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? 780);
+    const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
+    const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
     const [message, setMessage] = useState<Message | null>(null);
     const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,8 +35,8 @@ export const GeneralSettings = () => {
         setGoogleKey(settings.googleApiKey ?? '');
         setWindowOpacity(settings.windowOpacity ?? 100);
         setWindowScale(settings.windowScale ?? 1);
-        setWindowWidth(settings.windowWidth ?? 420);
-        setWindowHeight(settings.windowHeight ?? 780);
+        setWindowWidth(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
+        setWindowHeight(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
     }, [settings]);
 
     const showMessage = (text: string, tone: Message['tone'] = 'success') => {
@@ -131,44 +133,75 @@ export const GeneralSettings = () => {
     useEffect(() => {
         if (openAiSaveTimeout.current) {
             clearTimeout(openAiSaveTimeout.current);
+            openAiSaveTimeout.current = null;
         }
+
+        const trimmed = openaiKey.trim();
+        const current = settings.openaiApiKey ?? '';
+
+        if (trimmed === current) {
+            return;
+        }
+
         openAiSaveTimeout.current = setTimeout(() => {
-            void saveOpenAi(openaiKey);
+            void saveOpenAi(trimmed);
         }, 500);
         return () => {
             if (openAiSaveTimeout.current) {
                 clearTimeout(openAiSaveTimeout.current);
+                openAiSaveTimeout.current = null;
             }
         };
-    }, [openaiKey, saveOpenAi]);
+    }, [openaiKey, saveOpenAi, settings.openaiApiKey]);
 
     useEffect(() => {
         if (googleSaveTimeout.current) {
             clearTimeout(googleSaveTimeout.current);
+            googleSaveTimeout.current = null;
         }
+        const trimmed = googleKey.trim();
+        const current = settings.googleApiKey ?? '';
+
+        if (trimmed === current) {
+            return;
+        }
+
         googleSaveTimeout.current = setTimeout(() => {
-            void saveGoogle(googleKey);
+            void saveGoogle(trimmed);
         }, 500);
         return () => {
             if (googleSaveTimeout.current) {
                 clearTimeout(googleSaveTimeout.current);
+                googleSaveTimeout.current = null;
             }
         };
-    }, [googleKey, saveGoogle]);
+    }, [googleKey, saveGoogle, settings.googleApiKey]);
 
     useEffect(() => {
         if (sizeSaveTimeout.current) {
             clearTimeout(sizeSaveTimeout.current);
         }
+        sizeSaveTimeout.current = null;
+
+        const normalizedWidth = Math.max(MIN_WINDOW_WIDTH, Math.round(windowWidth));
+        const normalizedHeight = Math.max(MIN_WINDOW_HEIGHT, Math.round(windowHeight));
+        const currentWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
+        const currentHeight = settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT;
+
+        if (normalizedWidth === currentWidth && normalizedHeight === currentHeight) {
+            return;
+        }
+
         sizeSaveTimeout.current = setTimeout(() => {
-            void saveWindowSize(windowWidth, windowHeight);
+            void saveWindowSize(normalizedWidth, normalizedHeight);
         }, 600);
         return () => {
             if (sizeSaveTimeout.current) {
                 clearTimeout(sizeSaveTimeout.current);
+                sizeSaveTimeout.current = null;
             }
         };
-    }, [windowWidth, windowHeight, saveWindowSize]);
+    }, [windowWidth, windowHeight, saveWindowSize, settings.windowWidth, settings.windowHeight]);
 
     const openConfigFolder = async () => {
         try {

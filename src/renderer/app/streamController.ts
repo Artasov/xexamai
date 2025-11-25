@@ -123,7 +123,7 @@ export class StreamController {
         }
         this.currentStreamSendHotkey = settings.streamSendHotkey || '~';
         await this.updateToggleButtonLabel(settings.audioInputType as 'microphone' | 'system' | undefined);
-        await this.updateStreamModeVisibility(settings.streamMode as 'base' | 'stream' | undefined);
+        await this.updateStreamModeVisibility('base');
     }
 
     handleSettingsChange(key: string, value: unknown): boolean | Promise<boolean> {
@@ -131,10 +131,6 @@ export class StreamController {
             case 'streamSendHotkey': {
                 this.currentStreamSendHotkey = (value as string) || '~';
                 return true;
-            }
-            case 'streamMode': {
-                settingsStore.patch({ streamMode: value as 'base' | 'stream' });
-                return this.updateStreamModeVisibility(value as 'base' | 'stream').then(() => true);
             }
             case 'audioInputType': {
                 const normalized = value === 'system' ? 'system' : 'microphone';
@@ -149,14 +145,14 @@ export class StreamController {
 
     async handleRecordToggle(shouldRecord: boolean): Promise<void> {
         try {
-            if (shouldRecord) {
-                await startAudioRecording();
-                await this.updateStreamModeVisibility();
-            } else {
-                await stopAudioRecording();
-                await this.googleStreamingService.stop();
-                this.googleStreamingActive = false;
-            }
+        if (shouldRecord) {
+            await startAudioRecording();
+            await this.updateStreamModeVisibility('base');
+        } else {
+            await stopAudioRecording();
+            await this.googleStreamingService.stop();
+            this.googleStreamingActive = false;
+        }
         } catch (error) {
             console.error('Record toggle failed', error);
             const message = error instanceof Error ? error.message : String(error);
@@ -174,10 +170,6 @@ export class StreamController {
 
     async handleAskWindow(seconds: number): Promise<void> {
         logger.info('ui', 'Handle ask window', { seconds });
-
-        if (this.isStreamMode) {
-            return;
-        }
 
         if (this.currentRequestId) {
             await this.stopActiveStream();
@@ -309,52 +301,19 @@ export class StreamController {
         await this.handleAudioInputToggle('hotkey');
     }
 
-    async updateStreamModeVisibility(preferred?: 'base' | 'stream'): Promise<void> {
+    async updateStreamModeVisibility(_preferred?: 'base' | 'stream'): Promise<void> {
         try {
-            let streamMode = preferred;
-            if (!streamMode) {
-                try {
-                    const snapshot = settingsStore.get();
-                    streamMode = (snapshot.streamMode || 'base') as 'base' | 'stream';
-                } catch {
-                    const snapshot = await settingsStore.load();
-                    streamMode = (snapshot.streamMode || 'base') as 'base' | 'stream';
-                }
-            }
-            const nextIsStreamMode = streamMode === 'stream';
-            const modeChanged = !this.streamModeInitialized || this.isStreamMode !== nextIsStreamMode;
-            this.isStreamMode = nextIsStreamMode;
+            this.isStreamMode = false;
             this.streamModeInitialized = true;
-
-            if (modeChanged) {
-                if (this.streamModeContainer) {
-                    this.streamModeContainer.classList.toggle('hidden', !this.isStreamMode);
-                    this.streamModeContainer.style.display = this.isStreamMode ? 'block' : 'none';
-                }
-                if (this.durationsContainer) {
-                    this.durationsContainer.classList.toggle('hidden', this.isStreamMode);
-                    this.durationsContainer.style.display = this.isStreamMode ? 'none' : 'block';
-                }
+            if (this.streamModeContainer) {
+                this.streamModeContainer.classList.add('hidden');
+                this.streamModeContainer.style.display = 'none';
             }
-
-            const activeStream = getCurrentStream();
-            if (this.isStreamMode && activeStream) {
-                if (!this.googleStreamingActive || modeChanged) {
-                    try {
-                        setStatus('Preparing Google stream...', 'processing');
-                    } catch {
-                    }
-                    try {
-                        await this.googleStreamingService.start(activeStream);
-                        this.googleStreamingActive = true;
-                        setStatus('Google streaming active', 'processing');
-                    } catch (error) {
-                        this.googleStreamingActive = false;
-                        console.error('Failed to start Google streaming:', error);
-                        setStatus('Failed to start Google streaming', 'error');
-                    }
-                }
-            } else if (this.googleStreamingActive && (!this.isStreamMode || modeChanged)) {
+            if (this.durationsContainer) {
+                this.durationsContainer.classList.remove('hidden');
+                this.durationsContainer.style.display = 'block';
+            }
+            if (this.googleStreamingActive) {
                 try {
                     await this.googleStreamingService.stop();
                 } catch {
@@ -570,25 +529,9 @@ export class StreamController {
                 } catch {
                     settings = await settingsStore.load();
                 }
-                const streamMode = settings.streamMode || 'base';
-                if (streamMode === 'stream') {
-                    try {
-                        setStatus('Preparing Google stream...', 'processing');
-                    } catch {
-                    }
-                    const streamToUse = result.stream ?? getCurrentStream();
-                    if (streamToUse) {
-                        await this.googleStreamingService.start(streamToUse);
-                        this.googleStreamingActive = true;
-                        setStatus('Google streaming active', 'processing');
-                    } else {
-                        this.googleStreamingActive = false;
-                    }
-                } else {
-                    await this.googleStreamingService.stop();
-                    this.googleStreamingActive = false;
-                    setStatus('Recording...', 'recording');
-                }
+                await this.googleStreamingService.stop();
+                this.googleStreamingActive = false;
+                setStatus('Recording...', 'recording');
             } catch (error) {
                 console.error('Failed to refresh recorder status after input switch', error);
             }

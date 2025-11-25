@@ -152,10 +152,7 @@ const settingsApi: AssistantAPI['settings'] = {
     setGoogleApiKey: async (key) => {
         await patchSettings({ googleApiKey: key });
     },
-    setStreamMode: async (mode) => {
-        await patchSettings({ streamMode: mode });
-    },
-    setStreamSendHotkey: async (key) => {
+    setStreamSendHotkey: async (key: string) => {
         await patchSettings({ streamSendHotkey: key });
     },
 };

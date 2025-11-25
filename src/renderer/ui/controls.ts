@@ -179,11 +179,7 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
         btnRecord.dataset['state'] = shouldStart ? 'rec' : 'idle';
         if (shouldStart) {
             try {
-                const s = await window.api.settings.get();
-                if ((s.streamMode || 'base') !== 'stream') {
-                    setStatus('Recording...', 'recording');
-                }
-                // In stream mode, renderer will set a more specific status
+                setStatus('Recording...', 'recording');
             } catch {
                 setStatus('Recording...', 'recording');
             }

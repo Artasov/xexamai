@@ -52,7 +52,6 @@ export type AppSettings = {
     apiLlmTimeoutMs?: number;
     screenProcessingTimeoutMs?: number;
     googleApiKey?: string;
-    streamMode?: 'base' | 'stream';
     streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
     screenProcessingPrompt?: string;
@@ -77,7 +76,6 @@ export const DefaultSettings: AppSettings = {
     localLlmModel: 'gpt-oss:20b',
     localWhisperModel: 'base',
     localDevice: 'cpu',
-    streamMode: 'base',
     streamSendHotkey: '~',
     screenProcessingModel: 'openai',
     screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
@@ -122,7 +120,6 @@ export const IPCChannels = {
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
     SetGoogleApiKey: 'settings:set:google-api-key',
-    SetStreamMode: 'settings:set:stream-mode',
     SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
     AuthStartOAuth: 'auth:start-oauth',
     AuthConsumeDeepLinks: 'auth:consume-deep-links',
@@ -271,7 +268,6 @@ export type AssistantAPI = {
         setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
         setWelcomeModalDismissed: (dismissed: boolean) => Promise<void>;
         setGoogleApiKey: (key: string) => Promise<void>;
-        setStreamMode: (mode: 'base' | 'stream') => Promise<void>;
         setStreamSendHotkey: (key: string) => Promise<void>;
         setWindowScale: (scale: number) => Promise<void>;
         setHideApp: (hideApp: boolean) => Promise<void>;
