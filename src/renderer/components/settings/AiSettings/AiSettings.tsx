@@ -114,10 +114,11 @@ const formatLlmLabel = (value: string): string => {
 export const AiSettings = () => {
     const { settings, patchLocal } = useSettingsContext();
 
-    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 10000);
-    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 10000);
+    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
+    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
     const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
     const [message, setMessage] = useState<Message>(null);
+    const timeoutSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [localStatus, setLocalStatus] = useState<FastWhisperStatus | null>(null);
     const [localAction, setLocalAction] = useState<LocalAction | null>(null);
@@ -139,8 +140,8 @@ export const AiSettings = () => {
     const lastLocalWarmupRef = useRef<string | null>(null);
 
     useEffect(() => {
-        setApiSttTimeout(settings.apiSttTimeoutMs ?? 10000);
-        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 10000);
+        setApiSttTimeout(settings.apiSttTimeoutMs ?? 30000);
+        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 30000);
         setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
     }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.screenProcessingTimeoutMs]);
 
@@ -645,24 +646,52 @@ export const AiSettings = () => {
         }
     };
 
-    const saveTimeouts = async () => {
-        try {
-            await Promise.all([
-                window.api.settings.setApiSttTimeoutMs(apiSttTimeout),
-                window.api.settings.setApiLlmTimeoutMs(apiLlmTimeout),
-                window.api.settings.setScreenProcessingTimeoutMs(screenTimeout),
-            ]);
-            patchLocal({
-                apiSttTimeoutMs: apiSttTimeout,
-                apiLlmTimeoutMs: apiLlmTimeout,
-                screenProcessingTimeoutMs: screenTimeout,
-            });
-            showMessage('Timeout values saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save timeout values', { error });
-            showMessage('Failed to save timeouts', 'error');
+    useEffect(() => {
+        if (
+            settings.apiSttTimeoutMs === apiSttTimeout &&
+            settings.apiLlmTimeoutMs === apiLlmTimeout &&
+            settings.screenProcessingTimeoutMs === screenTimeout
+        ) {
+            return;
         }
-    };
+        if (timeoutSaveRef.current) {
+            clearTimeout(timeoutSaveRef.current);
+            timeoutSaveRef.current = null;
+        }
+        timeoutSaveRef.current = setTimeout(() => {
+            void (async () => {
+                try {
+                    await Promise.all([
+                        window.api.settings.setApiSttTimeoutMs(apiSttTimeout),
+                        window.api.settings.setApiLlmTimeoutMs(apiLlmTimeout),
+                        window.api.settings.setScreenProcessingTimeoutMs(screenTimeout),
+                    ]);
+                    patchLocal({
+                        apiSttTimeoutMs: apiSttTimeout,
+                        apiLlmTimeoutMs: apiLlmTimeout,
+                        screenProcessingTimeoutMs: screenTimeout,
+                    });
+                } catch (error) {
+                    logger.error('settings', 'Failed to save timeout values', { error });
+                    showMessage('Failed to save timeouts', 'error');
+                }
+            })();
+        }, 500);
+        return () => {
+            if (timeoutSaveRef.current) {
+                clearTimeout(timeoutSaveRef.current);
+                timeoutSaveRef.current = null;
+            }
+        };
+    }, [
+        apiSttTimeout,
+        apiLlmTimeout,
+        screenTimeout,
+        settings.apiSttTimeoutMs,
+        settings.apiLlmTimeoutMs,
+        settings.screenProcessingTimeoutMs,
+        patchLocal,
+    ]);
     const hasOpenAiKey = Boolean(settings.openaiApiKey?.trim());
     const hasGoogleKey = Boolean(settings.googleApiKey?.trim());
 
@@ -1128,9 +1157,6 @@ export const AiSettings = () => {
                         />
                     </div>
                 </div>
-                <button type="button" className="btn btn-sm" onClick={saveTimeouts}>
-                    Save timeouts
-                </button>
             </section>
         </div>
     );
