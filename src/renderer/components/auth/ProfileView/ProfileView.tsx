@@ -93,21 +93,23 @@ export function ProfileView() {
                 </div>
             </div>
 
-            {tiersAndFeatures && activeTierInfo ? (
+            {tiersAndFeatures ? (
                 <div className="card fc gap-4 p-6">
                     <h3 className="text-lg font-semibold text-white">XEXAI Token & Tier</h3>
                     <div className="fc gap-3">
                         <div className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
                             <span className="text-sm text-gray-400">Balance</span>
                             <span className="text-base font-semibold text-white">
-                                {formatBalance(activeTierInfo.balance)} {activeTierInfo.ticker}
+                                {formatBalance((activeTierInfo?.balance) || '0')} {activeTierInfo?.ticker || ''}
                             </span>
                         </div>
                         <div className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
                             <span className="text-sm text-gray-400">Active Tier</span>
-                            <span className="text-base font-semibold text-white">{activeTierInfo.tier}</span>
+                            <span className="text-base font-semibold text-white">
+                                {activeTierInfo?.tier || 'No active tier'}
+                            </span>
                         </div>
-                        {tiersAndFeatures.active_tier.description ? (
+                        {tiersAndFeatures.active_tier?.description ? (
                             <p className="text-sm text-gray-400 italic">{tiersAndFeatures.active_tier.description}</p>
                         ) : null}
                     </div>

@@ -4,7 +4,10 @@ export function getUserTiersAndFeatures(user: AuthUser | null): TiersAndFeatures
     if (!user?.tiers_and_features || !Array.isArray(user.tiers_and_features) || user.tiers_and_features.length === 0) {
         return null;
     }
-    return user.tiers_and_features[0] || null;
+    const preferred = user.tiers_and_features.find(
+        (item) => (item.token_ticker || '').toUpperCase() === 'XEXAI'
+    );
+    return preferred || user.tiers_and_features[0] || null;
 }
 
 export function hasFeatureAccess(user: AuthUser | null, featureCode: 'screen_processing' | 'history' | 'promt_presets'): boolean {
@@ -17,11 +20,10 @@ export function hasFeatureAccess(user: AuthUser | null, featureCode: 'screen_pro
 
 export function getActiveTier(user: AuthUser | null): { tier: string; balance: string; ticker: string } | null {
     const tiersAndFeatures = getUserTiersAndFeatures(user);
-    if (!tiersAndFeatures?.active_tier) {
-        return null;
-    }
+    if (!tiersAndFeatures) return null;
+    const activeTier = tiersAndFeatures.active_tier;
     return {
-        tier: tiersAndFeatures.active_tier.name,
+        tier: activeTier?.name || 'No active tier',
         balance: tiersAndFeatures.balance,
         ticker: tiersAndFeatures.token_ticker,
     };
