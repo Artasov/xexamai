@@ -839,7 +839,7 @@ body {
     z-index: -1;
 }
 
-/* Для экранов менее 600px */
+/* For screens under 600px */
 @media (max-width: 600px) {
     #main-logo.logo-final-state {
         opacity: 0.008;

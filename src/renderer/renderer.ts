@@ -15,7 +15,7 @@ import {state} from './state/appState';
 import {checkOllamaModelDownloaded} from './services/ollama';
 import {normalizeLocalWhisperModel} from './services/localSpeechModels';
 
-// Предзагружаем модели, если включен локальный режим
+// Preload models when local mode is enabled
 async function preloadLocalModelsIfNeeded() {
     try {
         const settings = await settingsStore.load();
@@ -24,11 +24,10 @@ async function preloadLocalModelsIfNeeded() {
         if (mode === 'local') {
             console.info('[renderer] Preloading local models and checking server status...');
             
-            // Проверяем локальную модель транскрипции
+            // Check local transcription model
             if (window.api?.localSpeech) {
                 try {
-                    // Используем checkHealth для полной проверки статуса сервера
-                    // Это обновит кэш и проверит реальное состояние сервера
+                    // Use checkHealth to fully validate server status and refresh cache
                     const status = await window.api.localSpeech.checkHealth();
                     console.info('[renderer] Local speech server status:', {
                         installed: status?.installed,
@@ -53,7 +52,7 @@ async function preloadLocalModelsIfNeeded() {
                 }
             }
             
-            // Проверяем локальную LLM модель, если используется локальный LLM
+            // Check local LLM model when local host is selected
             if (settings.llmHost === 'local') {
                 try {
                     const llmModel = settings.localLlmModel || settings.llmModel || 'gpt-oss:20b';
@@ -92,7 +91,6 @@ export async function initializeRenderer() {
     // Setup transcription debug listener (optional)
     setupTranscriptionDebugListener().catch(() => {});
     
-    // Запрашиваем разрешение на захват системного звука при старте
     // System audio capture is now handled by Rust WASAPI loopback
     // No need to request getDisplayMedia permission
     
@@ -106,13 +104,12 @@ export async function initializeRenderer() {
 
     const bridge = await awaitPreloadBridge();
     if (!bridge) {
-        setStatus('Preload-скрипт недоступен', 'error');
+        setStatus('Preload script unavailable', 'error');
         return;
     }
     console.info('[renderer] Preload bridge ready for use');
     
-    // Автоматически проверяем доступность моделей после инициализации bridge
-    // Это гарантирует, что API полностью готов к использованию
+    // Automatically check model availability after the bridge initializes to ensure the API is ready
     preloadLocalModelsIfNeeded().catch((error) => {
         console.warn('[renderer] Failed to preload local models:', error);
     });

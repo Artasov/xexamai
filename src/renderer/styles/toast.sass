@@ -1,7 +1,7 @@
-// Кастомные стили для уведомлений react-toastify
-// Полупрозрачный фон с размытием в зависимости от типа уведомления
+// Custom styles for react-toastify notifications
+// Translucent blurred background depending on notification type
 
-// Плавные анимации появления и исчезновения
+// Smooth fade/slide animations
 @keyframes toast-enter
     from
         opacity: 0
@@ -33,7 +33,7 @@
     &[data-out="true"]
         animation: toast-exit 0.25s cubic-bezier(0.4, 0, 0.2, 1)
 
-// Success - зеленый полупрозрачный фон
+// Success - green translucent background
 .Toastify__toast--success
     background: rgba(34, 197, 94, 0.2) !important
     color: #86efac
@@ -53,7 +53,7 @@
     .Toastify__progress-bar--success
         background: rgba(34, 197, 94, 0.6)
 
-// Error - красный полупрозрачный фон
+// Error - red translucent background
 .Toastify__toast--error
     background: rgba(239, 68, 68, 0.2) !important
     color: #fca5a5
@@ -73,7 +73,7 @@
     .Toastify__progress-bar--error
         background: rgba(239, 68, 68, 0.6)
 
-// Info - синий полупрозрачный фон
+// Info - blue translucent background
 .Toastify__toast--info
     background: rgba(59, 130, 246, 0.2) !important
     color: #93c5fd
@@ -93,7 +93,7 @@
     .Toastify__progress-bar--info
         background: rgba(59, 130, 246, 0.6)
 
-// Warning - желтый/оранжевый полупрозрачный фон
+// Warning - yellow/orange translucent background
 .Toastify__toast--warning
     background: rgba(245, 158, 11, 0.2) !important
     color: #fde047
@@ -113,7 +113,7 @@
     .Toastify__progress-bar--warning
         background: rgba(245, 158, 11, 0.6)
 
-// Default - серый полупрозрачный фон
+// Default - gray translucent background
 .Toastify__toast--default
     background: rgba(148, 163, 184, 0.2) !important
     color: #cbd5e1
@@ -133,17 +133,17 @@
     .Toastify__progress-bar--default
         background: rgba(148, 163, 184, 0.6)
 
-// Иконка уведомления
+// Notification icon
 .Toastify__toast-icon
     svg
         filter: brightness(1.2)
 
-// Прогресс-бар
+// Progress bar
 .Toastify__progress-bar
     height: 3px
     border-radius: 0 0 12px 12px
 
-// Контейнер уведомлений
+// Notification container
 .Toastify__toast-container
     z-index: 9999
     pointer-events: none
@@ -151,7 +151,7 @@
     .Toastify__toast
         pointer-events: auto
 
-// Кнопка закрытия
+// Close button
 .Toastify__close-button
     pointer-events: auto !important
     cursor: pointer !important

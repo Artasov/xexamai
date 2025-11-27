@@ -27,8 +27,7 @@ export async function startRecording(): Promise<void> {
 
     const inputType = audioSessionState.currentAudioInputType;
 
-    // Для всех режимов используем нативный Rust захват
-    // Rust будет использовать WASAPI loopback для system и mixed режимов
+    // Use native Rust capture for all modes (WASAPI loopback for system and mixed)
     await startNativeRecording();
 }
 
@@ -36,7 +35,7 @@ export async function startRecording(): Promise<void> {
 async function startNativeRecording(): Promise<void> {
     const inputType = audioSessionState.currentAudioInputType;
     
-    // Инициализируем общий буфер вне зависимости от режима
+    // Initialize shared buffer regardless of mode
     audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
     audioSessionState.ring = null;
 
@@ -50,7 +49,7 @@ async function startNativeRecording(): Promise<void> {
         audioUnsubscribe();
         audioUnsubscribe = null;
     }
-    // Устанавливаем listener ДО начала захвата, чтобы не пропустить первые чанки
+    // Set listener before starting capture to avoid missing early chunks
     audioUnsubscribe = onAudioChunk((chunk) => {
         try {
             const frames = chunk.samples[0]?.length || 0;
@@ -75,7 +74,7 @@ async function startNativeRecording(): Promise<void> {
         }
     });
 
-    // Убеждаемся, что listener установлен перед началом захвата
+    // Ensure listener is registered before starting capture
     await new Promise(resolve => setTimeout(resolve, 50));
 
     const source: AudioSourceKind =
@@ -108,7 +107,7 @@ async function startNativeRecording(): Promise<void> {
         const description =
             error instanceof Error
                 ? error.message
-                : 'Не удалось запустить захват аудио';
+                : 'Failed to start audio capture';
         setStatus(description, 'error');
         throw error;
     }
@@ -124,12 +123,12 @@ export async function stopRecording(): Promise<void> {
 
     const inputType = audioSessionState.currentAudioInputType;
     if (inputType === 'system' || inputType === 'mixed') {
-        // Для system и mixed останавливаем только mic захват (если был)
+        // For system and mixed stop only mic capture if it was running
         if (inputType === 'mixed') {
             await stopAudioCapture();
         }
     } else {
-        // Для mic останавливаем нативный Rust захват
+        // For mic stop the native Rust capture
         await stopAudioCapture();
     }
 
@@ -180,26 +179,25 @@ export function updateVisualizerBars(options: { bars: number; smoothing: number 
 }
 
 export async function rebuildRecorderWithStream(): Promise<void> {
-    // Переподписываемся на чанки при переключении во время записи
+    // Re-subscribe to chunks when switching during recording
     if (!appState.isRecording) return;
     
     const inputType = audioSessionState.currentAudioInputType;
     
-    // Убеждаемся, что общий буфер существует
+    // Ensure shared buffer exists
     if (!audioSessionState.pcmRing) {
         audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
     }
     
-    // Очищаем предыдущие подписки
+    // Clear previous subscriptions
     if (audioUnsubscribe) {
         audioUnsubscribe();
         audioUnsubscribe = null;
     }
     
-    // Все режимы теперь используют Rust захват
-    // Переподписываемся на нативные чанки
+    // All modes now use Rust capture; resubscribe to native chunks
     if (inputType === 'mixed') {
-        // Для mixed режима Rust смешивает потоки, используем один буфер
+        // Mixed mode: Rust mixes streams, so use a single buffer
         audioUnsubscribe = onAudioChunk((chunk) => {
             try {
                 const frames = chunk.samples[0]?.length || 0;
@@ -211,7 +209,7 @@ export async function rebuildRecorderWithStream(): Promise<void> {
             }
         });
     } else {
-        // Для mic и system режимов
+        // Mic and system modes
         audioUnsubscribe = onAudioChunk((chunk) => {
             try {
                 const frames = chunk.samples[0]?.length || 0;

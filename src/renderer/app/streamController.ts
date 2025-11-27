@@ -157,9 +157,9 @@ export class StreamController {
             const message = error instanceof Error ? error.message : String(error);
             const code = (error as any)?.code;
             if (code === 'system-audio-capture-failed' || message === 'system-audio-capture-failed') {
-                setStatus('Не удалось захватить системный звук. Разрешите доступ или переключитесь на микрофон.', 'error');
+                setStatus('System audio capture failed. Grant access or switch to microphone.', 'error');
             } else {
-                setStatus('Ошибка запуска записи', 'error');
+                setStatus('Failed to start recording', 'error');
             }
             setRecording(false);
             updateButtonsState();
@@ -686,22 +686,22 @@ export class StreamController {
 
         btn.title = title;
 
-        // Для mixed режима показываем две иконки рядом
+        // For mixed mode show two icons side by side
         if (type === 'mixed') {
-            // Очищаем содержимое кнопки
+            // Clear existing button content
             btn.innerHTML = '';
-            // Создаём контейнер для двух иконок
+            // Create container for two icons
             const container = document.createElement('div');
             container.style.cssText = 'display: flex; align-items: center; gap: 2px;';
             
-            // Иконка микрофона
+            // Microphone icon
             const micIcon = document.createElement('img');
             micIcon.src = 'img/icons/mic.png';
             micIcon.alt = 'MIC';
             micIcon.className = 'h-5 w-5';
             micIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
             
-            // Иконка системного звука
+            // System audio icon
             const audioIcon = document.createElement('img');
             audioIcon.src = 'img/icons/audio.png';
             audioIcon.alt = 'SYS';
@@ -712,8 +712,7 @@ export class StreamController {
             container.appendChild(audioIcon);
             btn.appendChild(container);
         } else {
-            // Для остальных режимов показываем одну иконку
-            // Восстанавливаем оригинальную структуру, если её нет
+            // For other modes show a single icon and restore default structure when missing
             if (!icon || !btn.contains(icon)) {
                 btn.innerHTML = '';
                 icon = document.createElement('img');

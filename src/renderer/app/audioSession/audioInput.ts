@@ -10,7 +10,7 @@ export async function switchAudioInput(newType: AudioInputType): Promise<SwitchA
     const previousType = audioSessionState.currentAudioInputType;
     
     if (!appState.isRecording) {
-        // Если не записываем, просто обновляем тип
+        // If not recording, just update the type
         audioSessionState.currentAudioInputType = newType;
         try {
             await window.api.settings.setAudioInputType(newType);
@@ -19,30 +19,30 @@ export async function switchAudioInput(newType: AudioInputType): Promise<SwitchA
         return { success: true };
     }
     
-    // Во время записи нужно перезапустить захват с новым типом
+    // While recording we need to restart capture with the new type
     try {
         try {
             await window.api.settings.setAudioInputType(newType);
         } catch {
         }
         
-        // Останавливаем текущий захват полностью
+        // Stop the current capture completely
         await stopRecording();
         
-        // Небольшая задержка для очистки
+        // Small delay to let resources clean up
         await new Promise(resolve => setTimeout(resolve, 150));
         
-        // Обновляем тип ввода
+        // Update the input type
         audioSessionState.currentAudioInputType = newType;
         
-        // Запускаем захват с новым типом
+        // Start capture with the new type
         await startRecording();
         
         return { success: true };
     } catch (error) {
         console.error('Error switching audio input', error);
         setStatus('Failed to switch audio input', 'error');
-        // Восстанавливаем предыдущий тип при ошибке
+        // Restore the previous type on error
         audioSessionState.currentAudioInputType = previousType;
         return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

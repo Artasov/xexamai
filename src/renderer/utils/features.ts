@@ -38,7 +38,7 @@ export function getMinTierForFeature(
         return null;
     }
 
-    // Находим минимальный tier с нужной фичей (сортировка по position)
+    // Find the lowest tier that contains the requested feature (sorted by position)
     const sortedTiers = [...tiersAndFeatures.tiers]
         .filter((tier) => tier.is_active && tier.features[featureCode] === true)
         .sort((a, b) => a.position - b.position);

@@ -96,7 +96,7 @@ export const GeneralSettings = () => {
             await window.api.settings.setAlwaysOnTop(value);
             patchLocal({alwaysOnTop: value});
             
-            // Если выключаем AlwaysOnTop, автоматически выключаем HideApp
+            // If disabling AlwaysOnTop, also disable HideApp
             if (!value && settings.hideApp) {
                 await window.api.settings.setHideApp(false);
                 patchLocal({hideApp: false});
@@ -108,7 +108,7 @@ export const GeneralSettings = () => {
 
     const toggleHideApp = async (value: boolean) => {
         try {
-            // Если пытаемся включить HideApp, но AlwaysOnTop выключен, включаем его
+            // Enabling HideApp requires AlwaysOnTop, so enable it if needed
             if (value && !settings.alwaysOnTop) {
                 await window.api.settings.setAlwaysOnTop(true);
                 patchLocal({alwaysOnTop: true});
@@ -122,12 +122,12 @@ export const GeneralSettings = () => {
     };
 
     const updateOpacity = (value: number) => {
-        // Только обновляем локальное состояние для визуального отображения
+        // Only update local state for immediate UI feedback
         setWindowOpacity(value);
     };
 
     const saveOpacity = async (value: number) => {
-        // Сохраняем в конфиг только когда пользователь отпускает слайдер
+        // Persist to config only when the user releases the slider
         try {
             await window.api.settings.setWindowOpacity(value);
             patchLocal({windowOpacity: value});
@@ -137,12 +137,12 @@ export const GeneralSettings = () => {
     };
 
     const updateScale = (value: number) => {
-        // Только обновляем локальное состояние для визуального отображения
+        // Only update local state for immediate UI feedback
         setWindowScale(value);
     };
 
     const saveScale = async (value: number) => {
-        // Сохраняем в конфиг только когда пользователь отпускает слайдер
+        // Persist to config only when the user releases the slider
         try {
             await window.api.settings.setWindowScale(value);
             patchLocal({windowScale: value});

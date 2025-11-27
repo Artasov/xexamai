@@ -88,7 +88,7 @@ async function startMicCapture(deviceId?: string): Promise<void> {
         const micChannelCount = micStream.getAudioTracks()[0]?.getSettings().channelCount || 2;
         micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, micChannelCount, micChannelCount);
         micGainNode = micAudioContext.createGain();
-        micGainNode.gain.value = 0; // Тихий выход, чтобы не было слышно
+        micGainNode.gain.value = 0; // Silent output to avoid playback
 
         micProcessor.onaudioprocess = (event) => {
             if (event.inputBuffer) {
@@ -113,8 +113,8 @@ async function startSystemCapture(): Promise<void> {
     }
 
     try {
-        // В Tauri нужно запросить и video, и audio, даже если video нам не нужен
-        // Многие реализации требуют video: true для работы audio
+        // In Tauri we must request both video and audio even if video is unused
+        // Some implementations require video: true for audio to work
         systemStream = await navigator.mediaDevices.getDisplayMedia({
             video: {
                 displaySurface: 'monitor',
@@ -126,12 +126,12 @@ async function startSystemCapture(): Promise<void> {
             } as MediaTrackConstraints,
         });
 
-        // Останавливаем видеотреки, они нам не нужны
+        // Stop video tracks; we do not need them
         systemStream.getVideoTracks().forEach((track) => {
             track.stop();
         });
 
-        // Проверяем наличие аудиотреков
+        // Ensure audio tracks exist
         const audioTracks = systemStream.getAudioTracks();
         if (audioTracks.length === 0) {
             throw new Error('No audio tracks available in system capture stream');
@@ -142,7 +142,7 @@ async function startSystemCapture(): Promise<void> {
         const systemChannelCount = audioTracks[0]?.getSettings().channelCount || 2;
         systemProcessor = systemAudioContext.createScriptProcessor(BUFFER_SIZE, systemChannelCount, systemChannelCount);
         systemGainNode = systemAudioContext.createGain();
-        systemGainNode.gain.value = 0; // Тихий выход, чтобы не было слышно
+        systemGainNode.gain.value = 0; // Silent output to avoid playback
 
         systemProcessor.onaudioprocess = (event) => {
             if (event.inputBuffer) {
@@ -154,7 +154,7 @@ async function startSystemCapture(): Promise<void> {
         systemProcessor.connect(systemGainNode);
         systemGainNode.connect(systemAudioContext.destination);
 
-        // Обработка остановки трека пользователем
+        // Handle user stopping the track
         systemStream.getAudioTracks().forEach((track) => {
             track.onended = () => {
                 logger.info('browserAudio', 'System audio track ended by user');

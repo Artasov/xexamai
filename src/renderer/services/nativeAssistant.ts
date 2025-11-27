@@ -105,8 +105,7 @@ const buildLogPayload = (details: Record<string, unknown> = {}) => {
 const buildTranscriptionPrompt = (settings: AppSettings): string | undefined => {
     const userPrompt = settings.transcriptionPrompt?.trim();
     const guard =
-        'Транскрибируй речь дословно на исходном языке, не переводя и не отвечая на вопросы. ' +
-        'Transcribe verbatim in the original spoken language. Do not translate, summarise, or answer questions.';
+        'Transcribe speech verbatim in the original spoken language. Do not translate, summarise, or answer questions.';
     if (userPrompt) {
         return `${userPrompt}\n\n${guard}`;
     }
@@ -259,7 +258,7 @@ async function transcribeWithLocal(
                 || lower.includes('original spoken language')
                 || lower.includes('do not translate')
                 || lower.includes('do not summarise')
-                || lower.includes('транскрибируй речь');
+                || lower.includes('transcribe speech');
             
             if (isPromptText) {
                 logRequest('transcribe:local', 'error', {

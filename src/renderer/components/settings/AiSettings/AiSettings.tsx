@@ -204,7 +204,7 @@ export const AiSettings = () => {
             try {
                 unlisten = await listen<FastWhisperStatus>('local-speech:status', (event) => {
                     if (!mounted) return;
-                    // Дебаунсим быстрые обновления статуса, чтобы не мигал UI
+                    // Debounce rapid status updates to avoid flickering UI
                     if (localStatusDebounceRef.current) {
                         clearTimeout(localStatusDebounceRef.current);
                         localStatusDebounceRef.current = null;
@@ -928,7 +928,7 @@ export const AiSettings = () => {
                                 <IconButton
                                     size="small"
                                     className="ai-settings__select-icon"
-                                    aria-label="Информация о локальной транскрибации"
+                                    aria-label="Local transcription info"
                                     onClick={() => setInfoDialog('transcribe')}
                                 >
                                     <InfoOutlinedIcon fontSize="small" />
@@ -1152,7 +1152,7 @@ export const AiSettings = () => {
                                         {selectedLocalMetadata ? `Download ${selectedLocalMetadata.label}` : 'Download model'}
                                     </Button>
                                 ) : null}
-                                {/* Warmup теперь автоматический, ручной кнопки нет */}
+                                {/* Warmup is automatic now; no manual button needed */}
                                 {localModelError ? (
                                     <Typography variant="body2" color="error" sx={{mt: 0.5}}>
                                         {localModelError}
@@ -1182,7 +1182,7 @@ export const AiSettings = () => {
                                 <IconButton
                                     size="small"
                                     className="ai-settings__select-icon"
-                                    aria-label="Информация о локальном LLM"
+                                    aria-label="Local LLM info"
                                     onClick={() => setInfoDialog('llm')}
                                 >
                                     <InfoOutlinedIcon fontSize="small" />
@@ -1338,7 +1338,7 @@ export const AiSettings = () => {
                             fullWidth
                             multiline
                             minRows={3}
-                            placeholder="Опционально: добавляется к запросам транскрибации"
+                            placeholder="Optional: appended to transcription requests"
                         />
                     </div>
                     <div className="settings-field">
@@ -1349,7 +1349,7 @@ export const AiSettings = () => {
                             fullWidth
                             multiline
                             minRows={3}
-                            placeholder="Опционально: системное сообщение для LLM"
+                            placeholder="Optional: system message for the LLM"
                         />
                     </div>
                 </div>

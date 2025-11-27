@@ -22,7 +22,7 @@ export async function listAudioDevices(): Promise<AudioDeviceInfo[]> {
 
 export async function startAudioCapture(source: AudioSourceKind, deviceId?: string): Promise<void> {
     console.log('[nativeAudio] startCapture', { source, deviceId });
-    // Устанавливаем listener ПЕРЕД началом захвата, чтобы не пропустить первые чанки
+    // Register listener before starting capture to avoid missing initial chunks
     await ensureListener();
     await window.api?.audio?.startCapture?.(source, deviceId);
 }
