@@ -310,7 +310,7 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                             let layered_flag = WS_EX_LAYERED.0 as isize;
                             SetWindowLongPtrW(hwnd_handle, GWL_EXSTYLE, ex_style | layered_flag);
                             // Устанавливаем opacity
-                            let _ = SetLayeredWindowAttributes(hwnd_handle, None, alpha, LWA_ALPHA);
+                            let _ = SetLayeredWindowAttributes(hwnd_handle, windows::Win32::Foundation::COLORREF(0), alpha, LWA_ALPHA);
                         }
                         
                         // Применяем скрытие от записи экрана

@@ -121,7 +121,8 @@ export async function initializeRenderer() {
     setupTranscriptionDebugListener().catch(() => {});
     
     // Запрашиваем разрешение на захват системного звука при старте
-    await requestSystemAudioPermissionOnStartup();
+    // System audio capture is now handled by Rust WASAPI loopback
+    // No need to request getDisplayMedia permission
     
     setupAnswerFontSizeControls();
 

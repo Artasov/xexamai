@@ -29,7 +29,15 @@ url = "2.5"
 urlencoding = "2.1"
 uuid = { version = "1.8", features = ["serde", "v4"] }
 winapi = { version = "0.3", features = ["winuser", "dwmapi"] }
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm"] }
+windows = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Dwm",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+] }
 zip = "0.6"
 flate2 = "1.0"
 futures-util = "0.3"

@@ -29,13 +29,9 @@ export async function startRecording(): Promise<void> {
 
     const inputType = audioSessionState.currentAudioInputType;
 
-    // Для system и mixed используем браузерный захват из getDisplayMedia
-    if (inputType === 'system' || inputType === 'mixed') {
-        await startSystemRecording(inputType);
-    } else {
-        // Для mic используем нативный Rust захват
-        await startNativeRecording();
-    }
+    // Для всех режимов используем нативный Rust захват
+    // Rust будет использовать WASAPI loopback для system и mixed режимов
+    await startNativeRecording();
 }
 
 async function startSystemRecording(inputType: 'system' | 'mixed'): Promise<void> {
@@ -487,10 +483,10 @@ export async function rebuildRecorderWithStream(): Promise<void> {
         audioUnsubscribe = null;
     }
     
-    // Для system и mixed режимов не нужно переподписываться на Rust чанки
-    // Они используют браузерный getDisplayMedia
-    if (inputType === 'mic') {
-        // Переподписываемся на нативные чанки только для mic
+    // Все режимы теперь используют Rust захват
+    // Переподписываемся на нативные чанки
+    if (inputType === 'mixed') {
+        // Для mixed режима Rust смешивает потоки, используем один буфер
         audioUnsubscribe = onAudioChunk((chunk) => {
             try {
                 const frames = chunk.samples[0]?.length || 0;
@@ -501,15 +497,16 @@ export async function rebuildRecorderWithStream(): Promise<void> {
                 console.error('[audioSession] failed to push pcm chunk', error);
             }
         });
-    } else if (inputType === 'mixed') {
-        // Для mixed режима переподписываемся только на mic чанки
+    } else {
+        // Для mic и system режимов
         audioUnsubscribe = onAudioChunk((chunk) => {
             try {
                 const frames = chunk.samples[0]?.length || 0;
-                audioSessionState.micPcmRing?.push(chunk.samples, frames, chunk.sampleRate);
-                updateMixedRMS();
+                audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
+                audioSessionState.rmsLevel = chunk.rms;
+                audioSessionState.visualizer?.ingestLevel(chunk.rms);
             } catch (error) {
-                console.error('[audioSession] failed to push mic chunk', error);
+                console.error('[audioSession] failed to push pcm chunk', error);
             }
         });
     }
