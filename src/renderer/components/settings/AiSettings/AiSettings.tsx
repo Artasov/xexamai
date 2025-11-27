@@ -1,5 +1,17 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Box, Button, CircularProgress, IconButton, MenuItem, TextField, Typography} from '@mui/material';
+import {
+    Box,
+    Button,
+    CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    IconButton,
+    MenuItem,
+    TextField,
+    Typography,
+} from '@mui/material';
 import {listen, type UnlistenFn} from '@tauri-apps/api/event';
 import {
     API_LLM_MODELS,
@@ -38,6 +50,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import './AiSettings.scss';
 
 type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
@@ -127,6 +140,7 @@ export const AiSettings = () => {
     const [localWarmupHydrated, setLocalWarmupHydrated] = useState(settings.transcriptionMode !== 'local');
     const localWarmupDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const localWarmupPendingRef = useRef(false);
+    const [infoDialog, setInfoDialog] = useState<'transcribe' | 'llm' | null>(null);
 
     const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
     const [ollamaChecking, setOllamaChecking] = useState(false);
@@ -895,20 +909,32 @@ export const AiSettings = () => {
                 <h3 className="settings-card__title">Modes & Models</h3>
                 <div className="ai-settings__grid ai-settings__grid--models">
                     <div className="settings-field">
-                        <TextField
-                            select
-                            size="small"
-                            label={'Transcription Mode'}
-                            value={settings.transcriptionMode ?? 'api'}
-                            onChange={(event) => handleTranscriptionModeChange(event.target.value as TranscriptionMode)}
-                            fullWidth
-                        >
-                            {TRANSCRIPTION_MODE_OPTIONS.map((option) => (
-                                <MenuItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </MenuItem>
-                            ))}
-                        </TextField>
+                        <div className="ai-settings__select-wrapper">
+                            <TextField
+                                select
+                                size="small"
+                                label={'Transcription Mode'}
+                                value={settings.transcriptionMode ?? 'api'}
+                                onChange={(event) => handleTranscriptionModeChange(event.target.value as TranscriptionMode)}
+                                fullWidth
+                            >
+                                {TRANSCRIPTION_MODE_OPTIONS.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            {settings.transcriptionMode === 'local' ? (
+                                <IconButton
+                                    size="small"
+                                    className="ai-settings__select-icon"
+                                    aria-label="Информация о локальной транскрибации"
+                                    onClick={() => setInfoDialog('transcribe')}
+                                >
+                                    <InfoOutlinedIcon fontSize="small" />
+                                </IconButton>
+                            ) : null}
+                        </div>
                         {settings.transcriptionMode === 'local' ? (
                             <Box className="ai-settings__local-server" mt={-.8}>
                                 {localStatus?.running && !localBusyPhase ? (
@@ -1137,20 +1163,32 @@ export const AiSettings = () => {
                     </div>
 
                     <div className="settings-field">
-                        <TextField
-                            select
-                            size="small"
-                            fullWidth
-                            label="LLM Mode"
-                            value={settings.llmHost ?? 'api'}
-                            onChange={(event) => handleLlmHostChange(event.target.value as LlmHost)}
-                        >
-                            {LLM_HOST_OPTIONS.map((option) => (
-                                <MenuItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </MenuItem>
-                            ))}
-                        </TextField>
+                        <div className="ai-settings__select-wrapper">
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="LLM Mode"
+                                value={settings.llmHost ?? 'api'}
+                                onChange={(event) => handleLlmHostChange(event.target.value as LlmHost)}
+                            >
+                                {LLM_HOST_OPTIONS.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            {settings.llmHost === 'local' ? (
+                                <IconButton
+                                    size="small"
+                                    className="ai-settings__select-icon"
+                                    aria-label="Информация о локальном LLM"
+                                    onClick={() => setInfoDialog('llm')}
+                                >
+                                    <InfoOutlinedIcon fontSize="small" />
+                                </IconButton>
+                            ) : null}
+                        </div>
                     </div>
 
                     <div className="settings-field">
@@ -1351,6 +1389,58 @@ export const AiSettings = () => {
                     </div>
                 </div>
             </section>
+            <Dialog
+                open={infoDialog === 'transcribe'}
+                onClose={() => setInfoDialog(null)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Local transcription</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" gutterBottom>
+                        Whisper is fastest and most accurate on NVIDIA GPUs (RTX/GTX). CPU mode works, but Medium/Large models will run significantly slower without a discrete GPU.
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                        Approximate download sizes:
+                    </Typography>
+                    <Typography variant="body2" component="div">
+                        • Tiny — ~75&nbsp;MB<br/>
+                        • Base — ~141&nbsp;MB<br/>
+                        • Small — ~463&nbsp;MB<br/>
+                        • Medium — ~1.4&nbsp;GB<br/>
+                        • Large v3 — ~3&nbsp;GB
+                    </Typography>
+                    <Typography variant="body2" sx={{mt: 2}}>
+                        Audio never leaves your machine, so make sure you have enough free disk space and let the download finish before starting a recording.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setInfoDialog(null)}>Got it</Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={infoDialog === 'llm'}
+                onClose={() => setInfoDialog(null)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Local LLM</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" gutterBottom>
+                        Smaller local models already weigh 5–7&nbsp;GB, while meaningful ones easily reach 20–40&nbsp;GB and require a powerful GPU with plenty of VRAM.
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                        Generation speed scales with your GPU. On weak hardware or CPU-only setups responses will be slow and may lock up the system.
+                    </Typography>
+                    <Typography variant="body2">
+                        If you are unsure about your PC, prefer API keys (OpenAI / Gemini). They are easier to configure and provide predictable latency without heavy downloads.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setInfoDialog(null)}>Got it</Button>
+                </DialogActions>
+            </Dialog>
         </div>
     );
 };

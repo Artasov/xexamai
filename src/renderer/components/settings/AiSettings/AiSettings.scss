@@ -92,6 +92,19 @@
     position: relative;
 }
 
+.ai-settings__select-icon {
+    position: absolute !important;
+    right: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 2px !important;
+    opacity: 50%;
+}
+
+.ai-settings__select-icon:hover {
+    color: rgba(255, 255, 255, 0.9);
+}
+
 .ai-settings__select-status {
     position: absolute;
     right: 34px;
