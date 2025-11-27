@@ -1,0 +1,160 @@
+// Кастомные стили для уведомлений react-toastify
+// Полупрозрачный фон с размытием в зависимости от типа уведомления
+
+// Плавные анимации появления и исчезновения
+@keyframes toast-enter
+    from
+        opacity: 0
+        transform: translateY(-20px) scale(0.95)
+    to
+        opacity: 1
+        transform: translateY(0) scale(1)
+
+@keyframes toast-exit
+    from
+        opacity: 1
+        transform: translateY(0) scale(1)
+    to
+        opacity: 0
+        transform: translateY(-10px) scale(0.95)
+
+.Toastify__toast
+    -webkit-backdrop-filter: blur(20px)
+    backdrop-filter: blur(20px)
+    border: 1px solid rgba(255, 255, 255, 0.1)
+    border-radius: 12px
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3)
+    pointer-events: auto
+    cursor: pointer
+
+    &[data-in="true"]
+        animation: toast-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1)
+
+    &[data-out="true"]
+        animation: toast-exit 0.25s cubic-bezier(0.4, 0, 0.2, 1)
+
+// Success - зеленый полупрозрачный фон
+.Toastify__toast--success
+    background: rgba(34, 197, 94, 0.2) !important
+    color: #86efac
+
+    .Toastify__toast-body
+        color: #86efac
+
+    .Toastify__close-button
+        color: #86efac
+        opacity: 0.8
+        pointer-events: auto
+        cursor: pointer
+
+        &:hover
+            opacity: 1
+
+    .Toastify__progress-bar--success
+        background: rgba(34, 197, 94, 0.6)
+
+// Error - красный полупрозрачный фон
+.Toastify__toast--error
+    background: rgba(239, 68, 68, 0.2) !important
+    color: #fca5a5
+
+    .Toastify__toast-body
+        color: #fca5a5
+
+    .Toastify__close-button
+        color: #fca5a5
+        opacity: 0.8
+        pointer-events: auto
+        cursor: pointer
+
+        &:hover
+            opacity: 1
+
+    .Toastify__progress-bar--error
+        background: rgba(239, 68, 68, 0.6)
+
+// Info - синий полупрозрачный фон
+.Toastify__toast--info
+    background: rgba(59, 130, 246, 0.2) !important
+    color: #93c5fd
+
+    .Toastify__toast-body
+        color: #93c5fd
+
+    .Toastify__close-button
+        color: #93c5fd
+        opacity: 0.8
+        pointer-events: auto
+        cursor: pointer
+
+        &:hover
+            opacity: 1
+
+    .Toastify__progress-bar--info
+        background: rgba(59, 130, 246, 0.6)
+
+// Warning - желтый/оранжевый полупрозрачный фон
+.Toastify__toast--warning
+    background: rgba(245, 158, 11, 0.2) !important
+    color: #fde047
+
+    .Toastify__toast-body
+        color: #fde047
+
+    .Toastify__close-button
+        color: #fde047
+        opacity: 0.8
+        pointer-events: auto
+        cursor: pointer
+
+        &:hover
+            opacity: 1
+
+    .Toastify__progress-bar--warning
+        background: rgba(245, 158, 11, 0.6)
+
+// Default - серый полупрозрачный фон
+.Toastify__toast--default
+    background: rgba(148, 163, 184, 0.2) !important
+    color: #cbd5e1
+
+    .Toastify__toast-body
+        color: #cbd5e1
+
+    .Toastify__close-button
+        color: #cbd5e1
+        opacity: 0.8
+        pointer-events: auto
+        cursor: pointer
+
+        &:hover
+            opacity: 1
+
+    .Toastify__progress-bar--default
+        background: rgba(148, 163, 184, 0.6)
+
+// Иконка уведомления
+.Toastify__toast-icon
+    svg
+        filter: brightness(1.2)
+
+// Прогресс-бар
+.Toastify__progress-bar
+    height: 3px
+    border-radius: 0 0 12px 12px
+
+// Контейнер уведомлений
+.Toastify__toast-container
+    z-index: 9999
+    pointer-events: none
+
+    .Toastify__toast
+        pointer-events: auto
+
+// Кнопка закрытия
+.Toastify__close-button
+    pointer-events: auto !important
+    cursor: pointer !important
+    z-index: 1
+    position: relative
+

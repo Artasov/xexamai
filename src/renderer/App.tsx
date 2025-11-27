@@ -7,6 +7,7 @@ import { WindowResizer } from './components/common/WindowResizer/WindowResizer';
 import {ThemeProvider, CssBaseline} from '@mui/material';
 import {ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import './styles/toast.sass';
 import {AuthProvider, useAuth} from './auth';
 import {LoginView} from './components/auth/LoginView/LoginView';
 import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
@@ -261,7 +262,7 @@ export function App() {
                 <AppContent />
                 <ToastContainer
                     position="top-center"
-                    style={{ marginTop: 54 }}
+                    style={{ marginTop: 49 }}
                     autoClose={3200}
                     newestOnTop
                     pauseOnFocusLoss={false}
