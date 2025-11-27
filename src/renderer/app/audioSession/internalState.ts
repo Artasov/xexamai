@@ -38,7 +38,7 @@ export const audioSessionState: AudioSessionState = {
     pcmRing: null,
     micPcmRing: null,
     systemPcmRing: null,
-    currentAudioInputType: 'microphone',
+    currentAudioInputType: 'mixed',
     persistentSystemAudioTrack: null,
     systemAudioStream: null,
     rmsLevel: 0,

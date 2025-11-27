@@ -119,7 +119,9 @@ export class StreamController {
             settings = await settingsStore.load();
         }
         this.currentStreamSendHotkey = settings.streamSendHotkey || '~';
-        await this.updateToggleButtonLabel(settings.audioInputType as 'microphone' | 'system' | undefined);
+        const audioInputType = (settings.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
+        setAudioInputType(audioInputType);
+        await this.updateToggleButtonLabel(audioInputType);
         await this.updateStreamModeVisibility('base');
     }
 
@@ -584,7 +586,7 @@ export class StreamController {
             } catch {
                 settingsSnapshot = await settingsStore.load();
             }
-            const currentType = (settingsSnapshot.audioInputType || 'microphone') as 'microphone' | 'system' | 'mixed';
+            const currentType = (settingsSnapshot.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
             const nextType: 'microphone' | 'system' | 'mixed' =
                 currentType === 'microphone'
                     ? 'system'
@@ -666,10 +668,10 @@ export class StreamController {
         if (!type) {
             try {
                 const settings = settingsStore.get();
-                type = (settings.audioInputType || 'microphone') as any;
+                type = (settings.audioInputType || 'mixed') as any;
             } catch {
                 const settings = await settingsStore.load();
-                type = (settings.audioInputType || 'microphone') as any;
+                type = (settings.audioInputType || 'mixed') as any;
             }
         }
         if (!type) type = getAudioInputType();
