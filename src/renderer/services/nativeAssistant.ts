@@ -179,11 +179,11 @@ async function transcribeWithOpenAi(
         });
 
         const text = result.text || '';
-        logRequest('transcribe:openai', 'ok', {
-            model: resolvedModel,
-            textPreview: previewText(text),
-        });
-        return text;
+    logRequest('transcribe:openai', 'ok', {
+        model: resolvedModel,
+        textPreview: previewText(text),
+    });
+    return text;
     } catch (error: any) {
         logRequest('transcribe:openai', 'error', {error: error.message || String(error)});
         throw new Error(error.message || 'Transcription failed');
@@ -279,11 +279,11 @@ async function transcribeWithLocal(
             throw new Error('FastWhisper returned empty transcription. The audio file may be empty, too short, or contain no speech.');
         }
         
-        logRequest('transcribe:local', 'ok', {
-            model,
-            textPreview: previewText(text),
-        });
-        return text;
+    logRequest('transcribe:local', 'ok', {
+        model,
+        textPreview: previewText(text),
+    });
+    return text;
     } catch (error: any) {
         logRequest('transcribe:local', 'error', {error: error.message || String(error)});
         throw error;
@@ -361,7 +361,7 @@ async function transcribeWithGoogle(
                 mime_type: mime || 'audio/wav',
                 filename: 'audio.wav',
                 prompt: prompt || undefined,
-            },
+                },
         });
 
         const text = result.text || '';
@@ -378,7 +378,7 @@ async function transcribeWithGoogle(
             model: resolvedModel,
             textPreview: previewText(text),
         });
-        return text;
+                return text;
     } catch (error: any) {
         logRequest('transcribe:google', 'error', {error: error.message || String(error)});
         throw error;

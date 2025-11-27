@@ -130,9 +130,6 @@ async function startSystemRecording(inputType: 'system' | 'mixed'): Promise<void
             }
 
             const rms = Math.sqrt(totalSum / Math.max(1, length * inputChannels));
-            
-            // Нормализуем RMS для системного звука (он обычно громче)
-            const normalizedRms = rms * 0.4;
 
             if (inputType === 'mixed') {
                 // Для mixed режима сохраняем в system буфер
@@ -142,8 +139,8 @@ async function startSystemRecording(inputType: 'system' | 'mixed'): Promise<void
             } else {
                 // Для system режима сохраняем в основной буфер
                 audioSessionState.pcmRing?.push(perChannel, length, sampleRate);
-                audioSessionState.rmsLevel = normalizedRms;
-                audioSessionState.visualizer?.ingestLevel(normalizedRms);
+                audioSessionState.rmsLevel = rms;
+                audioSessionState.visualizer?.ingestLevel(rms);
             }
         }
     };
@@ -276,6 +273,7 @@ async function startNativeRecording(): Promise<void> {
             }
             audioSessionState.pcmRing.push(chunk.samples, frames, chunk.sampleRate);
             audioSessionState.rmsLevel = chunk.rms;
+            // Визуализатор получает тот же RMS, что и логика
             audioSessionState.visualizer?.ingestLevel(chunk.rms);
         } catch (error) {
             logger.error('audioSession', 'failed to push pcm chunk', {error, inputType});
@@ -542,6 +540,8 @@ export async function rebuildRecorderWithStream(): Promise<void> {
                 const frames = chunk.samples[0]?.length || 0;
                 audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
                 audioSessionState.rmsLevel = chunk.rms;
+                // Mixed: показываем общий RMS как есть (микрофон не режем,
+                // системный уже ослаблен на уровне микса в Rust)
                 audioSessionState.visualizer?.ingestLevel(chunk.rms);
             } catch (error) {
                 console.error('[audioSession] failed to push pcm chunk', error);
@@ -554,6 +554,7 @@ export async function rebuildRecorderWithStream(): Promise<void> {
                 const frames = chunk.samples[0]?.length || 0;
                 audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
                 audioSessionState.rmsLevel = chunk.rms;
+                // Mic/system: визуализатор получает тот же RMS
                 audioSessionState.visualizer?.ingestLevel(chunk.rms);
             } catch (error) {
                 console.error('[audioSession] failed to push pcm chunk', error);

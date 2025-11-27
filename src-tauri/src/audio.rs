@@ -146,16 +146,7 @@ impl AudioManager {
                                 let mut configs = Vec::new();
                                 let mut streams: Vec<Stream> = Vec::new();
                                 
-                                // Add WASAPI receiver first (system audio)
-                                receivers.push(wasapi_rx);
-                                // Use default config for WASAPI (will be set from actual format)
-                                configs.push(StreamConfig {
-                                    channels: DEFAULT_CHANNELS,
-                                    sample_rate: cpal::SampleRate(DEFAULT_SAMPLE_RATE),
-                                    buffer_size: cpal::BufferSize::Default,
-                                });
-                                
-                                // Add microphone devices
+                                // Сначала добавляем микрофон(ы) — это будет «основной» сигнал
                                 for device in devices {
                                     let device_name = device.name().unwrap_or_else(|_| "Unknown".into());
                                     let (tx, rx) = unbounded::<Vec<i16>>();
@@ -174,6 +165,14 @@ impl AudioManager {
                                         Err(err) => eprintln!("[audio] failed to build stream for device {}: {}", device_name, err),
                                     }
                                 }
+                                
+                                // В mixed-режиме системный звук идёт как дополнительный источник
+                                receivers.push(wasapi_rx);
+                                configs.push(StreamConfig {
+                                    channels: DEFAULT_CHANNELS,
+                                    sample_rate: cpal::SampleRate(DEFAULT_SAMPLE_RATE),
+                                    buffer_size: cpal::BufferSize::Default,
+                                });
                                 
                                 if receivers.is_empty() {
                                     let _ = ready_tx.send(0);
@@ -652,6 +651,8 @@ fn capture_loop(app: AppHandle, receivers: Vec<Receiver<Vec<i16>>>, stop_rx: Rec
     let output_channels = DEFAULT_CHANNELS as usize;
     let device_channels: Vec<usize> = configs.iter().map(|c| c.channels as usize).collect();
     let sample_rate = configs.get(0).map(|c| c.sample_rate.0).unwrap_or(DEFAULT_SAMPLE_RATE);
+    // Коэффициент вклада системного звука в mixed-режиме (для визуального и фактического микса)
+    let system_mix_gain: f32 = 0.1;
 
     if receivers.is_empty() {
         return;
@@ -682,10 +683,20 @@ fn capture_loop(app: AppHandle, receivers: Vec<Receiver<Vec<i16>>>, stop_rx: Rec
 
         // Process other devices (for mixed mode)
         for (idx, rx) in receivers.iter().enumerate().skip(1) {
-            if let Ok(buf) = rx.try_recv() {
+            if let Ok(mut buf) = rx.try_recv() {
                 let dev_ch = if idx < device_channels.len() { device_channels[idx] } else { 1 };
                 let samples = buf.len() / dev_ch.max(1);
                 let frames = samples.min(first_samples);
+
+                // Понижаем уровень дополнительных источников (обычно системный звук)
+                for s in buf.iter_mut() {
+                    let v = (*s as f32) * system_mix_gain;
+                    // Клэмпим в диапазон i16
+                    *s = v
+                        .round()
+                        .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+                }
+
                 fill_buffer_i16(&mut mixed, &buf, dev_ch, output_channels, frames);
             }
         }
