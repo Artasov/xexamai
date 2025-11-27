@@ -126,8 +126,13 @@ export const GeneralSettings = () => {
         }
     };
 
-    const updateOpacity = async (value: number) => {
+    const updateOpacity = (value: number) => {
+        // Только обновляем локальное состояние для визуального отображения
         setWindowOpacity(value);
+    };
+
+    const saveOpacity = async (value: number) => {
+        // Сохраняем в конфиг только когда пользователь отпускает слайдер
         try {
             await window.api.settings.setWindowOpacity(value);
             patchLocal({windowOpacity: value});
@@ -136,8 +141,13 @@ export const GeneralSettings = () => {
         }
     };
 
-    const updateScale = async (value: number) => {
+    const updateScale = (value: number) => {
+        // Только обновляем локальное состояние для визуального отображения
         setWindowScale(value);
+    };
+
+    const saveScale = async (value: number) => {
+        // Сохраняем в конфиг только когда пользователь отпускает слайдер
         try {
             await window.api.settings.setWindowScale(value);
             patchLocal({windowScale: value});
@@ -312,6 +322,7 @@ export const GeneralSettings = () => {
                             max={100}
                             value={windowOpacity}
                             onChange={(_event, value) => updateOpacity(Number(value))}
+                            onChangeCommitted={(_event, value) => saveOpacity(Number(value))}
                             valueLabelDisplay="auto"
                             size="small"
                         />
@@ -328,6 +339,7 @@ export const GeneralSettings = () => {
                             step={0.1}
                             value={windowScale}
                             onChange={(_event, value) => updateScale(Number(value))}
+                            onChangeCommitted={(_event, value) => saveScale(Number(value))}
                             valueLabelDisplay="auto"
                             size="small"
                         />
