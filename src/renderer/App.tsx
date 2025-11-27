@@ -267,6 +267,7 @@ export function App() {
                     pauseOnFocusLoss={false}
                     pauseOnHover
                     theme="dark"
+                    closeOnClick
                 />
             </AuthProvider>
         </ThemeProvider>
