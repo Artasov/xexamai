@@ -64,8 +64,11 @@ async function startNativeRecording(): Promise<void> {
             }
             audioSessionState.pcmRing.push(chunk.samples, frames, chunk.sampleRate);
             audioSessionState.rmsLevel = chunk.rms;
-            // Визуализатор получает тот же RMS, что и логика
-            audioSessionState.visualizer?.ingestLevel(chunk.rms);
+            const visualizerLevel =
+                inputType === 'system'
+                    ? chunk.rms * 0.1
+                    : chunk.rms;
+            audioSessionState.visualizer?.ingestLevel(visualizerLevel);
         } catch (error) {
             logger.error('audioSession', 'failed to push pcm chunk', {error, inputType});
             console.error('[audioSession] failed to push pcm chunk', error);
@@ -198,8 +201,6 @@ export async function rebuildRecorderWithStream(): Promise<void> {
                 const frames = chunk.samples[0]?.length || 0;
                 audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
                 audioSessionState.rmsLevel = chunk.rms;
-                // Mixed: показываем общий RMS как есть (микрофон не режем,
-                // системный уже ослаблен на уровне микса в Rust)
                 audioSessionState.visualizer?.ingestLevel(chunk.rms);
             } catch (error) {
                 console.error('[audioSession] failed to push pcm chunk', error);
@@ -212,8 +213,11 @@ export async function rebuildRecorderWithStream(): Promise<void> {
                 const frames = chunk.samples[0]?.length || 0;
                 audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
                 audioSessionState.rmsLevel = chunk.rms;
-                // Mic/system: визуализатор получает тот же RMS
-                audioSessionState.visualizer?.ingestLevel(chunk.rms);
+                const visualizerLevel =
+                    inputType === 'system'
+                        ? chunk.rms * 0.1
+                        : chunk.rms;
+                audioSessionState.visualizer?.ingestLevel(visualizerLevel);
             } catch (error) {
                 console.error('[audioSession] failed to push pcm chunk', error);
             }
