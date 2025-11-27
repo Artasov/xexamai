@@ -27,6 +27,7 @@ use tauri::LogicalSize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 use types::{AppConfig, AuthDeepLinkPayload, FastWhisperStatus};
+use tray::set_tray_visible;
 
 static PENDING_DEEP_LINKS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
@@ -280,6 +281,7 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                 .set_skip_taskbar(config.hide_app)
                 .map_err(|error| error.to_string())?;
         }
+        set_tray_visible(!config.hide_app);
         
         window.show().map_err(|error| error.to_string())?;
         
@@ -428,9 +430,7 @@ fn main() {
                 main_window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.hide();
-                        }
+                        app_handle.exit(0);
                     }
                 });
             }

@@ -1,7 +1,9 @@
+use once_cell::sync::OnceCell;
+use std::sync::Mutex;
 use tauri::{
     image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
-    tray::TrayIconBuilder,
+    tray::{TrayIcon, TrayIconBuilder},
     AppHandle, Manager,
 };
 
@@ -18,6 +20,30 @@ fn load_image_from_path(path: &std::path::Path) -> Option<Image<'static>> {
 const MENU_SHOW: &str = "show";
 const MENU_HIDE: &str = "hide";
 const MENU_QUIT: &str = "quit";
+
+static TRAY_ICON: OnceCell<Mutex<Option<TrayIcon>>> = OnceCell::new();
+
+fn store_tray_icon(icon: TrayIcon) {
+    TRAY_ICON
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .map(|mut guard| {
+            *guard = Some(icon);
+        });
+}
+
+pub fn set_tray_visible(visible: bool) {
+    if let Some(mutex) = TRAY_ICON.get() {
+        if let Ok(mut guard) = mutex.lock() {
+            if let Some(tray) = guard.as_ref() {
+                if let Err(error) = tray.set_visible(visible) {
+                    eprintln!("[tray] failed to set visibility: {error}");
+                }
+            }
+        }
+    }
+}
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
@@ -72,7 +98,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         builder = builder.icon(icon);
     }
 
-    builder
+    let tray_icon = builder
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_SHOW => {
@@ -93,6 +119,8 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
+
+    store_tray_icon(tray_icon);
 
     Ok(())
 }
