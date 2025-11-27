@@ -14,6 +14,8 @@ import {registerStopButton, hideStopButton} from './ui/stopButton';
 import {state} from './state/appState';
 import {requestSystemAudioPermission, getSystemAudioStream} from './services/systemAudioCapture';
 import {audioSessionState} from './app/audioSession/internalState';
+import {checkOllamaModelDownloaded} from './services/ollama';
+import {normalizeLocalWhisperModel} from './services/localSpeechModels';
 
 // Listen to transcription debug events (only if files are being saved)
 // Запрашиваем разрешение на системный звук при старте
@@ -38,6 +40,63 @@ async function requestSystemAudioPermissionOnStartup() {
         }
     } catch (error) {
         console.warn('[renderer] Failed to request system audio permission on startup:', error);
+    }
+}
+
+// Предзагружаем модели, если включен локальный режим
+async function preloadLocalModelsIfNeeded() {
+    try {
+        const settings = await settingsStore.load();
+        const mode = settings.transcriptionMode || 'api';
+        
+        if (mode === 'local') {
+            console.info('[renderer] Preloading local models and checking server status...');
+            
+            // Проверяем локальную модель транскрипции
+            if (window.api?.localSpeech) {
+                try {
+                    // Используем checkHealth для полной проверки статуса сервера
+                    // Это обновит кэш и проверит реальное состояние сервера
+                    const status = await window.api.localSpeech.checkHealth();
+                    console.info('[renderer] Local speech server status:', {
+                        installed: status?.installed,
+                        running: status?.running,
+                    });
+                    
+                    if (status?.installed && status?.running) {
+                        const model = normalizeLocalWhisperModel(settings.localWhisperModel || 'base') || 'base';
+                        const downloaded = await window.api.localSpeech.checkModelDownloaded(model);
+                        console.info('[renderer] Local transcription model checked:', {
+                            model,
+                            downloaded,
+                        });
+                    } else {
+                        console.warn('[renderer] Local speech server not ready:', {
+                            installed: status?.installed,
+                            running: status?.running,
+                        });
+                    }
+                } catch (error) {
+                    console.warn('[renderer] Failed to check local speech server:', error);
+                }
+            }
+            
+            // Проверяем локальную LLM модель, если используется локальный LLM
+            if (settings.llmHost === 'local') {
+                try {
+                    const llmModel = settings.localLlmModel || settings.llmModel || 'gpt-oss:20b';
+                    const downloaded = await checkOllamaModelDownloaded(llmModel, {force: true});
+                    console.info('[renderer] Local LLM model checked:', {
+                        model: llmModel,
+                        downloaded,
+                    });
+                } catch (error) {
+                    console.warn('[renderer] Failed to check local LLM model:', error);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('[renderer] Failed to preload local models:', error);
     }
 }
 
@@ -78,6 +137,12 @@ export async function initializeRenderer() {
         return;
     }
     console.info('[renderer] Preload bridge ready for use');
+    
+    // Автоматически проверяем доступность моделей после инициализации bridge
+    // Это гарантирует, что API полностью готов к использованию
+    preloadLocalModelsIfNeeded().catch((error) => {
+        console.warn('[renderer] Failed to preload local models:', error);
+    });
 
     const streamController = new StreamController();
     const screenshotController = new ScreenshotController();
