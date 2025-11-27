@@ -18,6 +18,79 @@ const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 const DEFAULT_CHANNELS: u16 = 2;
 const CHUNK_FRAMES: usize = 2048;
 
+#[cfg(target_os = "macos")]
+const SYSTEM_DEVICE_KEYWORDS: &[&str] =
+    &["blackhole", "loopback", "soundflower", "vb-audio", "aggregate", "multi-output"];
+#[cfg(target_os = "linux")]
+const SYSTEM_DEVICE_KEYWORDS: &[&str] =
+    &["monitor", "pulse", "pipewire", "null sink", "pavucontrol", "alsa_output"];
+#[cfg(windows)]
+const SYSTEM_DEVICE_KEYWORDS: &[&str] =
+    &["loopback", "(wasapi)", "monitor", "stereo mix", "динамики", "headphones"];
+
+fn is_probable_mic(lower: &str) -> bool {
+    lower.contains("mic")
+        || lower.contains("microphone")
+        || lower.contains("headset")
+        || lower.contains("микрофон")
+        || lower.contains("микро")
+        || lower.contains("airpods")
+        || lower.contains("webcam")
+}
+
+fn is_system_device_name(lower: &str) -> bool {
+    SYSTEM_DEVICE_KEYWORDS.iter().any(|kw| lower.contains(kw))
+}
+
+#[cfg(target_os = "macos")]
+fn system_device_priority(lower: &str) -> Option<usize> {
+    if lower.contains("blackhole") {
+        Some(0)
+    } else if lower.contains("loopback") {
+        Some(1)
+    } else if lower.contains("soundflower") {
+        Some(2)
+    } else if lower.contains("vb-audio") || lower.contains("virtual") {
+        Some(3)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn system_device_priority(lower: &str) -> Option<usize> {
+    if lower.contains("monitor") {
+        Some(0)
+    } else if lower.contains("pulse") || lower.contains("pipewire") {
+        Some(1)
+    } else if lower.contains("null") && lower.contains("sink") {
+        Some(2)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn system_audio_help_message() -> &'static str {
+    "Не найдено виртуальное устройство для захвата системного звука. \
+Установите бесплатный драйвер BlackHole (https://existential.audio/blackhole/) \
+или аналог (Loopback / Soundflower), создайте Multi-Output Device и выберите его \
+в качестве системного вывода, после чего перезапустите XexamAI."
+}
+
+#[cfg(target_os = "linux")]
+fn system_audio_help_message() -> &'static str {
+    "Не найден монитор PulseAudio/PipeWire. \
+Включите виртуальный sink/monitor (например, `pactl load-module module-null-sink sink_name=VirtualSink`), \
+затем выберите источник `VirtualSink.monitor` в настройках звука и перезапустите XexamAI."
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn system_audio_help_message() -> &'static str {
+    "Системное аудиоустройство недоступно. \
+Убедитесь, что устройство вывода работает и попробуйте перезапустить XexamAI."
+}
+
 #[derive(Clone, Serialize)]
 pub struct AudioDeviceInfo {
     pub id: String,
@@ -117,7 +190,7 @@ impl AudioManager {
                         eprintln!("[audio] capture system device: {}", dev.name().unwrap_or_default());
                         devices.push(dev);
                     } else {
-                        return Err(anyhow!("No system audio device found."));
+                        return Err(anyhow!(system_audio_help_message()));
                     }
                 }
             }
@@ -213,7 +286,7 @@ impl AudioManager {
                     eprintln!("[audio] capture system device for mixed mode: {}", dev.name().unwrap_or_default());
                     devices.push(dev);
                 } else {
-                    eprintln!("[audio] Warning: No system audio device found for mixed mode. Only microphone will be captured.");
+                    return Err(anyhow!(system_audio_help_message()));
                 }
             }
             _ => return Err(anyhow!("Unknown source")),
@@ -290,12 +363,7 @@ fn build_device_info(device: &Device) -> Result<AudioDeviceInfo> {
     let sample_rate = cfg.sample_rate().0;
     let channels = cfg.channels();
     let lower = name.to_lowercase();
-    let kind = if lower.contains("loopback")
-        || lower.contains("monitor")
-        || lower.contains("stereo mix")
-        || lower.contains("blackhole")
-        || lower.contains("soundflower")
-    {
+    let kind = if is_system_device_name(&lower) {
         "system"
     } else {
         "mic"
@@ -342,6 +410,14 @@ fn find_system_device(host: &cpal::Host, id: Option<&str>) -> Result<Option<Devi
                     }
                 }
             }
+        }
+        #[cfg(not(windows))]
+        {
+            return Err(anyhow!(
+                "Устройство \"{}\" не найдено. {}",
+                target,
+                system_audio_help_message()
+            ));
         }
     }
     
@@ -491,36 +567,35 @@ fn find_system_device(host: &cpal::Host, id: Option<&str>) -> Result<Option<Devi
     
     #[cfg(not(windows))]
     {
-        // For non-Windows, use simpler logic
         for device in host.devices()? {
             if let Ok(name) = device.name() {
                 let lower = name.to_lowercase();
-                let priority = if lower.contains("loopback") {
-                    0
-                } else if lower.contains("monitor") {
-                    1
-                } else if lower.contains("stereo mix") {
-                    2
-                } else if lower.contains("blackhole") || lower.contains("soundflower") {
-                    3
-                } else {
+                if is_probable_mic(&lower) {
                     continue;
-                };
-                
-                if device.default_input_config().is_ok() || {
-                    if let Ok(mut configs) = device.supported_input_configs() {
-                        configs.next().is_some()
-                    } else {
-                        false
+                }
+                if let Some(priority) = system_device_priority(&lower) {
+                    if device.default_input_config().is_ok()
+                        || device
+                            .supported_input_configs()
+                            .map(|mut cfgs| cfgs.next().is_some())
+                            .unwrap_or(false)
+                    {
+                        candidates.push((device, name, priority as u32));
                     }
-                } {
-                    candidates.push((device, name, priority));
                 }
             }
         }
+
+        candidates.sort_by_key(|(_, _, priority)| *priority);
+        if let Some((device, name, _)) = candidates.into_iter().next() {
+            eprintln!("[audio] Found system device: {}", name);
+            return Ok(Some(device));
+        } else {
+            return Err(anyhow!(system_audio_help_message()));
+        }
     }
     
-    // Sort by priority (lower is better)
+    // Windows fallback
     candidates.sort_by_key(|(_, _, priority)| *priority);
     
     if let Some((device, name, _)) = candidates.into_iter().next() {
@@ -528,14 +603,14 @@ fn find_system_device(host: &cpal::Host, id: Option<&str>) -> Result<Option<Devi
         Ok(Some(device))
     } else {
         eprintln!("[audio] No system audio device found. Trying to use default output device as loopback...");
-        // Last resort: try to use default output device if it has input capability
         #[cfg(windows)]
         {
             if let Some(default_output) = host.default_output_device() {
                 if let Ok(name) = default_output.name() {
                     eprintln!("[audio] Checking default output device: {}", name);
-                    // Check if it can be used as input (loopback)
-                    if default_output.default_input_config().is_ok() || default_output.supported_input_configs().is_ok() {
+                    if default_output.default_input_config().is_ok()
+                        || default_output.supported_input_configs().is_ok()
+                    {
                         eprintln!("[audio] Using default output device as loopback: {}", name);
                         return Ok(Some(default_output));
                     }

@@ -105,7 +105,11 @@ async function startNativeRecording(): Promise<void> {
         logger.info('audioSession', 'Native audio capture started successfully', {source, inputType});
     } catch (error) {
         logger.error('recording', 'Failed to start native capture', {error});
-        setStatus('Не удалось запустить захват аудио', 'error');
+        const description =
+            error instanceof Error
+                ? error.message
+                : 'Не удалось запустить захват аудио';
+        setStatus(description, 'error');
         throw error;
     }
 }
