@@ -50,6 +50,7 @@ const DEFAULT_API_LLM_MODEL = API_LLM_MODELS[0] ?? 'gpt-4.1-nano';
 const DEFAULT_LOCAL_LLM_MODEL =
     LOCAL_LLM_MODELS.find((value) => value === 'gpt-oss:20b') ?? LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
 const FAST_WHISPER_INSTALL_SIZE_HINT = '~4.3GB';
+const WARMUP_VISIBILITY_DELAY_MS = 1200;
 
 const OPENAI_TRANSCRIBE_SET = new Set<string>(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
 const GOOGLE_TRANSCRIBE_SET = new Set<string>(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
@@ -123,6 +124,9 @@ export const AiSettings = () => {
     const [downloadingLocalModel, setDownloadingLocalModel] = useState(false);
     const [localModelError, setLocalModelError] = useState<string | null>(null);
     const [localModelWarming, setLocalModelWarming] = useState(false);
+    const [localWarmupHydrated, setLocalWarmupHydrated] = useState(settings.transcriptionMode !== 'local');
+    const localWarmupDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const localWarmupPendingRef = useRef(false);
 
     const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
     const [ollamaChecking, setOllamaChecking] = useState(false);
@@ -134,6 +138,7 @@ export const AiSettings = () => {
     const [ollamaModelWarming, setOllamaModelWarming] = useState(false);
 
     const lastLocalWarmupRef = useRef<string | null>(null);
+    const localStatusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         setApiSttTimeout(settings.apiSttTimeoutMs ?? 30000);
@@ -185,7 +190,16 @@ export const AiSettings = () => {
             try {
                 unlisten = await listen<FastWhisperStatus>('local-speech:status', (event) => {
                     if (!mounted) return;
-                    setLocalStatus(event.payload);
+                    // Дебаунсим быстрые обновления статуса, чтобы не мигал UI
+                    if (localStatusDebounceRef.current) {
+                        clearTimeout(localStatusDebounceRef.current);
+                        localStatusDebounceRef.current = null;
+                    }
+                    const next = event.payload;
+                    localStatusDebounceRef.current = setTimeout(() => {
+                        if (!mounted) return;
+                        setLocalStatus(next);
+                    }, 150);
                 });
             } catch (error) {
                 logger.error('settings', 'Failed to subscribe to local speech status', {error});
@@ -202,6 +216,10 @@ export const AiSettings = () => {
 
         return () => {
             mounted = false;
+            if (localStatusDebounceRef.current) {
+                clearTimeout(localStatusDebounceRef.current);
+                localStatusDebounceRef.current = null;
+            }
             if (unlisten) {
                 void unlisten();
             }
@@ -216,6 +234,7 @@ export const AiSettings = () => {
             setLocalModelError(null);
             setCheckingLocalModel(false);
             setLocalModelWarming(false);
+            setLocalWarmupHydrated(true);
             lastLocalWarmupRef.current = null;
             return;
         }
@@ -225,13 +244,41 @@ export const AiSettings = () => {
             setLocalModelError(null);
             setCheckingLocalModel(false);
             setLocalModelWarming(false);
+            setLocalWarmupHydrated(false);
             lastLocalWarmupRef.current = null;
             return;
         }
+        setLocalModelWarming(false);
+        setLocalWarmupHydrated(false);
+        localWarmupPendingRef.current = false;
         const unsubscribe = subscribeToLocalModelWarmup((models) => {
-            setLocalModelWarming(models.has(model));
+            const target = models.has(model);
+            if (localWarmupDebounceRef.current) {
+                clearTimeout(localWarmupDebounceRef.current);
+                localWarmupDebounceRef.current = null;
+            }
+
+            if (target) {
+                localWarmupPendingRef.current = true;
+                localWarmupDebounceRef.current = setTimeout(() => {
+                    if (localWarmupPendingRef.current) {
+                        setLocalModelWarming(true);
+                        setLocalWarmupHydrated(true);
+                    }
+                    localWarmupDebounceRef.current = null;
+                }, WARMUP_VISIBILITY_DELAY_MS);
+            } else {
+                localWarmupPendingRef.current = false;
+                setLocalModelWarming(false);
+                setLocalWarmupHydrated(true);
+            }
         });
         return () => {
+            if (localWarmupDebounceRef.current) {
+                clearTimeout(localWarmupDebounceRef.current);
+                localWarmupDebounceRef.current = null;
+            }
+            localWarmupPendingRef.current = false;
             unsubscribe();
         };
     }, [settings.transcriptionMode, settings.localWhisperModel, localStatus?.installed, localStatus?.running]);
@@ -819,7 +866,10 @@ export const AiSettings = () => {
         if (!transcribeOptions.length) return;
         const currentAllowed = isTranscribeAllowed(apiTranscribeModel);
         if (currentAllowed) return;
-        const fallback = transcribeOptions.find((option) => !option.disabled);
+        const fallback = transcribeOptions.find((option) => {
+            const optionMeta = option as typeof option & { disabled?: boolean };
+            return !optionMeta.disabled;
+        });
         if (fallback) {
             void handleTranscriptionModelChange(fallback.value);
         }
@@ -830,7 +880,10 @@ export const AiSettings = () => {
         if (!llmOptions.length) return;
         const currentAllowed = isLlmAllowed(apiLlmModel);
         if (currentAllowed) return;
-        const fallback = llmOptions.find((option) => !option.disabled);
+        const fallback = llmOptions.find((option) => {
+            const optionMeta = option as typeof option & { disabled?: boolean };
+            return !optionMeta.disabled;
+        });
         if (fallback) {
             void handleApiLlmModelChange(fallback.value);
         }
@@ -1008,23 +1061,31 @@ export const AiSettings = () => {
                                 }}
                                 disabled={settings.transcriptionMode === 'local' && transcribeUnavailable}
                             >
-                                {transcribeOptions.map((option) => (
-                                    <MenuItem
-                                        key={option.value}
-                                        value={option.value}
-                                        disabled={option.disabled}
-                                        sx={option.disabled ? {opacity: 0.6} : undefined}
-                                    >
-                                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
-                                            <span>{option.label}</span>
-                                            {option.description ? (
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {option.description}
-                                                </Typography>
-                                            ) : null}
-                                        </Box>
-                                    </MenuItem>
-                                ))}
+                                {transcribeOptions.map((option) => {
+                                    const optionMeta = option as typeof option & {
+                                        disabled?: boolean;
+                                        description?: string;
+                                    };
+                                    const optionDisabled = Boolean(optionMeta.disabled);
+                                    const optionDescription = optionMeta.description;
+                                    return (
+                                        <MenuItem
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={optionDisabled}
+                                            sx={optionDisabled ? {opacity: 0.6} : undefined}
+                                        >
+                                            <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                                <span>{option.label}</span>
+                                                {optionDescription ? (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {optionDescription}
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
                             </TextField>
                             {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === true ? (
                                 <span
@@ -1042,7 +1103,7 @@ export const AiSettings = () => {
                                         Install and start the local server to use local transcription.
                                     </Typography>
                                 ) : null}
-                                {!transcribeUnavailable && localModelWarming ? (
+                                {!transcribeUnavailable && localWarmupHydrated && localModelWarming && !checkingLocalModel ? (
                                     <Typography variant="body2" color="warning.main"
                                                 sx={{display: 'flex', alignItems: 'center', gap: 1}}>
                                         <CircularProgress size={16} thickness={5} sx={{color: 'warning.main'}}/>
@@ -1110,23 +1171,31 @@ export const AiSettings = () => {
                                 }}
                                 disabled={settings.llmHost === 'local' && (ollamaChecking || !ollamaInstalled)}
                             >
-                                {llmOptions.map((option) => (
-                                    <MenuItem
-                                        key={option.value}
-                                        value={option.value}
-                                        disabled={option.disabled}
-                                        sx={option.disabled ? {opacity: 0.6} : undefined}
-                                    >
-                                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
-                                            <span>{option.label}</span>
-                                            {option.description ? (
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {option.description}
-                                                </Typography>
-                                            ) : null}
-                                        </Box>
-                                    </MenuItem>
-                                ))}
+                                {llmOptions.map((option) => {
+                                    const optionMeta = option as typeof option & {
+                                        disabled?: boolean;
+                                        description?: string;
+                                    };
+                                    const optionDisabled = Boolean(optionMeta.disabled);
+                                    const optionDescription = optionMeta.description;
+                                    return (
+                                        <MenuItem
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={optionDisabled}
+                                            sx={optionDisabled ? {opacity: 0.6} : undefined}
+                                        >
+                                            <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                                <span>{option.label}</span>
+                                                {optionDescription ? (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {optionDescription}
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
                             </TextField>
                             {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === true ? (
                                 <span
@@ -1183,23 +1252,31 @@ export const AiSettings = () => {
                                 value={settings.screenProcessingModel ?? 'openai'}
                                 onChange={(event) => handleScreenProviderChange(event.target.value as ScreenProcessingProvider)}
                             >
-                                {screenModelOptions.map((option) => (
-                                    <MenuItem
-                                        key={option.value}
-                                        value={option.value}
-                                        disabled={option.disabled}
-                                        sx={option.disabled ? {opacity: 0.6} : undefined}
-                                    >
-                                        <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
-                                            <span>{option.label}</span>
-                                            {option.description ? (
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {option.description}
-                                                </Typography>
-                                            ) : null}
-                                        </Box>
-                                    </MenuItem>
-                                ))}
+                                {screenModelOptions.map((option) => {
+                                    const optionMeta = option as typeof option & {
+                                        disabled?: boolean;
+                                        description?: string;
+                                    };
+                                    const optionDisabled = Boolean(optionMeta.disabled);
+                                    const optionDescription = optionMeta.description;
+                                    return (
+                                        <MenuItem
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={optionDisabled}
+                                            sx={optionDisabled ? {opacity: 0.6} : undefined}
+                                        >
+                                            <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                                <span>{option.label}</span>
+                                                {optionDescription ? (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {optionDescription}
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
                             </TextField>
                         </div>
                     ) : (
@@ -1212,7 +1289,6 @@ export const AiSettings = () => {
 
                 </div>
             </section>
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">Prompts</h3>
                 <div className="ai-settings__grid">
@@ -1242,7 +1318,6 @@ export const AiSettings = () => {
                     </div>
                 </div>
             </section>
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">API timeouts (ms)</h3>
                 <div className="ai-settings__grid ai-settings__grid--timeouts">
