@@ -12,36 +12,8 @@ import {startLogoAnimation, loadLogo} from './ui/logoAnimation';
 import {checkFeatureAccess, showFeatureAccessModal} from './ui/featureAccessModal';
 import {registerStopButton, hideStopButton} from './ui/stopButton';
 import {state} from './state/appState';
-import {requestSystemAudioPermission, getSystemAudioStream} from './services/systemAudioCapture';
-import {audioSessionState} from './app/audioSession/internalState';
 import {checkOllamaModelDownloaded} from './services/ollama';
 import {normalizeLocalWhisperModel} from './services/localSpeechModels';
-
-// Listen to transcription debug events (only if files are being saved)
-// Запрашиваем разрешение на системный звук при старте
-async function requestSystemAudioPermissionOnStartup() {
-    try {
-        console.info('[renderer] Requesting system audio permission on startup...');
-        const granted = await requestSystemAudioPermission();
-        if (granted) {
-            const stream = getSystemAudioStream();
-            if (stream && stream instanceof MediaStream) {
-                audioSessionState.systemAudioStream = stream;
-                console.info('[renderer] System audio permission granted and stream saved', {
-                    active: stream.active,
-                    audioTracks: stream.getAudioTracks().length,
-                    videoTracks: stream.getVideoTracks().length,
-                });
-            } else {
-                console.warn('[renderer] System audio stream is not a valid MediaStream', {stream});
-            }
-        } else {
-            console.warn('[renderer] System audio permission not granted');
-        }
-    } catch (error) {
-        console.warn('[renderer] Failed to request system audio permission on startup:', error);
-    }
-}
 
 // Предзагружаем модели, если включен локальный режим
 async function preloadLocalModelsIfNeeded() {

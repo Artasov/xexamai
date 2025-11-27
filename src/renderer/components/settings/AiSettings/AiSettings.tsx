@@ -1301,7 +1301,6 @@ export const AiSettings = () => {
                             multiline
                             minRows={3}
                             placeholder="Опционально: добавляется к запросам транскрибации"
-                            helperText="Используется для OpenAI, Gemini и локальной транскрибации."
                         />
                     </div>
                     <div className="settings-field">
@@ -1313,7 +1312,6 @@ export const AiSettings = () => {
                             multiline
                             minRows={3}
                             placeholder="Опционально: системное сообщение для LLM"
-                            helperText="Применяется к API и локальным моделям."
                         />
                     </div>
                 </div>
