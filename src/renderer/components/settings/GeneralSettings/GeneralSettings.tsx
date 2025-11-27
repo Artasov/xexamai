@@ -101,11 +101,8 @@ export const GeneralSettings = () => {
                 await window.api.settings.setHideApp(false);
                 patchLocal({hideApp: false});
             }
-            
-            showMessage(`Always on top ${value ? 'enabled' : 'disabled'}`);
         } catch (error) {
             logger.error('settings', 'Failed to update always on top', {error});
-            showMessage('Failed to update always on top', 'error');
         }
     };
 
@@ -119,10 +116,8 @@ export const GeneralSettings = () => {
             
             await window.api.settings.setHideApp(value);
             patchLocal({hideApp: value});
-            showMessage(`Hide app ${value ? 'enabled' : 'disabled'}`);
         } catch (error) {
             logger.error('settings', 'Failed to update hide app', {error});
-            showMessage('Failed to update hide app', 'error');
         }
     };
 
@@ -304,7 +299,6 @@ export const GeneralSettings = () => {
                                 size="small"
                                 checked={Boolean(settings.hideApp)}
                                 onChange={(event) => toggleHideApp(event.target.checked)}
-                                disabled={!settings.alwaysOnTop}
                                 icon={baseCheckboxIcon}
                                 checkedIcon={checkedCheckboxIcon}
                                 disableRipple
