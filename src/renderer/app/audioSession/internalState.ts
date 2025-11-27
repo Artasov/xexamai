@@ -16,8 +16,11 @@ export interface AudioSessionState {
     srcNode: MediaStreamAudioSourceNode | null;
     scriptNode: ScriptProcessorNode | null;
     pcmRing: PcmRingBuffer | null;
+    micPcmRing: PcmRingBuffer | null; // Для mixed режима
+    systemPcmRing: PcmRingBuffer | null; // Для mixed режима
     currentAudioInputType: AudioInputType;
     persistentSystemAudioTrack: MediaStreamTrack | null;
+    systemAudioStream: MediaStream | null; // Поток для системного звука из getDisplayMedia
     rmsLevel: number;
 }
 
@@ -33,7 +36,10 @@ export const audioSessionState: AudioSessionState = {
     srcNode: null,
     scriptNode: null,
     pcmRing: null,
+    micPcmRing: null,
+    systemPcmRing: null,
     currentAudioInputType: 'microphone',
     persistentSystemAudioTrack: null,
+    systemAudioStream: null,
     rmsLevel: 0,
 };

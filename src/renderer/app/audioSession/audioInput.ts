@@ -2,11 +2,13 @@ import {audioSessionState, AudioInputType} from './internalState';
 import {setStatus} from '../../ui/status';
 import {state as appState} from '../../state/appState';
 import {startAudioCapture, stopAudioCapture} from '../../services/nativeAudio';
+import {rebuildRecorderWithStream} from './recorder';
 
 export type SwitchOptions = {};
 export type SwitchAudioResult = { success: boolean; error?: string };
 
 export async function switchAudioInput(newType: AudioInputType): Promise<SwitchAudioResult> {
+    const previousType = audioSessionState.currentAudioInputType;
     audioSessionState.currentAudioInputType = newType;
     if (!appState.isRecording) {
         try {
@@ -20,23 +22,54 @@ export async function switchAudioInput(newType: AudioInputType): Promise<SwitchA
             await window.api.settings.setAudioInputType(newType);
         } catch {
         }
-        // Stop capture and wait a bit for cleanup
-        await stopAudioCapture();
+        
+        // Останавливаем текущий захват
+        const prevWasSystem = previousType === 'system' || previousType === 'mixed';
+        const newIsSystem = newType === 'system' || newType === 'mixed';
+        
+        if (prevWasSystem && !newIsSystem) {
+            // Переключаемся с system на mic - останавливаем только mic если был mixed
+            if (previousType === 'mixed') {
+                await stopAudioCapture();
+            }
+        } else if (!prevWasSystem && newIsSystem) {
+            // Переключаемся с mic на system - останавливаем mic
+            await stopAudioCapture();
+        } else if (prevWasSystem && newIsSystem) {
+            // Переключаемся между system и mixed - останавливаем mic если был mixed
+            if (previousType === 'mixed') {
+                await stopAudioCapture();
+            }
+        } else {
+            // Переключаемся между mic и mic (не должно быть, но на всякий случай)
+            await stopAudioCapture();
+        }
+        
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        const source: 'mic' | 'system' | 'mixed' = 
-            newType === 'system' ? 'system' : newType === 'mixed' ? 'mixed' : 'mic';
+        // Переподписываемся на чанки (для system/mixed не нужно запускать Rust захват)
+        await rebuildRecorderWithStream();
         
-        let deviceId: string | undefined;
-        if (source === 'mic' || source === 'mixed') {
+        // Для mic режима запускаем Rust захват
+        if (newType === 'mic') {
+            let deviceId: string | undefined;
             try {
                 const settings = await window.api.settings.get();
                 deviceId = settings.audioInputDeviceId || undefined;
             } catch {
             }
+            await startAudioCapture('mic', deviceId);
+        } else if (newType === 'mixed') {
+            // Для mixed режима запускаем только mic через Rust, system уже есть из getDisplayMedia
+            let deviceId: string | undefined;
+            try {
+                const settings = await window.api.settings.get();
+                deviceId = settings.audioInputDeviceId || undefined;
+            } catch {
+            }
+            await startAudioCapture('mic', deviceId);
         }
         
-        await startAudioCapture(source, deviceId);
         return { success: true };
     } catch (error) {
         console.error('Error switching audio input', error);
