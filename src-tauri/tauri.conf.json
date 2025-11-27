@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "XexamAI",
+  "productName": "XEXAMAI",
   "version": "1.1.0",
-  "identifier": "com.xexamai.app",
+  "identifier": "xldev-xexamai",
   "build": {
     "beforeDevCommand": "npm run dev:renderer",
     "beforeBuildCommand": "npm run build:renderer",
@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "XexamAI",
+        "title": "XEXAMAI",
         "width": 420,
         "height": 780,
         "minWidth": 400,
