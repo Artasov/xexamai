@@ -122,11 +122,94 @@ impl AudioManager {
                 }
             }
             "mixed" => {
+                // In mixed mode, use WASAPI loopback for system audio and CPAL for mic
+                #[cfg(windows)]
+                {
+                    // Start WASAPI loopback capture for system audio with channel for mixing
+                    let (wasapi_tx, wasapi_rx) = unbounded::<Vec<i16>>();
+                    match start_wasapi_loopback_capture_for_mixing(app.clone(), stop_tx.clone(), wasapi_tx.clone()) {
+                        Ok(stop_flag) => {
+                            // Add WASAPI receiver to the list
+                            // We'll handle it specially in the capture loop
+                            if let Some(dev) = find_device_by_id(&host, device_id.as_deref())? {
+                                eprintln!("[audio] capture mic device: {}", dev.name().unwrap_or_default());
+                                devices.push(dev);
+                            }
+                            
+                            // Create a special receiver list that includes WASAPI
+                            let app_handle = app.clone();
+                            let stop_rx_clone = stop_rx.clone();
+                            let (ready_tx, ready_rx) = mpsc::channel::<usize>();
+                            
+                            let handle = thread::spawn(move || {
+                                let mut receivers = Vec::new();
+                                let mut configs = Vec::new();
+                                let mut streams: Vec<Stream> = Vec::new();
+                                
+                                // Add WASAPI receiver first (system audio)
+                                receivers.push(wasapi_rx);
+                                // Use default config for WASAPI (will be set from actual format)
+                                configs.push(StreamConfig {
+                                    channels: DEFAULT_CHANNELS,
+                                    sample_rate: cpal::SampleRate(DEFAULT_SAMPLE_RATE),
+                                    buffer_size: cpal::BufferSize::Default,
+                                });
+                                
+                                // Add microphone devices
+                                for device in devices {
+                                    let device_name = device.name().unwrap_or_else(|_| "Unknown".into());
+                                    let (tx, rx) = unbounded::<Vec<i16>>();
+                                    match build_input_stream(device, tx) {
+                                        Ok((stream, cfg)) => {
+                                            if stream.play().is_ok() {
+                                                eprintln!("[audio] Successfully started stream for device: {} (sample_rate: {}, channels: {})", 
+                                                    device_name, cfg.sample_rate.0, cfg.channels);
+                                                receivers.push(rx);
+                                                configs.push(cfg);
+                                                streams.push(stream);
+                                            } else {
+                                                eprintln!("[audio] Failed to play stream for device: {}", device_name);
+                                            }
+                                        }
+                                        Err(err) => eprintln!("[audio] failed to build stream for device {}: {}", device_name, err),
+                                    }
+                                }
+                                
+                                if receivers.is_empty() {
+                                    let _ = ready_tx.send(0);
+                                    return;
+                                }
+                                
+                                let _ = ready_tx.send(receivers.len());
+                                capture_loop(app_handle, receivers, stop_rx_clone, configs);
+                                drop(streams);
+                            });
+                            
+                            let count = ready_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(0);
+                            if count == 0 {
+                                return Err(anyhow!("Failed to start audio capture"));
+                            }
+                            
+                            let mut guard = self.active.lock().unwrap();
+                            *guard = Some(ActiveThread {
+                                stop_tx,
+                                handle: Some(handle),
+                                stop_flag: Some(stop_flag),
+                            });
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            eprintln!("[audio] Failed to start WASAPI loopback for mixed mode: {}", e);
+                            eprintln!("[audio] Falling back to CPAL for system audio in mixed mode");
+                            // Fall through to CPAL approach
+                        }
+                    }
+                }
+                // Fallback: use CPAL for both (may not work well on Windows)
                 if let Some(dev) = find_device_by_id(&host, device_id.as_deref())? {
                     eprintln!("[audio] capture mic device: {}", dev.name().unwrap_or_default());
                     devices.push(dev);
                 }
-                // Try to find WASAPI loopback device for system audio in mixed mode
                 if let Some(dev) = find_system_device(&host, None)? {
                     eprintln!("[audio] capture system device for mixed mode: {}", dev.name().unwrap_or_default());
                     devices.push(dev);
@@ -995,6 +1078,272 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
             CoUninitialize();
             
             eprintln!("[audio] WASAPI loopback capture thread ended");
+        }
+    });
+    
+    Ok(stop_flag)
+}
+
+#[cfg(windows)]
+fn start_wasapi_loopback_capture_for_mixing(
+    app: AppHandle, 
+    _stop_tx: Sender<()>,
+    tx: Sender<Vec<i16>>,
+) -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+    use windows::Win32::Media::Audio::*;
+    use windows::Win32::Media::Audio::Endpoints::*;
+    use windows::Win32::System::Com::*;
+    use windows::core::Interface;
+    
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let stop_flag_clone = stop_flag.clone();
+    
+    thread::spawn(move || {
+        unsafe {
+            // Initialize COM
+            if CoInitializeEx(None, COINIT_MULTITHREADED).is_err() {
+                eprintln!("[audio] Failed to initialize COM");
+                return;
+            }
+            
+            eprintln!("[audio] COM initialized for mixed mode");
+            
+            // Get device enumerator
+            let enumerator: IMMDeviceEnumerator = match CoCreateInstance(
+                &MMDeviceEnumerator,
+                None,
+                CLSCTX_ALL,
+            ) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("[audio] Failed to create device enumerator: {:?}", e);
+                    CoUninitialize();
+                    return;
+                }
+            };
+            
+            // Get default render (output) device for loopback
+            let device = match enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("[audio] Failed to get default render device: {:?}", e);
+                    CoUninitialize();
+                    return;
+                }
+            };
+            
+            // Activate audio client
+            let audio_client: IAudioClient = match unsafe {
+                let device_ptr = device.as_raw() as *mut _;
+                type ActivateFn = unsafe extern "system" fn(
+                    *mut core::ffi::c_void,
+                    *const windows::core::GUID,
+                    u32,
+                    *const core::ffi::c_void,
+                    *mut *mut core::ffi::c_void,
+                ) -> windows::core::HRESULT;
+                
+                let vtable = *(device_ptr as *const *const *const core::ffi::c_void);
+                let activate_fn = std::mem::transmute::<*const core::ffi::c_void, ActivateFn>(
+                    *vtable.add(3)
+                );
+                
+                let mut result: *mut core::ffi::c_void = std::ptr::null_mut();
+                let hr = activate_fn(
+                    device_ptr,
+                    &IAudioClient::IID,
+                    CLSCTX_ALL.0,
+                    std::ptr::null(),
+                    &mut result,
+                );
+                
+                if hr.is_ok() && !result.is_null() {
+                    Ok(IAudioClient::from_raw(result as *mut _))
+                } else {
+                    Err(hr)
+                }
+            } {
+                Ok(ac) => ac,
+                Err(e) => {
+                    eprintln!("[audio] Failed to activate audio client: {:?}", e);
+                    CoUninitialize();
+                    return;
+                }
+            };
+            
+            // Get mix format
+            let mix_format_ptr = match audio_client.GetMixFormat() {
+                Ok(ptr) => ptr,
+                Err(e) => {
+                    eprintln!("[audio] Failed to get mix format: {:?}", e);
+                    CoUninitialize();
+                    return;
+                }
+            };
+            
+            if mix_format_ptr.is_null() {
+                eprintln!("[audio] Mix format pointer is null");
+                CoUninitialize();
+                return;
+            }
+            
+            let mix_format = *mix_format_ptr;
+            let sample_rate = mix_format.nSamplesPerSec;
+            let channels = mix_format.nChannels as u16;
+            let bits_per_sample = mix_format.wBitsPerSample;
+            
+            let actual_bits_per_sample = if mix_format.wFormatTag == 0xFFFE && mix_format.cbSize >= 22 {
+                if bits_per_sample > 0 && bits_per_sample <= 32 {
+                    bits_per_sample
+                } else {
+                    let ext_ptr = mix_format_ptr as *const u8;
+                    let valid_bits_ptr = unsafe { ext_ptr.add(22) as *const u16 };
+                    let valid_bits = unsafe { *valid_bits_ptr };
+                    if valid_bits > 0 && valid_bits <= 32 {
+                        valid_bits
+                    } else {
+                        16
+                    }
+                }
+            } else {
+                if bits_per_sample > 0 && bits_per_sample <= 32 {
+                    bits_per_sample
+                } else {
+                    16
+                }
+            };
+            
+            eprintln!("[audio] WASAPI format for mixing: sample_rate={}, channels={}, bits_per_sample={}", 
+                sample_rate, channels, actual_bits_per_sample);
+            
+            // Initialize audio client in loopback mode
+            let buffer_duration = 0;
+            let hr = audio_client.Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                AUDCLNT_STREAMFLAGS_LOOPBACK,
+                buffer_duration,
+                0,
+                mix_format_ptr,
+                None,
+            );
+            
+            if hr.is_err() {
+                eprintln!("[audio] Failed to initialize WASAPI loopback client: {:?}", hr);
+                CoTaskMemFree(Some(mix_format_ptr as *const _));
+                CoUninitialize();
+                return;
+            }
+            
+            // Get buffer size
+            let buffer_frames = match audio_client.GetBufferSize() {
+                Ok(frames) => frames,
+                Err(e) => {
+                    eprintln!("[audio] Failed to get buffer frames: {:?}", e);
+                    CoTaskMemFree(Some(mix_format_ptr as *const _));
+                    CoUninitialize();
+                    return;
+                }
+            };
+            
+            // Get capture client
+            let capture_client: IAudioCaptureClient = match audio_client.GetService::<IAudioCaptureClient>() {
+                Ok(cc) => cc,
+                Err(e) => {
+                    eprintln!("[audio] Failed to get capture client: {:?}", e);
+                    CoTaskMemFree(Some(mix_format_ptr as *const _));
+                    CoUninitialize();
+                    return;
+                }
+            };
+            
+            // Start capture
+            let hr = audio_client.Start();
+            if hr.is_err() {
+                eprintln!("[audio] Failed to start WASAPI loopback stream: {:?}", hr);
+                CoTaskMemFree(Some(mix_format_ptr as *const _));
+                CoUninitialize();
+                return;
+            }
+            
+            eprintln!("[audio] WASAPI loopback stream started for mixing");
+            
+            // Capture loop - send to channel instead of emitting directly
+            let stop_flag_capture = stop_flag_clone.clone();
+            loop {
+                if stop_flag_capture.load(Ordering::Relaxed) {
+                    eprintln!("[audio] WASAPI loopback capture stopped by signal");
+                    break;
+                }
+                
+                let mut data_ptr: *mut u8 = std::ptr::null_mut();
+                let mut available_frames: u32 = 0;
+                let mut flags: u32 = 0;
+                let mut device_position: u64 = 0;
+                let mut qpc_position: u64 = 0;
+                
+                let hr = capture_client.GetBuffer(
+                    &mut data_ptr,
+                    &mut available_frames,
+                    &mut flags,
+                    Some(&mut device_position),
+                    Some(&mut qpc_position),
+                );
+                
+                if hr.is_err() || data_ptr.is_null() || available_frames == 0 {
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                
+                let bytes_per_frame = (actual_bits_per_sample / 8) * channels as u16;
+                let total_bytes = available_frames as usize * bytes_per_frame as usize;
+                
+                let samples: Vec<i16> = match actual_bits_per_sample {
+                    16 => {
+                        let data_slice = std::slice::from_raw_parts(
+                            data_ptr as *const i16,
+                            available_frames as usize * channels as usize
+                        );
+                        data_slice.to_vec()
+                    }
+                    32 => {
+                        let float_slice = std::slice::from_raw_parts(
+                            data_ptr as *const f32,
+                            available_frames as usize * channels as usize
+                        );
+                        float_slice.iter()
+                            .map(|&f| {
+                                let clamped = f.max(-1.0).min(1.0);
+                                (clamped * 32767.0).round() as i16
+                            })
+                            .collect()
+                    }
+                    _ => {
+                        let _ = capture_client.ReleaseBuffer(available_frames);
+                        thread::sleep(Duration::from_millis(10));
+                        continue;
+                    }
+                };
+                
+                let _ = capture_client.ReleaseBuffer(available_frames);
+                
+                if samples.is_empty() {
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                
+                // Send to channel for mixing instead of emitting directly
+                let _ = tx.send(samples);
+            }
+            
+            // Cleanup
+            let _ = audio_client.Stop();
+            CoTaskMemFree(Some(mix_format_ptr as *const _));
+            CoUninitialize();
+            
+            eprintln!("[audio] WASAPI loopback capture thread ended for mixing");
         }
     });
     

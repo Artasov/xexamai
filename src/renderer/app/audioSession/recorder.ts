@@ -252,20 +252,39 @@ async function startNativeRecording(): Promise<void> {
     }
     audioSessionState.ring = null;
 
+    logger.info('audioSession', 'Initialized pcmRing for native recording', {
+        inputType,
+        durationSec: appState.durationSec,
+        hasPcmRing: !!audioSessionState.pcmRing
+    });
+
     if (audioUnsubscribe) {
         audioUnsubscribe();
         audioUnsubscribe = null;
     }
+    // Устанавливаем listener ДО начала захвата, чтобы не пропустить первые чанки
     audioUnsubscribe = onAudioChunk((chunk) => {
         try {
             const frames = chunk.samples[0]?.length || 0;
-            audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
+            if (!audioSessionState.pcmRing) {
+                logger.warn('audioSession', 'Received audio chunk but pcmRing is null', {
+                    inputType,
+                    frames,
+                    channels: chunk.channels
+                });
+                return;
+            }
+            audioSessionState.pcmRing.push(chunk.samples, frames, chunk.sampleRate);
             audioSessionState.rmsLevel = chunk.rms;
             audioSessionState.visualizer?.ingestLevel(chunk.rms);
         } catch (error) {
+            logger.error('audioSession', 'failed to push pcm chunk', {error, inputType});
             console.error('[audioSession] failed to push pcm chunk', error);
         }
     });
+
+    // Убеждаемся, что listener установлен перед началом захвата
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     const source: AudioSourceKind =
         inputType === 'system'
@@ -289,7 +308,9 @@ async function startNativeRecording(): Promise<void> {
     }
 
     try {
+        logger.info('audioSession', 'Starting native audio capture', {source, deviceId, inputType});
         await startAudioCapture(source, deviceId);
+        logger.info('audioSession', 'Native audio capture started successfully', {source, inputType});
     } catch (error) {
         logger.error('recording', 'Failed to start native capture', {error});
         setStatus('Не удалось запустить захват аудио', 'error');
@@ -334,12 +355,41 @@ export function getLastSecondsFloats(seconds: number): { channels: Float32Array[
     const inputType = audioSessionState.currentAudioInputType;
     
     if (inputType === 'mixed') {
-        // Для mixed режима смешиваем mic и system
-        return getMixedLastSecondsFloats(seconds);
+        // В mixed режиме Rust уже миксовал потоки, данные в pcmRing
+        if (audioSessionState.pcmRing) {
+            const result = audioSessionState.pcmRing.getLastSecondsFloats(seconds);
+            if (!result) {
+                logger.warn('audioSession', 'pcmRing.getLastSecondsFloats returned null in mixed mode', {
+                    seconds,
+                    inputType,
+                    hasPcmRing: !!audioSessionState.pcmRing
+                });
+            }
+            return result;
+        } else {
+            logger.warn('audioSession', 'getLastSecondsFloats: no pcmRing in mixed mode', {
+                seconds,
+                inputType
+            });
+            return null;
+        }
     } else if (audioSessionState.pcmRing) {
-        return audioSessionState.pcmRing.getLastSecondsFloats(seconds);
+        const result = audioSessionState.pcmRing.getLastSecondsFloats(seconds);
+        if (!result) {
+            logger.warn('audioSession', 'pcmRing.getLastSecondsFloats returned null', {
+                seconds,
+                inputType,
+                hasPcmRing: !!audioSessionState.pcmRing
+            });
+        }
+        return result;
     }
     
+    logger.warn('audioSession', 'getLastSecondsFloats: no pcmRing', {
+        seconds,
+        inputType,
+        hasPcmRing: !!audioSessionState.pcmRing
+    });
     return null;
 }
 

@@ -183,6 +183,13 @@ export class StreamController {
 
         const pcm = getLastSecondsFloats(seconds);
         if (!pcm || pcm.channels[0].length === 0) {
+            logger.warn('ui', 'No audio in buffer', { 
+                seconds, 
+                hasPcm: !!pcm, 
+                channelsLength: pcm?.channels?.length || 0,
+                firstChannelLength: pcm?.channels[0]?.length || 0,
+                inputType: getAudioInputType()
+            });
             setStatus('No audio in buffer', 'error');
             setProcessing(false);
             updateButtonsState();
