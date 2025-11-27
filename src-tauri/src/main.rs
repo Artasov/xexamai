@@ -247,9 +247,9 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
     if let Some(window) = app.get_webview_window("main") {
         let scale = config.window_scale.clamp(0.5, 3.0);
         
-        // Всегда применяем размер окна с учетом scale, если он изменился
+        // Применяем размер окна БЕЗ масштабирования
+        // Масштабирование контента происходит через CSS font-size на html
         if apply_window_size {
-            // Применяем размер окна с учетом scale фактора
             let base_width = config
                 .window_width
                 .max(DEFAULT_WINDOW_MIN_WIDTH)
@@ -259,17 +259,14 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                 .max(DEFAULT_WINDOW_MIN_HEIGHT)
                 .min(4000) as f64;
             
-            // Масштабируем размер окна
-            let scaled_width = base_width * scale as f64;
-            let scaled_height = base_height * scale as f64;
-            
+            // Используем базовый размер окна без масштабирования
             window
-                .set_size(LogicalSize::new(scaled_width, scaled_height))
+                .set_size(LogicalSize::new(base_width, base_height))
                 .map_err(|error| error.to_string())?;
             window
                 .set_min_size(Some(LogicalSize::new(
-                    DEFAULT_WINDOW_MIN_WIDTH as f64 * scale as f64,
-                    DEFAULT_WINDOW_MIN_HEIGHT as f64 * scale as f64,
+                    DEFAULT_WINDOW_MIN_WIDTH as f64,
+                    DEFAULT_WINDOW_MIN_HEIGHT as f64,
                 )))
                 .map_err(|error| error.to_string())?;
         }
@@ -329,17 +326,27 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
             });
         }
         
-        // Применяем scale через CSS zoom для масштабирования всего контента
+        // Применяем scale через CSS переменную и font-size на html
+        // Это масштабирует все элементы, использующие rem единицы
         let scale_script = format!(
             r#"
             (function() {{
-                const root = document.documentElement;
-                root.style.zoom = '{}';
+                const html = document.documentElement;
+                if (!html) return;
+                
+                // Устанавливаем CSS переменную для масштаба
+                html.style.setProperty('--app-scale', '{}');
+                
+                // Устанавливаем font-size на html для масштабирования через rem
+                // Базовый размер 16px, умножаем на scale
+                const baseFontSize = 16;
+                const scaledFontSize = baseFontSize * {};
+                html.style.fontSize = scaledFontSize + 'px';
             }})();
             "#,
-            scale
+            scale, scale
         );
-        // Применяем scale после небольшой задержки, чтобы окно было готово
+        // Применяем scale после небольшой задержки
         let app_clone = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(300));
