@@ -245,25 +245,35 @@ fn handle_config_effects(
 
 fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_size: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
+        let scale = config.window_scale.clamp(0.5, 3.0);
+        
+        // Всегда применяем размер окна с учетом scale, если он изменился
         if apply_window_size {
-            let width = config
+            // Применяем размер окна с учетом scale фактора
+            let base_width = config
                 .window_width
                 .max(DEFAULT_WINDOW_MIN_WIDTH)
                 .min(4000) as f64;
-            let height = config
+            let base_height = config
                 .window_height
                 .max(DEFAULT_WINDOW_MIN_HEIGHT)
                 .min(4000) as f64;
+            
+            // Масштабируем размер окна
+            let scaled_width = base_width * scale as f64;
+            let scaled_height = base_height * scale as f64;
+            
             window
-                .set_size(LogicalSize::new(width, height))
+                .set_size(LogicalSize::new(scaled_width, scaled_height))
                 .map_err(|error| error.to_string())?;
             window
                 .set_min_size(Some(LogicalSize::new(
-                    DEFAULT_WINDOW_MIN_WIDTH as f64,
-                    DEFAULT_WINDOW_MIN_HEIGHT as f64,
+                    DEFAULT_WINDOW_MIN_WIDTH as f64 * scale as f64,
+                    DEFAULT_WINDOW_MIN_HEIGHT as f64 * scale as f64,
                 )))
                 .map_err(|error| error.to_string())?;
         }
+        
         window
             .set_always_on_top(config.always_on_top)
             .map_err(|error| error.to_string())?;
@@ -273,7 +283,70 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                 .set_skip_taskbar(config.hide_app)
                 .map_err(|error| error.to_string())?;
         }
+        
         window.show().map_err(|error| error.to_string())?;
+        
+        // Применяем opacity и скрытие от записи экрана (Windows) после показа окна
+        #[cfg(target_os = "windows")]
+        {
+            // Используем таймер для применения opacity после того, как окно полностью готово
+            let app_clone = app.clone();
+            let opacity_value = config.window_opacity.clamp(10, 100);
+            let hide_app_value = config.hide_app;
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                if let Some(w) = app_clone.get_webview_window("main") {
+                    if let Ok(hwnd) = w.hwnd() {
+                        use windows::Win32::Foundation::HWND;
+                        use windows::Win32::UI::WindowsAndMessaging::{
+                            SetWindowDisplayAffinity, SetLayeredWindowAttributes, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+                            GWL_EXSTYLE, WS_EX_LAYERED, LWA_ALPHA, GetWindowLongPtrW, SetWindowLongPtrW
+                        };
+                        
+                        let hwnd_handle = HWND(hwnd.0);
+                        
+                        // Применяем opacity через SetLayeredWindowAttributes
+                        let alpha = ((opacity_value as f32 / 100.0) * 255.0) as u8;
+                        unsafe {
+                            // Устанавливаем WS_EX_LAYERED стиль
+                            let ex_style = GetWindowLongPtrW(hwnd_handle, GWL_EXSTYLE);
+                            let layered_flag = WS_EX_LAYERED.0 as isize;
+                            SetWindowLongPtrW(hwnd_handle, GWL_EXSTYLE, ex_style | layered_flag);
+                            // Устанавливаем opacity
+                            let _ = SetLayeredWindowAttributes(hwnd_handle, None, alpha, LWA_ALPHA);
+                        }
+                        
+                        // Применяем скрытие от записи экрана
+                        unsafe {
+                            if hide_app_value {
+                                let _ = SetWindowDisplayAffinity(hwnd_handle, WDA_EXCLUDEFROMCAPTURE);
+                            } else {
+                                let _ = SetWindowDisplayAffinity(hwnd_handle, WDA_NONE);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Применяем scale через CSS zoom для масштабирования всего контента
+        let scale_script = format!(
+            r#"
+            (function() {{
+                const root = document.documentElement;
+                root.style.zoom = '{}';
+            }})();
+            "#,
+            scale
+        );
+        // Применяем scale после небольшой задержки, чтобы окно было готово
+        let app_clone = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            if let Some(w) = app_clone.get_webview_window("main") {
+                let _ = w.eval(&scale_script);
+            }
+        });
     }
     Ok(())
 }

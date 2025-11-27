@@ -42,12 +42,7 @@ const settingsApi: AssistantAPI['settings'] = {
     },
     setWindowOpacity: async (opacity: number) => {
         await patchSettings({ windowOpacity: opacity });
-        try {
-            const anyWindow = currentWindow as unknown as { setOpacity?: (value: number) => Promise<void> };
-            if (typeof anyWindow.setOpacity === 'function') {
-                await anyWindow.setOpacity(opacity / 100);
-            }
-        } catch {}
+        // Opacity применяется в Rust через DWM
     },
     setAlwaysOnTop: async (alwaysOnTop: boolean) => {
         await patchSettings({ alwaysOnTop });
@@ -57,6 +52,7 @@ const settingsApi: AssistantAPI['settings'] = {
     },
     setHideApp: async (hideApp: boolean) => {
         await patchSettings({ hideApp });
+        // Скрытие от записи экрана применяется в Rust через SetWindowDisplayAffinity
     },
     setWindowSize: async (size) => {
         const width = Math.max(size.width, 400);
@@ -68,6 +64,7 @@ const settingsApi: AssistantAPI['settings'] = {
     },
     setWindowScale: async (scale) => {
         await patchSettings({ windowScale: scale });
+        // Scale применяется в Rust через изменение размера окна и CSS zoom
     },
     setDurations: async (durations) => {
         await patchSettings({ durations });

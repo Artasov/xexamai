@@ -45,10 +45,6 @@ export const GeneralSettings = () => {
         height: settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT,
     });
 
-    const restartNoteVisible = useMemo(() => {
-        const initial = settings.windowScale ?? 1;
-        return Math.abs(initial - windowScale) > 1e-3;
-    }, [settings.windowScale, windowScale]);
 
     useEffect(() => {
         setOpenaiKey(settings.openaiApiKey ?? '');
@@ -99,6 +95,13 @@ export const GeneralSettings = () => {
         try {
             await window.api.settings.setAlwaysOnTop(value);
             patchLocal({alwaysOnTop: value});
+            
+            // Если выключаем AlwaysOnTop, автоматически выключаем HideApp
+            if (!value && settings.hideApp) {
+                await window.api.settings.setHideApp(false);
+                patchLocal({hideApp: false});
+            }
+            
             showMessage(`Always on top ${value ? 'enabled' : 'disabled'}`);
         } catch (error) {
             logger.error('settings', 'Failed to update always on top', {error});
@@ -108,6 +111,12 @@ export const GeneralSettings = () => {
 
     const toggleHideApp = async (value: boolean) => {
         try {
+            // Если пытаемся включить HideApp, но AlwaysOnTop выключен, включаем его
+            if (value && !settings.alwaysOnTop) {
+                await window.api.settings.setAlwaysOnTop(true);
+                patchLocal({alwaysOnTop: true});
+            }
+            
             await window.api.settings.setHideApp(value);
             patchLocal({hideApp: value});
             showMessage(`Hide app ${value ? 'enabled' : 'disabled'}`);
@@ -285,6 +294,7 @@ export const GeneralSettings = () => {
                                 size="small"
                                 checked={Boolean(settings.hideApp)}
                                 onChange={(event) => toggleHideApp(event.target.checked)}
+                                disabled={!settings.alwaysOnTop}
                                 icon={baseCheckboxIcon}
                                 checkedIcon={checkedCheckboxIcon}
                                 disableRipple
@@ -324,11 +334,6 @@ export const GeneralSettings = () => {
                         <span className="settings-slider__value">{windowScale.toFixed(1)}x</span>
                     </div>
                 </div>
-                {restartNoteVisible ? (
-                    <div className="settings-note">
-                        ⚠️ Changing the scale requires restarting the application
-                    </div>
-                ) : null}
             </section>
 
             <section className="settings-card card">
