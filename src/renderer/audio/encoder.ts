@@ -165,8 +165,9 @@ export function floatsToWav(channels: Float32Array[], sampleRate: number): Blob 
     let offset = 44;
     for (let i = 0; i < numFrames; i++) {
         for (let ch = 0; ch < numChannels; ch++) {
-            const sample = Math.max(-1, Math.min(1, channels[ch][i] || 0));
-            const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+            const sample = Math.max(-1, Math.min(1, channels[ch]?.[i] || 0));
+            // Convert float [-1.0, 1.0] to i16 [-32768, 32767]
+            const intSample = Math.round(sample * 32767);
             view.setInt16(offset, intSample, true);
             offset += 2;
         }

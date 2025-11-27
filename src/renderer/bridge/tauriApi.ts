@@ -157,6 +157,13 @@ const settingsApi: AssistantAPI['settings'] = {
     },
 };
 
+const audioApi: AssistantAPI['audio'] = {
+    listDevices: () => invoke('audio_list_devices'),
+    startCapture: (source: 'mic' | 'system' | 'mixed', deviceId?: string) =>
+        invoke('audio_start_capture', { source, deviceId }),
+    stopCapture: () => invoke('audio_stop_capture'),
+};
+
 const windowApi: AssistantAPI['window'] = {
     minimize: () => currentWindow.minimize(),
     close: () => currentWindow.close(),
@@ -324,6 +331,7 @@ const api: AssistantAPI = {
     media: mediaApi,
     localSpeech: localSpeechApi,
     ollama: ollamaApi,
+    audio: audioApi,
     log: async (entry) => {
         const prefix = `[${entry.category}] ${entry.message}`;
         const data = entry.data;

@@ -21,10 +21,20 @@ export class PcmRingBuffer {
         this.compact();
     }
 
-    push(channelData: Float32Array[], frames: number) {
+    push(channelData: Float32Array[], frames: number, sampleRate?: number) {
         if (!Array.isArray(channelData) || channelData.length === 0 || frames <= 0) return;
+        if (sampleRate && sampleRate > 1000) {
+            this.sampleRate = sampleRate;
+        }
         const now = Date.now();
-        const copied = channelData.map((arr) => new Float32Array(arr));
+        const copied = channelData.map((arr) => {
+            if (arr.length === frames) {
+                return new Float32Array(arr);
+            }
+            const out = new Float32Array(frames);
+            out.set(arr.subarray(0, frames));
+            return out;
+        });
         this.chunks.push({t: now, frames, data: copied});
         this.compact();
     }
@@ -74,4 +84,3 @@ export class PcmRingBuffer {
         return {channels: out, sampleRate: this.sampleRate};
     }
 }
-

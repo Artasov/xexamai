@@ -37,7 +37,7 @@ export type AppSettings = {
     windowHeight?: number;
     windowScale?: number;
     audioInputDeviceId?: string;
-    audioInputType?: 'microphone' | 'system';
+    audioInputType?: 'microphone' | 'system' | 'mixed';
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
@@ -190,6 +190,14 @@ export type AudioDevice = {
     kind: 'audioinput' | 'audiooutput';
 };
 
+export type AudioDeviceInfo = {
+    id: string;
+    name: string;
+    kind: 'mic' | 'system' | 'other';
+    channels: number;
+    sample_rate: number;
+};
+
 export type LogEntry = {
     timestamp: string;
     level: 'info' | 'warn' | 'error' | 'debug';
@@ -250,7 +258,7 @@ export type AssistantAPI = {
         setDurationHotkeys: (map: Record<number, string>) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setToggleInputHotkey: (key: string) => Promise<void>;
-        setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
+        setAudioInputType: (type: 'microphone' | 'system' | 'mixed') => Promise<void>;
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
         setLlmModel: (model: string, host?: 'api' | 'local') => Promise<void>;
@@ -316,6 +324,11 @@ export type AssistantAPI = {
         listModels: () => Promise<string[]>;
         pullModel: (model: string) => Promise<void>;
         warmupModel: (model: string) => Promise<void>;
+    };
+    audio: {
+        listDevices: () => Promise<AudioDeviceInfo[]>;
+        startCapture: (source: 'mic' | 'system' | 'mixed', deviceId?: string) => Promise<void>;
+        stopCapture: () => Promise<void>;
     };
     log: (entry: LogEntry) => Promise<void>;
 };

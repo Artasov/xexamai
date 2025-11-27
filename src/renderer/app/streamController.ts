@@ -20,10 +20,7 @@ import {
     switchAudioInput as switchAudioInputDevice,
     getAudioInputType,
     setAudioInputType,
-    getCurrentStream,
     getLastSecondsFloats,
-    clonePersistentSystemTrack,
-    registerPersistentSystemTrack,
 } from './audioSession';
 import type {SwitchAudioResult} from './audioSession';
 import {hideStopButton, showStopButton} from '../ui/stopButton';
@@ -133,7 +130,7 @@ export class StreamController {
                 return true;
             }
             case 'audioInputType': {
-                const normalized = value === 'system' ? 'system' : 'microphone';
+                const normalized = value === 'system' ? 'system' : (value === 'mixed' ? 'mixed' : 'microphone');
                 settingsStore.patch({ audioInputType: normalized });
                 setAudioInputType(normalized);
                 return this.updateToggleButtonLabel(normalized).then(() => true);
@@ -192,9 +189,114 @@ export class StreamController {
             return;
         }
 
+        // Check if audio has actual signal (not just silence)
+        let maxAmplitude = 0;
+        let sumSquared = 0;
+        let sampleCount = 0;
+        for (const channel of pcm.channels) {
+            for (let i = 0; i < channel.length; i++) {
+                const amp = Math.abs(channel[i]);
+                sumSquared += channel[i] * channel[i];
+                sampleCount++;
+                if (amp > maxAmplitude) {
+                    maxAmplitude = amp;
+                }
+            }
+        }
+        const rms = Math.sqrt(sumSquared / Math.max(1, sampleCount));
+        
+        // If amplitude is too low, likely silence or very quiet
+        // Lowered threshold because Rust code now applies gain
+        if (maxAmplitude < 0.0001 && rms < 0.00005) {
+            logger.warn('ui', 'Audio appears to be silence', { 
+                maxAmplitude, 
+                rms,
+                seconds, 
+                frames: pcm.channels[0].length 
+            });
+            setStatus('No audio signal detected (silence). Check microphone and speak louder.', 'error');
+            setProcessing(false);
+            updateButtonsState();
+            return;
+        }
+        
+        // Warn if audio is very quiet but not completely silent
+        if (maxAmplitude < 0.01) {
+            logger.warn('ui', 'Audio is very quiet, may cause transcription issues', { 
+                maxAmplitude, 
+                rms,
+                seconds 
+            });
+        }
+
+        // Additional validation: check if all channels have same length
+        const expectedFrames = pcm.channels[0]?.length || 0;
+        for (let i = 1; i < pcm.channels.length; i++) {
+            if (pcm.channels[i]?.length !== expectedFrames) {
+                logger.error('ui', 'Channel length mismatch', {
+                    channel0: pcm.channels[0]?.length,
+                    channelI: pcm.channels[i]?.length,
+                    channelIndex: i,
+                });
+            }
+        }
+        
         const wav = floatsToWav(pcm.channels, pcm.sampleRate);
         const arrayBuffer = await wav.arrayBuffer();
+        
+        // Validate WAV file size (should be at least 44 bytes header + some data)
+        if (arrayBuffer.byteLength < 1000) {
+            logger.error('ui', 'WAV file too small', { 
+                size: arrayBuffer.byteLength, 
+                seconds, 
+                frames: expectedFrames,
+                sampleRate: pcm.sampleRate,
+                channels: pcm.channels.length,
+            });
+            setStatus('Audio buffer too small or empty', 'error');
+            setProcessing(false);
+            updateButtonsState();
+            return;
+        }
+        
+        // Validate WAV header
+        const view = new DataView(arrayBuffer);
+        const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+        const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+        if (riff !== 'RIFF' || wave !== 'WAVE') {
+            logger.error('ui', 'Invalid WAV header', { riff, wave });
+            setStatus('Invalid audio format', 'error');
+            setProcessing(false);
+            updateButtonsState();
+            return;
+        }
+        
+        // Check actual audio data (skip 44-byte header)
+        let dataMaxAmp = 0;
+        let dataSampleCount = 0;
+        if (arrayBuffer.byteLength > 44) {
+            const dataView = new DataView(arrayBuffer, 44);
+            const sampleCount = (arrayBuffer.byteLength - 44) / 2;
+            for (let i = 0; i < Math.min(sampleCount, 1000); i++) {
+                const sample = dataView.getInt16(i * 2, true);
+                const amp = Math.abs(sample / 32767.0);
+                if (amp > dataMaxAmp) dataMaxAmp = amp;
+                dataSampleCount++;
+            }
+        }
+        
         const requestId = `ask-window-${seconds}-` + Date.now();
+        logger.info('ui', 'Sending audio for transcription', {
+            size: arrayBuffer.byteLength,
+            seconds,
+            sampleRate: pcm.sampleRate,
+            channels: pcm.channels.length,
+            frames: expectedFrames,
+            maxAmplitude,
+            rms,
+            wavDataMaxAmp: dataMaxAmp,
+            wavHeaderValid: true,
+        });
 
         try {
             const transcribeRes = await window.api.assistant.transcribeOnly({
@@ -475,18 +577,15 @@ export class StreamController {
             } catch {
                 settingsSnapshot = await settingsStore.load();
             }
-            const currentType = (settingsSnapshot.audioInputType || 'microphone') as 'microphone' | 'system';
-            const nextType: 'microphone' | 'system' = currentType === 'microphone' ? 'system' : 'microphone';
+            const currentType = (settingsSnapshot.audioInputType || 'microphone') as 'microphone' | 'system' | 'mixed';
+            const nextType: 'microphone' | 'system' | 'mixed' =
+                currentType === 'microphone'
+                    ? 'system'
+                    : currentType === 'system'
+                        ? 'mixed'
+                        : 'microphone';
 
-            let preStream: MediaStream | null | undefined;
-            if (state.isRecording && nextType === 'system') {
-                preStream = await this.prepareSystemStream(source);
-                if (preStream === null) {
-                    return;
-                }
-            }
-
-            const result = await this.switchAudioInput(nextType, { preStream, gesture: source === 'button' });
+            const result = await this.switchAudioInput(nextType);
             if (result.success) {
                 settingsStore.patch({ audioInputType: nextType });
             }
@@ -495,7 +594,7 @@ export class StreamController {
         }
     }
 
-    private async switchAudioInput(newType: 'microphone' | 'system', opts?: { preStream?: MediaStream | null; gesture?: boolean }): Promise<SwitchAudioResult> {
+    private async switchAudioInput(newType: 'microphone' | 'system' | 'mixed'): Promise<SwitchAudioResult> {
         logger.info('audio', 'Switch input requested', { newType });
 
         const previousType = getAudioInputType();
@@ -506,19 +605,24 @@ export class StreamController {
         } catch {
         }
 
-        const result = await switchAudioInputDevice(newType, opts);
+        // Update icon immediately for better UX
+        try {
+            await this.updateToggleButtonLabel(newType);
+        } catch {
+        }
+
+        const result = await switchAudioInputDevice(newType);
         if (!result.success) {
             setAudioInputType(previousType);
+            try {
+                await window.api.settings.setAudioInputType(previousType);
+            } catch {
+            }
             try {
                 await this.updateToggleButtonLabel(previousType);
             } catch {
             }
             return result;
-        }
-
-        try {
-            await this.updateToggleButtonLabel(newType);
-        } catch {
         }
 
         if (state.isRecording) {
@@ -540,121 +644,79 @@ export class StreamController {
         return result;
     }
 
-    private async prepareSystemStream(source: ToggleSource): Promise<MediaStream | null | undefined> {
-        if (source === 'button') {
-            return this.prepareSystemStreamWithGesture();
-        }
-        return this.prepareSystemStreamWithoutGesture();
+    private async prepareSystemStream(_source: ToggleSource): Promise<MediaStream | null | undefined> {
+        // Native capture no longer needs a browser stream.
+        return null;
     }
 
-    private async prepareSystemStreamWithGesture(): Promise<MediaStream | null> {
-        const persisted = clonePersistentSystemTrack();
-        if (persisted) {
-            try {
-                (window as any).api?.loopback?.enable?.();
-            } catch {
-            }
-            return new MediaStream([persisted]);
-        }
-        try {
-            try {
-                (window as any).api?.loopback?.enable?.();
-            } catch {
-            }
-            const displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
-            const audioTracks = displayStream.getAudioTracks();
-            const sysTrack = audioTracks[0];
-            let preStream: MediaStream | undefined;
-            if (sysTrack) {
-                registerPersistentSystemTrack(sysTrack);
-                const clone = sysTrack.clone();
-                preStream = new MediaStream([clone]);
-            } else if (audioTracks.length) {
-                preStream = new MediaStream(audioTracks.map((track) => track.clone()));
-            }
-            displayStream.getVideoTracks().forEach((track) => track.stop());
-            return preStream ?? null;
-        } catch (error) {
-            console.error('System audio capture cancelled/failed', error);
-            setStatus('System audio requires a user selection', 'error');
-            return null;
-        }
-    }
-
-    private async prepareSystemStreamWithoutGesture(): Promise<MediaStream | null> {
-        const persistedClone = clonePersistentSystemTrack();
-        if (persistedClone) {
-            try {
-                try {
-                    (window as any).api?.loopback?.enable?.();
-                } catch {
-                }
-                return new MediaStream([persistedClone]);
-            } catch {
-            }
-        }
-
-        try {
-            try {
-                (window as any).api?.loopback?.enable?.();
-            } catch {
-            }
-            const sourceId = await (window as any).api?.media?.getPrimaryDisplaySourceId?.();
-            const constraints: any = sourceId
-                ? {
-                      audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
-                      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
-                  }
-                : {
-                      audio: { mandatory: { chromeMediaSource: 'desktop' } },
-                      video: { mandatory: { chromeMediaSource: 'desktop' } },
-                  };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            const audioTracks = stream.getAudioTracks();
-            const sysTrack = audioTracks[0] || null;
-            let preStream: MediaStream | null = null;
-            if (sysTrack) {
-                registerPersistentSystemTrack(sysTrack);
-                const clone = sysTrack.clone();
-                preStream = new MediaStream([clone]);
-            }
-            try {
-                stream.getVideoTracks().forEach((track) => track.stop());
-            } catch {
-            }
-            return preStream;
-        } catch (error) {
-            console.error('desktopCapturer getUserMedia fallback failed', error);
-            return null;
-        }
-    }
-
-    private async updateToggleButtonLabel(preferred?: 'microphone' | 'system'): Promise<void> {
+    private async updateToggleButtonLabel(preferred?: 'microphone' | 'system' | 'mixed'): Promise<void> {
         const btn = this.toggleInputButton ?? (document.getElementById('btnToggleInput') as HTMLButtonElement | null);
-        const icon = this.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
+        let icon = this.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
         this.toggleInputButton = btn;
-        this.toggleInputIcon = icon;
-        if (!btn || !icon) return;
+        if (!btn) return;
 
-        let type: 'microphone' | 'system' | undefined = preferred;
+        let type: 'microphone' | 'system' | 'mixed' | undefined = preferred as any;
         if (!type) {
             try {
                 const settings = settingsStore.get();
-                type = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
+                type = (settings.audioInputType || 'microphone') as any;
             } catch {
                 const settings = await settingsStore.load();
-                type = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
+                type = (settings.audioInputType || 'microphone') as any;
             }
         }
         if (!type) type = getAudioInputType();
 
         setAudioInputType(type);
-        const iconSrc = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
-        const iconAlt = type === 'microphone' ? 'MIC' : 'SYS';
-        const title = type === 'microphone' ? 'Using Microphone' : 'Using System Audio';
+        const iconAlt = type === 'microphone' ? 'MIC' : type === 'system' ? 'SYS' : 'MIX';
+        const title = type === 'microphone'
+            ? 'Using Microphone'
+            : type === 'system'
+                ? 'Using System Audio'
+                : 'Using Mic + System Audio';
 
-        icon.src = iconSrc;
-        icon.alt = iconAlt;
         btn.title = title;
+
+        // Для mixed режима показываем две иконки рядом
+        if (type === 'mixed') {
+            // Очищаем содержимое кнопки
+            btn.innerHTML = '';
+            // Создаём контейнер для двух иконок
+            const container = document.createElement('div');
+            container.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+            
+            // Иконка микрофона
+            const micIcon = document.createElement('img');
+            micIcon.src = 'img/icons/mic.png';
+            micIcon.alt = 'MIC';
+            micIcon.className = 'h-5 w-5';
+            micIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
+            
+            // Иконка системного звука
+            const audioIcon = document.createElement('img');
+            audioIcon.src = 'img/icons/audio.png';
+            audioIcon.alt = 'SYS';
+            audioIcon.className = 'h-5 w-5';
+            audioIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
+            
+            container.appendChild(micIcon);
+            container.appendChild(audioIcon);
+            btn.appendChild(container);
+        } else {
+            // Для остальных режимов показываем одну иконку
+            // Восстанавливаем оригинальную структуру, если её нет
+            if (!icon || !btn.contains(icon)) {
+                btn.innerHTML = '';
+                icon = document.createElement('img');
+                icon.id = 'toggleInputIcon';
+                icon.className = 'h-5 w-5';
+                icon.style.cssText = 'filter: invert(1); opacity: 80%;';
+                btn.appendChild(icon);
+                this.toggleInputIcon = icon;
+            }
+            const iconSrc = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
+            icon.src = iconSrc;
+            icon.alt = iconAlt;
+        }
     }
 }

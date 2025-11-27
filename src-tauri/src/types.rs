@@ -152,6 +152,8 @@ pub struct AppConfig {
     pub screen_processing_model: String,
     #[serde(default = "default_screen_prompt")]
     pub screen_processing_prompt: String,
+    #[serde(default)]
+    pub save_recorder_files: bool,
 }
 
 fn default_window_width() -> u32 {
@@ -215,6 +217,7 @@ impl Default for AppConfig {
             stream_send_hotkey: default_stream_hotkey(),
             screen_processing_model: default_screen_model(),
             screen_processing_prompt: default_screen_prompt(),
+            save_recorder_files: false,
         };
         cfg.normalize();
         cfg
@@ -234,7 +237,7 @@ impl AppConfig {
             self.toggle_input_hotkey = DEFAULT_TOGGLE_INPUT_HOTKEY.to_string();
         }
 
-        if !matches!(self.audio_input_type.as_str(), "microphone" | "system") {
+        if !matches!(self.audio_input_type.as_str(), "microphone" | "system" | "mixed") {
             self.audio_input_type = DEFAULT_AUDIO_INPUT_TYPE.to_string();
         }
 

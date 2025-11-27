@@ -115,8 +115,15 @@ const buildTranscriptionPrompt = (settings: AppSettings): string | undefined => 
 
 const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs?: number) => {
     const hasTimeout = typeof timeoutMs === 'number' && timeoutMs > 0;
+    
+    // In Tauri, fetch works without CORS restrictions
+    // Don't set mode or credentials - let Tauri handle it
+    const fetchOptions: RequestInit = {
+        ...init,
+    };
+
     if (!hasTimeout && !init.signal) {
-        return fetch(input, init);
+        return fetch(input, fetchOptions);
     }
 
     const controller = new AbortController();
@@ -137,7 +144,7 @@ const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, tim
     }
 
     try {
-        return await fetch(input, { ...init, signal: controller.signal });
+        return await fetch(input, { ...fetchOptions, signal: controller.signal });
     } finally {
         if (timeoutId) {
             clearTimeout(timeoutId);
@@ -153,57 +160,53 @@ async function transcribeWithOpenAi(
     model?: string
 ): Promise<string> {
     const apiKey = ensureOpenAiKey(settings);
-    const url = `${OPENAI_BASE}/v1/audio/transcriptions`;
-    const form = new FormData();
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
     const prompt = buildTranscriptionPrompt(settings);
-    form.append('model', resolvedModel);
-
-    const file = new File([buffer], filename, { type: mime || 'audio/webm' });
-    form.append('file', file);
-
-    if (prompt) {
-        form.append('prompt', prompt);
-    }
 
     logRequest('transcribe:openai', 'start', {model: resolvedModel, mime});
 
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
+    try {
+        const result = await invoke<{ text: string }>('transcribe_audio', {
+            request: {
+                mode: 'api',
+                model: resolvedModel,
+                api_key: apiKey,
+                audio_data: Array.from(new Uint8Array(buffer)),
+                mime_type: mime || 'audio/wav',
+                filename,
+                prompt: prompt || undefined,
             },
-            body: form,
-        },
-        settings.apiSttTimeoutMs
-    );
+        });
 
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
-        logRequest('transcribe:openai', 'error', {status: response.status, data});
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'Transcription failed';
-        throw new Error(message);
+        const text = result.text || '';
+        logRequest('transcribe:openai', 'ok', {
+            model: resolvedModel,
+            textPreview: previewText(text),
+        });
+        return text;
+    } catch (error: any) {
+        logRequest('transcribe:openai', 'error', {error: error.message || String(error)});
+        throw new Error(error.message || 'Transcription failed');
     }
-    const text = (data as any)?.text || '';
-    logRequest('transcribe:openai', 'ok', {
-        model: resolvedModel,
-        status: response.status,
-        textPreview: previewText(text),
-    });
-    return text;
 }
 
 const extractSpeechText = (payload: any): string => {
     if (!payload) return '';
     if (typeof payload === 'string') return payload;
+    // FastWhisper returns { text: "..." }
     if (typeof payload.text === 'string') return payload.text;
+    // Some APIs return transcription field
     if (typeof payload.transcription === 'string') return payload.transcription;
+    // Some APIs return result field
     if (typeof payload.result === 'string') return payload.result;
+    // Check nested data
     if (payload.data) return extractSpeechText(payload.data);
+    // Check if it's an array with text
+    if (Array.isArray(payload) && payload.length > 0) {
+        const first = payload[0];
+        if (typeof first === 'string') return first;
+        if (first?.text) return first.text;
+    }
     return '';
 };
 
@@ -213,40 +216,78 @@ async function transcribeWithLocal(
     filename: string,
     settings: AppSettings
 ): Promise<string> {
-    const form = new FormData();
+    // Validate buffer size
+    if (buffer.byteLength < 1000) {
+        throw new Error(`Audio buffer too small: ${buffer.byteLength} bytes. Audio may be empty or invalid.`);
+    }
+    
+    // Validate WAV header if it's a WAV file
+    if (mime === 'audio/wav' || mime === 'audio/wave') {
+        const view = new DataView(buffer);
+        if (buffer.byteLength >= 12) {
+            const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+            const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+            if (riff !== 'RIFF' || wave !== 'WAVE') {
+                throw new Error(`Invalid WAV file: RIFF=${riff}, WAVE=${wave}`);
+            }
+        }
+    }
+    
     const model = (settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE).toLowerCase();
-    const prompt = buildTranscriptionPrompt(settings);
-    const file = new File([buffer], filename, { type: mime || 'audio/webm' });
-    form.append('file', file);
-    form.append('model', model);
-    if (prompt) {
-        form.append('prompt', prompt);
+    
+    logRequest('transcribe:local', 'start', {model, mime, bufferSize: buffer.byteLength});
+    
+    try {
+        const result = await invoke<{ text: string }>('transcribe_audio', {
+            request: {
+                mode: 'local',
+                model,
+                api_key: undefined,
+                audio_data: Array.from(new Uint8Array(buffer)),
+                mime_type: mime || 'audio/wav',
+                filename,
+                prompt: undefined, // Don't send prompt to FastWhisper
+            },
+        });
+
+        const text = result.text || '';
+        
+        // Check if we got prompt text instead of transcription
+        if (text) {
+            const lower = text.toLowerCase();
+            const isPromptText = lower.includes('transcribe verbatim') 
+                || lower.includes('original spoken language')
+                || lower.includes('do not translate')
+                || lower.includes('do not summarise')
+                || lower.includes('транскрибируй речь');
+            
+            if (isPromptText) {
+                logRequest('transcribe:local', 'error', {
+                    message: 'FastWhisper returned prompt text instead of transcription',
+                    receivedText: text,
+                    bufferSize: buffer.byteLength,
+                });
+                throw new Error('FastWhisper returned prompt text instead of transcription. The audio file may be empty, too short, or contain no speech. Please check that audio is being captured correctly.');
+            }
+        }
+        
+        if (!text || text.trim().length === 0) {
+            logRequest('transcribe:local', 'error', {
+                message: 'Empty transcription from FastWhisper',
+                bufferSize: buffer.byteLength,
+            });
+            throw new Error('FastWhisper returned empty transcription. The audio file may be empty, too short, or contain no speech.');
+        }
+        
+        logRequest('transcribe:local', 'ok', {
+            model,
+            textPreview: previewText(text),
+        });
+        return text;
+    } catch (error: any) {
+        logRequest('transcribe:local', 'error', {error: error.message || String(error)});
+        throw error;
     }
-    form.append('response_format', 'json');
-    logRequest('transcribe:local', 'start', {model, mime});
-    const response = await fetchWithTimeout(
-        `${FAST_WHISPER_BASE_URL}/v1/audio/transcriptions`,
-        {
-            method: 'POST',
-            body: form,
-        },
-        settings.apiSttTimeoutMs || 600_000
-    );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
-        logRequest('transcribe:local', 'error', {status: response.status, data});
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || data?.detail || 'Local transcription failed';
-        throw new Error(message);
-    }
-    const text = extractSpeechText(data);
-    logRequest('transcribe:local', 'ok', {
-        model,
-        status: response.status,
-        textPreview: previewText(text),
-    });
-    return text;
 }
 
 async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
@@ -284,85 +325,64 @@ async function transcribeWithGoogle(
 ): Promise<string> {
     const key = ensureGoogleKey(settings);
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${key}`;
-    const base64Audio = await arrayBufferToBase64(buffer);
-    const prompt = buildTranscriptionPrompt(settings);
-    const promptText = prompt
-        ? `${prompt}\n\nCRITICAL: Keep the transcription in the original spoken language. Do NOT translate or summarise.`
-        : 'Transcribe the audio verbatim in the original spoken language. Do NOT translate or answer questions.';
-    logRequest('transcribe:google', 'start', {model: resolvedModel, mime});
-
-    const body: any = {
-        contents: [
-            {
-                role: 'user',
-                parts: [
-                    {
-                        text: promptText,
-                    },
-                    {
-                        inlineData: {
-                            mimeType: mime || 'audio/webm',
-                            data: base64Audio,
-                        },
-                    },
-                ],
-            },
-        ],
-        systemInstruction: {
-            parts: [
-                {
-                    text: 'You are a speech transcription tool. Return ONLY the exact words spoken in the original language. Do not translate.',
-                },
-            ],
-        },
-    };
-
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body),
-        },
-        settings.apiSttTimeoutMs
-    );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
-        logRequest('transcribe:google', 'error', {status: response.status, data});
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'Gemini transcription failed';
-        throw new Error(message);
+    
+    // Validate buffer size
+    if (buffer.byteLength < 1000) {
+        throw new Error(`Audio buffer too small: ${buffer.byteLength} bytes. Audio may be empty or invalid.`);
     }
-    const logSuccess = (text: string) => {
-        logRequest('transcribe:google', 'ok', {
-            model: resolvedModel,
-            status: response.status,
-            textPreview: previewText(text),
-        });
-    };
-    const candidates = (data as any)?.candidates;
-    if (Array.isArray(candidates) && candidates.length) {
-        const parts = candidates[0]?.content?.parts;
-        if (Array.isArray(parts)) {
-            const text = parts
-                .map((part: any) => part?.text ?? '')
-                .filter(Boolean)
-                .join('\n')
-                .trim();
-            if (text) {
-                logSuccess(text);
-                return text;
+    
+    // Validate WAV header if it's a WAV file
+    if (mime === 'audio/wav' || mime === 'audio/wave') {
+        const view = new DataView(buffer);
+        if (buffer.byteLength >= 12) {
+            const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+            const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+            if (riff !== 'RIFF' || wave !== 'WAVE') {
+                throw new Error(`Invalid WAV file: RIFF=${riff}, WAVE=${wave}`);
             }
         }
     }
-    const text = extractSpeechText(data);
-    if (text) {
-        logSuccess(text);
+    
+    const prompt = buildTranscriptionPrompt(settings);
+    
+    logRequest('transcribe:google', 'start', {
+        model: resolvedModel, 
+        mime, 
+        bufferSize: buffer.byteLength,
+    });
+
+    try {
+        const result = await invoke<{ text: string }>('transcribe_audio', {
+            request: {
+                mode: 'google',
+                model: resolvedModel,
+                api_key: key,
+                audio_data: Array.from(new Uint8Array(buffer)),
+                mime_type: mime || 'audio/wav',
+                filename: 'audio.wav',
+                prompt: prompt || undefined,
+            },
+        });
+
+        const text = result.text || '';
+        
+        if (!text || text.trim().length === 0) {
+            logRequest('transcribe:google', 'error', {
+                message: 'Empty transcription from Google',
+                bufferSize: buffer.byteLength,
+            });
+            throw new Error('Google returned empty transcription. The audio file may be empty, too short, or contain no speech.');
+        }
+        
+        logRequest('transcribe:google', 'ok', {
+            model: resolvedModel,
+            textPreview: previewText(text),
+        });
         return text;
+    } catch (error: any) {
+        logRequest('transcribe:google', 'error', {error: error.message || String(error)});
+        throw error;
     }
-    throw new Error('Gemini returned an empty response.');
 }
 
 async function chatCompletion(

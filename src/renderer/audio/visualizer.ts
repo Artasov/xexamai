@@ -12,12 +12,17 @@ export class AudioVisualizer {
     private history: number[] = [];
     private maxBars = 64;
     private smoothing = 0.7;
+    private useExternalLevels = false;
+    private latestLevel = 0;
+    private levelGain = 18; // amplify RMS from native chunks
+    private levelFloor = 0.01;
 
     start(stream: MediaStream, canvas: HTMLCanvasElement, opts: VisualizerOptions = {}) {
         this.stop();
         this.canvas = canvas;
         this.maxBars = Math.max(16, Math.min(160, opts.bars ?? this.maxBars));
         this.smoothing = Math.max(0, Math.min(1, opts.smoothing ?? this.smoothing));
+        this.useExternalLevels = false;
 
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
         const analyser = ctx.createAnalyser();
@@ -35,6 +40,22 @@ export class AudioVisualizer {
         this.history = [];
 
         this.loop();
+    }
+
+    startFromLevels(canvas: HTMLCanvasElement, opts: VisualizerOptions = {}) {
+        this.stop();
+        this.canvas = canvas;
+        this.maxBars = Math.max(16, Math.min(160, opts.bars ?? this.maxBars));
+        this.smoothing = Math.max(0, Math.min(1, opts.smoothing ?? this.smoothing));
+        this.useExternalLevels = true;
+        this.history = [];
+        this.loop();
+    }
+
+    ingestLevel(level: number) {
+        const boosted = Math.max(0, Math.min(1, level * this.levelGain));
+        const clamped = boosted < this.levelFloor ? 0 : boosted;
+        this.latestLevel = clamped;
     }
 
     stop() {
@@ -70,24 +91,30 @@ export class AudioVisualizer {
     }
 
     private loop = () => {
-        if (!this.analyser || !this.canvas) return;
+        if (!this.canvas) return;
 
-        const a = this.analyser;
-        const buf = new Uint8Array(a.fftSize);
-        a.getByteTimeDomainData(buf);
+        if (this.useExternalLevels) {
+            const val = this.latestLevel;
+            this.history.push(val);
+            if (this.history.length > this.maxBars) this.history.shift();
+        } else {
+            if (!this.analyser) return;
+            const a = this.analyser;
+            const buf = new Uint8Array(a.fftSize);
+            a.getByteTimeDomainData(buf);
 
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) {
-            const v = (buf[i] - 128) / 128;
-            sum += v * v;
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) {
+                const v = (buf[i] - 128) / 128;
+                sum += v * v;
+            }
+            const rms = Math.sqrt(sum / buf.length);
+            const gain = 1.6;
+            const floor = 0.06;
+            const level = Math.max(floor, Math.min(1, rms * gain));
+            this.history.push(level);
+            if (this.history.length > this.maxBars) this.history.shift();
         }
-        const rms = Math.sqrt(sum / buf.length);
-        const gain = 1.6;
-        const floor = 0.06;
-        const level = Math.max(floor, Math.min(1, rms * gain));
-
-        this.history.push(level);
-        if (this.history.length > this.maxBars) this.history.shift();
 
         this.draw();
         this.rafId = requestAnimationFrame(this.loop);
@@ -153,4 +180,3 @@ export class AudioVisualizer {
         ctx.closePath();
     }
 }
-

@@ -34,6 +34,9 @@ flate2 = "1.0"
 futures-util = "0.3"
 image = "0.25"
 winreg = "0.52"
+cpal = "0.15"
+crossbeam-channel = "0.5"
+bytemuck = { version = "1.15", features = ["derive"] }
 
 [features]
 default = ["custom-protocol"]

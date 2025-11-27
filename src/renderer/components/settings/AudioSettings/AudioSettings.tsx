@@ -2,21 +2,22 @@ import { useEffect, useState } from 'react';
 import {TextField, MenuItem} from '@mui/material';
 import { toast } from 'react-toastify';
 import { useSettingsContext } from '../SettingsView/SettingsView';
-import type { AudioDevice } from '../../../types';
+import type { AudioDeviceInfo } from '@shared/ipc';
 import { logger } from '../../../utils/logger';
 import { emitSettingsChange } from '../../../utils/settingsEvents';
 import './AudioSettings.scss';
 
-const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system'; label: string }[] = [
+const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system' | 'mixed'; label: string }[] = [
     { value: 'microphone', label: 'Microphone' },
     { value: 'system', label: 'System audio' },
+    { value: 'mixed', label: 'Mic + System' },
 ];
 
 type MessageTone = 'success' | 'error';
 
 export const AudioSettings = () => {
     const { settings, patchLocal } = useSettingsContext();
-    const [devices, setDevices] = useState<AudioDevice[]>([]);
+    const [devices, setDevices] = useState<AudioDeviceInfo[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -30,7 +31,7 @@ export const AudioSettings = () => {
     const loadDevices = async () => {
         setLoading(true);
         try {
-            const list = await window.api.settings.getAudioDevices();
+            const list = await window.api.audio.listDevices();
             setDevices(list);
         } catch (error) {
             logger.error('settings', 'Failed to load audio devices', { error });
@@ -41,7 +42,7 @@ export const AudioSettings = () => {
         }
     };
 
-    const handleInputTypeChange = async (type: 'microphone' | 'system') => {
+    const handleInputTypeChange = async (type: 'microphone' | 'system' | 'mixed') => {
         try {
             await window.api.settings.setAudioInputType(type);
             patchLocal({ audioInputType: type });
@@ -76,7 +77,7 @@ export const AudioSettings = () => {
                         size="small"
                         label="Input type"
                         value={settings.audioInputType ?? 'microphone'}
-                        onChange={(event) => handleInputTypeChange(event.target.value as 'microphone' | 'system')}
+                        onChange={(event) => handleInputTypeChange(event.target.value as 'microphone' | 'system' | 'mixed')}
                         fullWidth
                     >
                         {AUDIO_INPUT_TYPES.map((option) => (
@@ -97,7 +98,7 @@ export const AudioSettings = () => {
                         fullWidth
                         disabled={settings.audioInputType === 'system'}
                     >
-                        {[{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.deviceId, label: device.label }))].map(
+                        {[{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.id, label: device.name }))].map(
                             (option) => (
                                 <MenuItem key={option.value} value={option.value}>
                                     {option.label}

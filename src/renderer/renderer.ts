@@ -1,4 +1,5 @@
 import {initControls, updateDurations} from './ui/controls';
+import {listen} from '@tauri-apps/api/event';
 import {initStatus, setStatus} from './ui/status';
 import {initOutputs} from './ui/outputs';
 import {settingsStore} from './state/settingsStore';
@@ -12,7 +13,27 @@ import {checkFeatureAccess, showFeatureAccessModal} from './ui/featureAccessModa
 import {registerStopButton, hideStopButton} from './ui/stopButton';
 import {state} from './state/appState';
 
+// Listen to transcription debug events (only if files are being saved)
+async function setupTranscriptionDebugListener() {
+    try {
+        await listen('transcription:debug:saved', (event: any) => {
+            const {path, size, mode, filename} = event.payload;
+            console.log('[transcription] Saved audio file:', {
+                path,
+                size: `${size} bytes`,
+                mode,
+                filename,
+            });
+        });
+    } catch (error) {
+        // Silently fail - this is optional
+    }
+}
+
 export async function initializeRenderer() {
+    // Setup transcription debug listener (optional)
+    setupTranscriptionDebugListener().catch(() => {});
+    
     setupAnswerFontSizeControls();
 
     initStatus(document.getElementById('status') as HTMLDivElement | null);

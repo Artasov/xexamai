@@ -5,9 +5,11 @@ mod config;
 mod constants;
 mod hotkeys;
 mod local_speech;
+mod audio;
 mod oauth;
 mod ollama;
 mod tray;
+mod transcription;
 mod types;
 
 use std::sync::{Arc, Mutex};
@@ -19,6 +21,7 @@ use constants::{
 };
 use hotkeys::HotkeyManager;
 use local_speech::FastWhisperManager;
+use audio::AudioManager;
 use once_cell::sync::Lazy;
 use tauri::LogicalSize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
@@ -208,6 +211,26 @@ async fn ollama_warmup_model(model: String) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn audio_list_devices(manager: State<'_, Arc<AudioManager>>) -> Result<Vec<audio::AudioDeviceInfo>, String> {
+    manager.list_devices().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn audio_start_capture(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<AudioManager>>,
+    source: String,
+    device_id: Option<String>,
+) -> Result<(), String> {
+    manager.start(app, &source, device_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn audio_stop_capture(manager: State<'_, Arc<AudioManager>>) -> Result<(), String> {
+    manager.stop().map_err(|e| e.to_string())
+}
+
 fn handle_config_effects(
     app: &AppHandle,
     config: &AppConfig,
@@ -307,11 +330,13 @@ fn main() {
             let hotkeys = Arc::new(HotkeyManager::new());
             let fast_whisper = Arc::new(FastWhisperManager::new());
             let auth_queue = Arc::new(AuthQueue::new());
+            let audio_manager = Arc::new(AudioManager::new());
 
             app.manage(config_state.clone());
             app.manage(hotkeys.clone());
             app.manage(fast_whisper.clone());
             app.manage(auth_queue.clone());
+            app.manage(audio_manager.clone());
 
             tray::setup(&app_handle)?;
             handle_config_effects(&app_handle, &initial_config, hotkeys, true);
@@ -352,6 +377,10 @@ fn main() {
             ollama_list_models,
             ollama_pull_model,
             ollama_warmup_model,
+            audio_list_devices,
+            audio_start_capture,
+            audio_stop_capture,
+            transcription::transcribe_audio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
