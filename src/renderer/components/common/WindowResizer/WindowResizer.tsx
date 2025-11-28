@@ -1,4 +1,4 @@
-import {type MouseEvent, useCallback, useEffect, useRef} from 'react';
+import {type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef} from 'react';
 import './WindowResizer.scss';
 
 type Edge =
@@ -109,7 +109,7 @@ export const WindowResizer = () => {
         if (!isWindows) return () => {
         };
 
-        const handleMouseMove = (event: MouseEvent) => {
+        const handleMouseMove = (event: globalThis.MouseEvent) => {
             const state = stateRef.current;
             if (!state || !state.startBounds) return;
 
@@ -134,7 +134,7 @@ export const WindowResizer = () => {
         };
     }, [computeBounds, requestBoundsUpdate, stopResizing]);
 
-    const handleMouseDown = useCallback((edge: Edge) => async (event: MouseEvent<HTMLDivElement>) => {
+    const handleMouseDown = useCallback((edge: Edge) => async (event: ReactMouseEvent<HTMLDivElement>) => {
         event.preventDefault();
         event.stopPropagation();
         if (!isWindows) return;
