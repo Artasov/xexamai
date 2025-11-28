@@ -41,6 +41,7 @@ function readEnv(name: string): string | undefined {
     return readFromProcessEnv(name) ?? readFromGlobalEnv(name);
 }
 
+// noinspection JSUnusedGlobalSymbols
 export function resolveSiteBaseUrl(): string {
     return (
         normalizeBase(
@@ -56,4 +57,3 @@ export function resolveAuthApiBaseUrl(): string {
     const normalized = normalizeBase(envValue);
     return normalized ?? DEFAULT_AUTH_API_BASE_URL;
 }
-

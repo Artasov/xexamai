@@ -64,9 +64,9 @@ const components: ThemeOptions['components'] = {
                 boxShadow: '0 30px 90px rgba(4, 6, 12, 0.6)',
                 backdropFilter: 'none',
                 backgroundColor: '#0005',
-            },
-            paperScrollPaper: {
-                maxHeight: '90vh',
+                '&.MuiDialog-paperScrollPaper': {
+                    maxHeight: '90vh',
+                },
             },
         },
         defaultProps: {

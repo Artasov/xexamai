@@ -1,4 +1,4 @@
-import type {AuthUser, TiersAndFeatures, TierFeatures, Tier} from '../services/authClient';
+import type {AuthUser, Tier, TiersAndFeatures} from '../services/authClient';
 
 export function getUserTiersAndFeatures(user: AuthUser | null): TiersAndFeatures | null {
     if (!user?.tiers_and_features || !Array.isArray(user.tiers_and_features) || user.tiers_and_features.length === 0) {
@@ -15,7 +15,7 @@ export function hasFeatureAccess(user: AuthUser | null, featureCode: 'screen_pro
     if (!tiersAndFeatures?.active_features) {
         return false;
     }
-    return tiersAndFeatures.active_features[featureCode] === true;
+    return Boolean(tiersAndFeatures.active_features[featureCode]);
 }
 
 export function getActiveTier(user: AuthUser | null): { tier: string; balance: string; ticker: string } | null {
@@ -40,7 +40,7 @@ export function getMinTierForFeature(
 
     // Find the lowest tier that contains the requested feature (sorted by position)
     const sortedTiers = [...tiersAndFeatures.tiers]
-        .filter((tier) => tier.is_active && tier.features[featureCode] === true)
+        .filter((tier) => tier.is_active && tier.features[featureCode])
         .sort((a, b) => a.position - b.position);
 
     if (sortedTiers.length === 0) {

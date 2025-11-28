@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 let stopButton: HTMLButtonElement | null = null;
 
 export function registerStopButton(button: HTMLButtonElement | null): void {

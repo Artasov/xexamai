@@ -83,7 +83,6 @@
 - Adjust transparency for maximum stealth
 - Practice before important events
 
-
 ## Support the project on https://pump.fun/coin/D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG or contact with me for other creds
 
 ## How to Use Locally
@@ -122,7 +121,8 @@ Minimum recommended configuration:
 1.
     * In `xexamai` settings select an `Mode -> LLM` = `Local`.
     * In `xexamai` settings choose a `Model -> LLM` from the available models:
-        * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b` `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
+        * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b`
+          `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
           > Choose a smaller model if your PC is low-spec
 
 2. #### Install Ollama

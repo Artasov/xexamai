@@ -1,5 +1,5 @@
 import axios from 'axios';
-import {resolveAuthApiBaseUrl} from '../../shared/appUrls';
+import {resolveAuthApiBaseUrl} from '@shared/appUrls';
 import {authClient} from './authClient';
 
 export type IssueReportPayload = {

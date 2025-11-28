@@ -1,11 +1,11 @@
-import { createContext, useContext, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import type { AppSettings } from '../../../types';
-import { useSettings } from '../../../hooks/useSettings';
-import { GeneralSettings } from '../GeneralSettings/GeneralSettings';
-import { AiSettings } from '../AiSettings/AiSettings';
-import { AudioSettings } from '../AudioSettings/AudioSettings';
-import { HotkeysSettings } from '../HotkeysSettings/HotkeysSettings';
+import type {ReactNode} from 'react';
+import {createContext, useContext, useMemo, useState} from 'react';
+import type {AppSettings} from '@renderer/types';
+import {useSettings} from '@renderer/hooks/useSettings';
+import {GeneralSettings} from '../GeneralSettings/GeneralSettings';
+import {AiSettings} from '../AiSettings/AiSettings';
+import {AudioSettings} from '../AudioSettings/AudioSettings';
+import {HotkeysSettings} from '../HotkeysSettings/HotkeysSettings';
 import './SettingsView.scss';
 
 type SettingsTab = 'general' | 'ai' | 'audio' | 'hotkeys';
@@ -29,14 +29,14 @@ export function useSettingsContext(): SettingsContextValue {
 }
 
 const TAB_ORDER = [
-    { id: 'general', label: 'General' },
-    { id: 'ai', label: 'AI' },
-    { id: 'audio', label: 'Audio' },
-    { id: 'hotkeys', label: 'Hotkeys' },
+    {id: 'general', label: 'General'},
+    {id: 'ai', label: 'AI'},
+    {id: 'audio', label: 'Audio'},
+    {id: 'hotkeys', label: 'Hotkeys'},
 ] as const;
 
 export const SettingsView = () => {
-    const { settings, loading, error, refresh, patchLocal } = useSettings();
+    const {settings, loading, error, refresh, patchLocal} = useSettings();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
     const contextValue = useMemo<SettingsContextValue>(() => ({
@@ -50,13 +50,13 @@ export const SettingsView = () => {
     const renderActiveTab = (tab: SettingsTab): ReactNode => {
         switch (tab) {
             case 'general':
-                return <GeneralSettings />;
+                return <GeneralSettings/>;
             case 'ai':
-                return <AiSettings />;
+                return <AiSettings/>;
             case 'audio':
-                return <AudioSettings />;
+                return <AudioSettings/>;
             case 'hotkeys':
-                return <HotkeysSettings />;
+                return <HotkeysSettings/>;
             default:
                 return null;
         }
@@ -98,5 +98,3 @@ export const SettingsView = () => {
         </SettingsContext.Provider>
     );
 };
-
-export default SettingsView;

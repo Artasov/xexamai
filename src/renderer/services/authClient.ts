@@ -1,5 +1,5 @@
 import axios, {AxiosRequestConfig} from 'axios';
-import {resolveAuthApiBaseUrl} from '../../shared/appUrls';
+import {resolveAuthApiBaseUrl} from '@shared/appUrls';
 import {logger} from '../utils/logger';
 
 export type AuthTokens = {
@@ -87,14 +87,14 @@ function readStorage(): AuthTokens | null {
     try {
         const raw = window.localStorage?.getItem(AUTH_STORAGE_KEY);
         if (!raw) return null;
-        const parsed = JSON.parse(raw) as AuthTokens;
-        if (!parsed || typeof parsed.access !== 'string') return null;
+        const parsed = JSON.parse(raw) as Partial<AuthTokens> | null;
+        if (!parsed?.access) return null;
         return {
             access: parsed.access,
             refresh: typeof parsed.refresh === 'string' ? parsed.refresh : null,
         };
     } catch (error) {
-        logger.warn('auth', 'Failed to read tokens from storage', { error });
+        logger.warn('auth', 'Failed to read tokens from storage', {error});
         return null;
     }
 }
@@ -114,7 +114,7 @@ function writeStorage(tokens: AuthTokens | null): void {
             }),
         );
     } catch (error) {
-        logger.warn('auth', 'Failed to write tokens to storage', { error });
+        logger.warn('auth', 'Failed to write tokens to storage', {error});
     }
 }
 
@@ -191,8 +191,8 @@ export class AuthClient {
     }
 
     private buildHeaders(baseHeaders?: AxiosRequestConfig['headers'], accessToken?: string): Record<string, string> {
-        const headers: Record<string, string> = { ...JSON_HEADERS };
-        const provided = baseHeaders as Record<string, string> | undefined;
+        const headers: Record<string, string> = {...JSON_HEADERS};
+        const provided = baseHeaders as Record<string, unknown> | undefined;
         if (provided) {
             for (const [key, value] of Object.entries(provided)) {
                 if (typeof value === 'string') {
@@ -212,7 +212,7 @@ export class AuthClient {
     }
 
     public getTokens(): AuthTokens | null {
-        return this.tokens ? { ...this.tokens } : null;
+        return this.tokens ? {...this.tokens} : null;
     }
 
     public hasTokens(): boolean {
@@ -230,8 +230,8 @@ export class AuthClient {
 
     public async login(email: string, password: string): Promise<AuthUser> {
         try {
-            const { data } = await axios.post(`${this.baseUrl}/auth/login/`, { email, password }, {
-                headers: { ...JSON_HEADERS },
+            const {data} = await axios.post(`${this.baseUrl}/auth/login/`, {email, password}, {
+                headers: {...JSON_HEADERS},
             });
             const tokens = this.parseTokenResponse(data);
             this.updateTokens(tokens);
@@ -284,8 +284,8 @@ export class AuthClient {
 
         this.refreshPromise = (async () => {
             try {
-                const { data } = await axios.post(`${this.baseUrl}/auth/refresh/`, { refresh: refreshToken }, {
-                    headers: { ...JSON_HEADERS },
+                const {data} = await axios.post(`${this.baseUrl}/auth/refresh/`, {refresh: refreshToken}, {
+                    headers: {...JSON_HEADERS},
                 });
 
                 const tokens = this.parseTokenResponse(data);
@@ -330,18 +330,16 @@ export class AuthClient {
             throw new AuthError('Missing access token in response');
         }
 
-        const next: AuthTokens = {
+        return {
             access: data.access,
             refresh: typeof data.refresh === 'string' && data.refresh.length
                 ? data.refresh
                 : this.tokens?.refresh ?? null,
         };
-
-        return next;
     }
 
     private async authenticatedRequest<T>(config: AxiosRequestConfig, allowRetry: boolean = true): Promise<T> {
-        const baseConfig: AxiosRequestConfig = { ...config };
+        const baseConfig: AxiosRequestConfig = {...config};
         const headers = this.buildHeaders(baseConfig.headers, this.tokens?.access || undefined);
 
         const finalConfig: AxiosRequestConfig = {

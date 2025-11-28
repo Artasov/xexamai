@@ -1,7 +1,12 @@
-import {LOCAL_LLM_SIZE_HINTS} from '@shared/constants';
+import {
+    GEMINI_LLM_MODELS,
+    GOOGLE_TRANSCRIBE_MODELS,
+    LOCAL_LLM_SIZE_HINTS,
+    OPENAI_LLM_MODELS,
+    OPENAI_TRANSCRIBE_MODELS
+} from '@shared/constants';
 import {normalizeOllamaModelName} from '../../../services/ollama';
 import {getLocalWhisperMetadata} from '../../../services/localSpeechModels';
-import {GOOGLE_TRANSCRIBE_MODELS, OPENAI_TRANSCRIBE_MODELS, GEMINI_LLM_MODELS, OPENAI_LLM_MODELS} from '@shared/constants';
 
 const OPENAI_TRANSCRIBE_SET = new Set<string>(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
 const GOOGLE_TRANSCRIBE_SET = new Set<string>(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);

@@ -1,15 +1,5 @@
 import {useEffect, useState} from 'react';
-import {
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    Link,
-    Stack,
-    Typography,
-} from '@mui/material';
+import {Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, Typography,} from '@mui/material';
 import {ThemeProvider} from '@mui/material/styles';
 import {muiTheme} from '../mui/config.mui';
 import {checkFeatureAccess as checkFeatureAccessUtil, getCurrentUser} from '../utils/featureAccess';
@@ -62,9 +52,15 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                     </Typography>
 
                     {activeTierInfo && (
-                        <Box sx={{p: 2, borderRadius: 2, backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                        <Box sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
                             <Stack spacing={1.5}>
-                                <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+                                <Typography variant="caption" color="text.secondary"
+                                            sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
                                     Your current status
                                 </Typography>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -88,9 +84,15 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                     )}
 
                     {minTierInfo && (
-                        <Box sx={{p: 2, borderRadius: 2, backgroundColor: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)'}}>
+                        <Box sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            border: '1px solid rgba(139, 92, 246, 0.2)'
+                        }}>
                             <Stack spacing={1.5}>
-                                <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+                                <Typography variant="caption" color="text.secondary"
+                                            sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
                                     Required for {featureLabel}
                                 </Typography>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -110,7 +112,8 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                                     </Typography>
                                 </Stack>
                                 {minTierInfo.tier.description && (
-                                    <Typography variant="caption" color="text.secondary" sx={{mt: 0.5, fontStyle: 'italic'}}>
+                                    <Typography variant="caption" color="text.secondary"
+                                                sx={{mt: 0.5, fontStyle: 'italic'}}>
                                         {minTierInfo.tier.description}
                                     </Typography>
                                 )}
@@ -168,7 +171,7 @@ function renderFeatureModal(open: boolean) {
     if (!featurePortal.isReady()) return;
     featurePortal.render(
         <ThemeProvider theme={muiTheme}>
-            <FeatureAccessDialog open={open} onClose={handleFeatureModalClose} featureCode={currentFeatureCode} />
+            <FeatureAccessDialog open={open} onClose={handleFeatureModalClose} featureCode={currentFeatureCode}/>
         </ThemeProvider>,
     );
 }

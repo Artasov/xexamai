@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 let sharedAudioCtx: AudioContext | null = null;
 
 function getAudioCtx(): AudioContext {
@@ -180,5 +182,4 @@ function writeString(view: DataView, offset: number, str: string) {
         view.setUint8(offset + i, str.charCodeAt(i));
     }
 }
-
 

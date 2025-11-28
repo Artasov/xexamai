@@ -14,15 +14,15 @@ import {
     normalizeOllamaModelName
 } from '../services/ollama';
 import {LOCAL_LLM_MODELS} from '@shared/constants';
+import type {SwitchAudioResult} from './audioSession';
 import {
+    getAudioInputType,
+    getLastSecondsFloats,
+    setAudioInputType,
     startRecording as startAudioRecording,
     stopRecording as stopAudioRecording,
     switchAudioInput as switchAudioInputDevice,
-    getAudioInputType,
-    setAudioInputType,
-    getLastSecondsFloats,
 } from './audioSession';
-import type {SwitchAudioResult} from './audioSession';
 import {hideStopButton, showStopButton} from '../ui/stopButton';
 
 type StreamElements = {
@@ -146,7 +146,7 @@ export class StreamController {
             }
             case 'audioInputType': {
                 const normalized = value === 'system' ? 'system' : (value === 'mixed' ? 'mixed' : 'microphone');
-                settingsStore.patch({ audioInputType: normalized });
+                settingsStore.patch({audioInputType: normalized});
                 setAudioInputType(normalized);
                 return this.updateToggleButtonLabel(normalized).then(() => true);
             }
@@ -157,14 +157,14 @@ export class StreamController {
 
     async handleRecordToggle(shouldRecord: boolean): Promise<void> {
         try {
-        if (shouldRecord) {
-            await startAudioRecording();
-            await this.updateStreamModeVisibility('base');
-        } else {
-            await stopAudioRecording();
-            await this.googleStreamingService.stop();
-            this.googleStreamingActive = false;
-        }
+            if (shouldRecord) {
+                await startAudioRecording();
+                await this.updateStreamModeVisibility('base');
+            } else {
+                await stopAudioRecording();
+                await this.googleStreamingService.stop();
+                this.googleStreamingActive = false;
+            }
         } catch (error) {
             console.error('Record toggle failed', error);
             const message = error instanceof Error ? error.message : String(error);
@@ -181,7 +181,7 @@ export class StreamController {
     }
 
     async handleAskWindow(seconds: number): Promise<void> {
-        logger.info('ui', 'Handle ask window', { seconds });
+        logger.info('ui', 'Handle ask window', {seconds});
 
         if (this.currentRequestId) {
             await this.stopActiveStream();
@@ -198,9 +198,9 @@ export class StreamController {
 
         const pcm = getLastSecondsFloats(seconds);
         if (!pcm || pcm.channels[0].length === 0) {
-            logger.warn('ui', 'No audio in buffer', { 
-                seconds, 
-                hasPcm: !!pcm, 
+            logger.warn('ui', 'No audio in buffer', {
+                seconds,
+                hasPcm: !!pcm,
                 channelsLength: pcm?.channels?.length || 0,
                 firstChannelLength: pcm?.channels[0]?.length || 0,
                 inputType: getAudioInputType()
@@ -227,7 +227,7 @@ export class StreamController {
             this.setErrorStatus(this.toErrorMessage(error));
             return;
         }
-        
+
         const requestId = `ask-window-${seconds}-` + Date.now();
         logger.info('ui', 'Sending audio for transcription', {
             size: audioBuffer.byteLength,
@@ -326,9 +326,9 @@ export class StreamController {
         }
 
         const requestId = this.currentRequestId;
-        logger.info('ui', 'Stop stream requested', { requestId });
+        logger.info('ui', 'Stop stream requested', {requestId});
         try {
-            await window.api.assistant.stopStream({ requestId });
+            await window.api.assistant.stopStream({requestId});
         } catch (error) {
             console.error('Stop stream error', error);
         } finally {
@@ -442,7 +442,7 @@ export class StreamController {
         const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
         const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
         if (riff !== 'RIFF' || wave !== 'WAVE') {
-            logger.error('ui', 'Invalid WAV header', { riff, wave });
+            logger.error('ui', 'Invalid WAV header', {riff, wave});
             throw new Error('Invalid audio format');
         }
 
@@ -457,7 +457,7 @@ export class StreamController {
             }
         }
 
-        return { arrayBuffer, maxAmplitude, rms, expectedFrames, dataMaxAmp };
+        return {arrayBuffer, maxAmplitude, rms, expectedFrames, dataMaxAmp};
     }
 
     private async sendChatRequest(requestId: string, text: string): Promise<void> {
@@ -467,7 +467,7 @@ export class StreamController {
         this.currentRequestId = requestId;
         this.prepareStreamHandlers(requestId);
         showStopButton();
-        await window.api.assistant.askChat({ text, requestId });
+        await window.api.assistant.askChat({text, requestId});
     }
 
     private prepareStreamHandlers(requestId: string): void {
@@ -484,7 +484,7 @@ export class StreamController {
 
         this.streamDoneHandler = (_e: unknown, payload: { requestId?: string; full: string }) => {
             if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-            logger.info('stream', 'Stream done handler called', { requestId: payload.requestId });
+            logger.info('stream', 'Stream done handler called', {requestId: payload.requestId});
             this.currentRequestId = null;
             setStatus('Done', 'ready');
             setProcessing(false);
@@ -495,7 +495,7 @@ export class StreamController {
 
         this.streamErrorHandler = (_e: unknown, payload: { requestId?: string; error: string }) => {
             if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-            logger.info('stream', 'Stream error handler called', { requestId: payload.requestId, error: payload.error });
+            logger.info('stream', 'Stream error handler called', {requestId: payload.requestId, error: payload.error});
             this.currentRequestId = null;
             const msg = (payload.error || '').toString();
             if (msg.toLowerCase().includes('aborted')) {
@@ -597,7 +597,7 @@ export class StreamController {
         return key;
     }
 
-    private async handleAudioInputToggle(source: ToggleSource): Promise<void> {
+    private async handleAudioInputToggle(_source: ToggleSource): Promise<void> {
         try {
             const settingsSnapshot = await this.loadSettingsSafe();
             const currentType = (settingsSnapshot.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
@@ -610,7 +610,7 @@ export class StreamController {
 
             const result = await this.switchAudioInput(nextType);
             if (result.success) {
-                settingsStore.patch({ audioInputType: nextType });
+                settingsStore.patch({audioInputType: nextType});
             }
         } catch (error) {
             console.error('Toggle input failed', error);
@@ -618,7 +618,7 @@ export class StreamController {
     }
 
     private async switchAudioInput(newType: 'microphone' | 'system' | 'mixed'): Promise<SwitchAudioResult> {
-        logger.info('audio', 'Switch input requested', { newType });
+        logger.info('audio', 'Switch input requested', {newType});
 
         const previousType = getAudioInputType();
         setAudioInputType(newType);
@@ -650,7 +650,6 @@ export class StreamController {
 
         if (state.isRecording) {
             try {
-                const settings = await this.loadSettingsSafe();
                 await this.googleStreamingService.stop();
                 this.googleStreamingActive = false;
                 setStatus('Recording...', 'recording');
@@ -660,11 +659,6 @@ export class StreamController {
         }
 
         return result;
-    }
-
-    private async prepareSystemStream(_source: ToggleSource): Promise<MediaStream | null | undefined> {
-        // Native capture no longer needs a browser stream.
-        return null;
     }
 
     private async updateToggleButtonLabel(preferred?: 'microphone' | 'system' | 'mixed'): Promise<void> {
@@ -682,13 +676,11 @@ export class StreamController {
 
         setAudioInputType(type);
         const iconAlt = type === 'microphone' ? 'MIC' : type === 'system' ? 'SYS' : 'MIX';
-        const title = type === 'microphone'
+        btn.title = type === 'microphone'
             ? 'Using Microphone'
             : type === 'system'
                 ? 'Using System Audio'
                 : 'Using Mic + System Audio';
-
-        btn.title = title;
 
         // For mixed mode show two icons side by side
         if (type === 'mixed') {
@@ -697,21 +689,21 @@ export class StreamController {
             // Create container for two icons
             const container = document.createElement('div');
             container.style.cssText = 'display: flex; align-items: center; gap: 2px;';
-            
+
             // Microphone icon
             const micIcon = document.createElement('img');
             micIcon.src = 'img/icons/mic.png';
             micIcon.alt = 'MIC';
             micIcon.className = 'h-5 w-5';
             micIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
-            
+
             // System audio icon
             const audioIcon = document.createElement('img');
             audioIcon.src = 'img/icons/audio.png';
             audioIcon.alt = 'SYS';
             audioIcon.className = 'h-5 w-5';
             audioIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
-            
+
             container.appendChild(micIcon);
             container.appendChild(audioIcon);
             btn.appendChild(container);
@@ -726,8 +718,7 @@ export class StreamController {
                 btn.appendChild(icon);
                 this.toggleInputIcon = icon;
             }
-            const iconSrc = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
-            icon.src = iconSrc;
+            icon.src = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
             icon.alt = iconAlt;
         }
     }

@@ -1,3 +1,6 @@
+// noinspection JSUnusedGlobalSymbols
+// noinspection XmlDeprecatedElement
+
 import {TextField} from '@mui/material';
 
 type Props = {
@@ -10,13 +13,13 @@ type Props = {
 };
 
 export function TimeoutSettingsSection({
-    apiSttTimeout,
-    apiLlmTimeout,
-    screenTimeout,
-    onChangeApiStt,
-    onChangeApiLlm,
-    onChangeScreen,
-}: Props) {
+                                           apiSttTimeout,
+                                           apiLlmTimeout,
+                                           screenTimeout,
+                                           onChangeApiStt,
+                                           onChangeApiLlm,
+                                           onChangeScreen,
+                                       }: Props) {
     return (
         <section className="settings-card card">
             <h3 className="settings-card__title">API timeouts (ms)</h3>

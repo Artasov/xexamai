@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {toast} from 'react-toastify';
 import type {AppSettings} from '@shared/ipc';
 

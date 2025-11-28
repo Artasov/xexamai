@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {logger} from '../utils/logger';
 
 export type BrowserAudioSource = 'mic' | 'system' | 'mixed';
@@ -83,7 +85,8 @@ function processAudioChunk(
 
 const closeAudioContext = (ctx: AudioContext | null) => {
     if (!ctx) return;
-    ctx.close().catch(() => {});
+    ctx.close().catch(() => {
+    });
 };
 
 const stopTracks = (stream: MediaStream | null) => {
@@ -94,13 +97,16 @@ const stopTracks = (stream: MediaStream | null) => {
 const disconnectChain = (resources: AudioResources) => {
     try {
         resources.source?.disconnect();
-    } catch {}
+    } catch {
+    }
     try {
         resources.processor?.disconnect();
-    } catch {}
+    } catch {
+    }
     try {
         resources.gain?.disconnect();
-    } catch {}
+    } catch {
+    }
     closeAudioContext(resources.context);
     stopTracks(resources.stream);
     resources.stream = null;
@@ -119,8 +125,8 @@ async function startMicCapture(deviceId?: string): Promise<void> {
         const constraints: MediaStreamConstraints = {
             audio: deviceId
                 ? {
-                      deviceId: {exact: deviceId},
-                  }
+                    deviceId: {exact: deviceId},
+                }
                 : true,
         };
 

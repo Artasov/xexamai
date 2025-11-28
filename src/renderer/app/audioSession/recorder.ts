@@ -1,10 +1,12 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {AudioVisualizer} from '../../audio/visualizer';
 import {PcmRingBuffer} from '../../audio/pcmRingBuffer';
 import {ensureWave, hideWave, showWave} from '../../ui/waveform';
 import {state as appState} from '../../state/appState';
 import {logger} from '../../utils/logger';
 import {audioSessionState} from './internalState';
-import {startAudioCapture, stopAudioCapture, onAudioChunk, AudioSourceKind} from '../../services/nativeAudio';
+import {AudioSourceKind, onAudioChunk, startAudioCapture, stopAudioCapture} from '../../services/nativeAudio';
 import {settingsStore} from '../../state/settingsStore';
 import {setStatus} from '../../ui/status';
 
@@ -23,9 +25,7 @@ export async function startRecording(): Promise<void> {
     if (!audioSessionState.visualizer) {
         audioSessionState.visualizer = new AudioVisualizer();
     }
-    audioSessionState.visualizer.startFromLevels(audioSessionState.waveCanvas, { bars: 72, smoothing: 0.75 });
-
-    const inputType = audioSessionState.currentAudioInputType;
+    audioSessionState.visualizer.startFromLevels(audioSessionState.waveCanvas, {bars: 72, smoothing: 0.75});
 
     // Use native Rust capture for all modes (WASAPI loopback for system and mixed)
     await startNativeRecording();
@@ -34,7 +34,7 @@ export async function startRecording(): Promise<void> {
 
 async function startNativeRecording(): Promise<void> {
     const inputType = audioSessionState.currentAudioInputType;
-    
+
     // Initialize shared buffer regardless of mode
     audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
     audioSessionState.ring = null;
@@ -115,7 +115,7 @@ async function startNativeRecording(): Promise<void> {
 
 export async function stopRecording(): Promise<void> {
     logger.info('recording', 'Stopping recording');
-    
+
     if (audioUnsubscribe) {
         audioUnsubscribe();
         audioUnsubscribe = null;
@@ -181,20 +181,20 @@ export function updateVisualizerBars(options: { bars: number; smoothing: number 
 export async function rebuildRecorderWithStream(): Promise<void> {
     // Re-subscribe to chunks when switching during recording
     if (!appState.isRecording) return;
-    
+
     const inputType = audioSessionState.currentAudioInputType;
-    
+
     // Ensure shared buffer exists
     if (!audioSessionState.pcmRing) {
         audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
     }
-    
+
     // Clear previous subscriptions
     if (audioUnsubscribe) {
         audioUnsubscribe();
         audioUnsubscribe = null;
     }
-    
+
     // All modes now use Rust capture; resubscribe to native chunks
     if (inputType === 'mixed') {
         // Mixed mode: Rust mixes streams, so use a single buffer

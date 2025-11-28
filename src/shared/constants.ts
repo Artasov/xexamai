@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 export const FAST_WHISPER_PORT = 8868;
 export const FAST_WHISPER_BASE_URL = `http://127.0.0.1:${FAST_WHISPER_PORT}`;
 export const FAST_WHISPER_HEALTH_ENDPOINT = `${FAST_WHISPER_BASE_URL}/health`;

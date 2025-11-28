@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 export type AppState = {
     isRecording: boolean;
     isProcessing: boolean; // lock UI while transcription/response runs

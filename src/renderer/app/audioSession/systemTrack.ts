@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {audioSessionState} from './internalState';
 
 export function registerPersistentSystemTrack(track: MediaStreamTrack | null): void {

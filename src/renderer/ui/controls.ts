@@ -81,7 +81,7 @@ export function updateDurations(durations: number[], onDurationChange?: (sec: nu
             b.textContent = `${sec}s`;
             b.dataset['sec'] = String(sec);
             b.addEventListener('click', () => {
-                logger.info('ui', 'Duration button clicked', { duration: sec });
+                logger.info('ui', 'Duration button clicked', {duration: sec});
                 setStatus(`Sending last ${sec}s...`, 'sending');
                 onDurationChange?.(sec);
             });
@@ -122,7 +122,7 @@ function initTextInput(onTextSend?: (text: string) => Promise<void> | void) {
         const text = textInput.value.trim();
         if (!text) return;
 
-        logger.info('ui', 'Send text button clicked', { textLength: text.length });
+        logger.info('ui', 'Send text button clicked', {textLength: text.length});
         await onTextSend(text);
     });
 
@@ -130,7 +130,6 @@ function initTextInput(onTextSend?: (text: string) => Promise<void> | void) {
 }
 
 export function initControls({onRecordToggle, durations, onDurationChange, onTextSend}: ControlsInitArgs) {
-    const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
     const btnRecord = document.getElementById('btnRecord') as HTMLButtonElement | null;
     const sendLastContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
 
@@ -155,7 +154,7 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
                 return;
             }
         }
-        logger.info('ui', 'Record button clicked', { shouldStart });
+        logger.info('ui', 'Record button clicked', {shouldStart});
         setRecording(shouldStart);
         btnRecord.disabled = true;
         let startedSuccessfully = false;

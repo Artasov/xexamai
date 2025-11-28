@@ -35,3 +35,4 @@ media_content
 AGENTS.md
 release
 src-tauri/target
+src-tauri/gen

@@ -1,3 +1,5 @@
+// noinspection XmlDeprecatedElement
+
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
     Box,
@@ -18,16 +20,15 @@ import {
     GEMINI_LLM_MODELS,
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_MODELS,
-    LOCAL_LLM_SIZE_HINTS,
     LOCAL_TRANSCRIBE_MODELS,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
     TRANSCRIBE_API_MODELS,
 } from '@shared/constants';
 import type {FastWhisperStatus} from '@shared/ipc';
-import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '../../../types';
+import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '@renderer/types';
 import {useSettingsContext} from '../SettingsView/SettingsView';
-import {logger} from '../../../utils/logger';
+import {logger} from '@renderer/utils/logger';
 import {toast} from 'react-toastify';
 import {
     checkLocalModelDownloaded,
@@ -51,6 +52,7 @@ import StopCircleIcon from '@mui/icons-material/StopCircle';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import {formatLlmLabel, formatTranscribeLabel} from './formatters';
 import './AiSettings.scss';
 
 type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
@@ -85,40 +87,6 @@ const SCREEN_MODEL_OPTIONS: WithLabel[] = [
     {value: 'google', label: 'Google Gemini'},
 ];
 
-const toTitle = (value: string): string =>
-    value
-        .replace(/[:]/g, ' ')
-        .replace(/-/g, ' ')
-        .split(' ')
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-
-const formatTranscribeLabel = (value: string): string => {
-    const metadata = getLocalWhisperMetadata(value);
-    if (metadata) {
-        return `${metadata.label} (${metadata.size})`;
-    }
-    if (GOOGLE_TRANSCRIBE_SET.has(value)) {
-        return `Google ${toTitle(value)}`;
-    }
-    if (OPENAI_TRANSCRIBE_SET.has(value)) {
-        return `OpenAI ${toTitle(value)}`;
-    }
-    return toTitle(value);
-};
-
-const formatLlmLabel = (value: string): string => {
-    if (GEMINI_LLM_SET.has(value)) {
-        return `Google ${toTitle(value)}`;
-    }
-    if (OPENAI_LLM_SET.has(value)) {
-        return `OpenAI ${toTitle(value)}`;
-    }
-    const normalized = normalizeOllamaModelName(value);
-    const size = LOCAL_LLM_SIZE_HINTS[normalized];
-    return size ? `${toTitle(value)} - ${size}` : toTitle(value);
-};
 export const AiSettings = () => {
     const {settings, patchLocal} = useSettingsContext();
 
@@ -577,30 +545,6 @@ export const AiSettings = () => {
         }
     };
 
-    const handleVerifyLocalModel = async () => {
-        const model = normalizeLocalWhisperModel(settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL);
-        if (!model) {
-            setLocalModelError('Select a local model first.');
-            return;
-        }
-        if (!localStatus?.installed || !localStatus.running) {
-            setLocalModelError('Start the local speech server first.');
-            return;
-        }
-        setCheckingLocalModel(true);
-        setLocalModelError(null);
-        try {
-            const downloaded = await checkLocalModelDownloaded(model, {force: true});
-            setLocalModelReady(downloaded);
-        } catch (error) {
-            logger.error('settings', 'Failed to check local model', {error});
-            setLocalModelError(error instanceof Error ? error.message : 'Failed to check model');
-            setLocalModelReady(false);
-        } finally {
-            setCheckingLocalModel(false);
-        }
-    };
-
     const handleLlmHostChange = async (host: LlmHost) => {
         let targetModel = host === 'local'
             ? (settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL)
@@ -704,21 +648,6 @@ export const AiSettings = () => {
             setLocalModelError(detail || (error instanceof Error ? error.message : 'Failed to download model'));
         } finally {
             setDownloadingLocalModel(false);
-        }
-    };
-
-    const handleLocalModelWarmup = async () => {
-        const model = normalizeLocalWhisperModel(settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL);
-        if (!model) return;
-        setLocalModelError(null);
-        try {
-            await warmupLocalSpeechModel(model);
-            lastLocalWarmupRef.current = model;
-            showMessage('Warmup started');
-        } catch (error) {
-            logger.error('settings', 'Warmup failed', {error});
-            setLocalModelError(error instanceof Error ? error.message : 'Failed to warmup model');
-            lastLocalWarmupRef.current = null;
         }
     };
 
@@ -886,11 +815,6 @@ export const AiSettings = () => {
             : (!hasGoogleKey ? 'Requires Google AI key' : undefined),
     })), [hasGoogleKey, hasOpenAiKey]);
 
-    const requiresOpenAiForTranscribe = settings.transcriptionMode === 'api' && OPENAI_TRANSCRIBE_SET.has(apiTranscribeModel);
-    const requiresGoogleForTranscribe = settings.transcriptionMode === 'api' && GOOGLE_TRANSCRIBE_SET.has(apiTranscribeModel);
-    const requiresOpenAiForLlm = settings.llmHost === 'api' && OPENAI_LLM_SET.has(apiLlmModel);
-    const requiresGoogleForLlm = settings.llmHost === 'api' && GEMINI_LLM_SET.has(apiLlmModel);
-
     const transcribeUnavailable =
         settings.transcriptionMode === 'local' && (!localStatus?.installed || !localStatus.running);
 
@@ -988,7 +912,7 @@ export const AiSettings = () => {
                                     aria-label="Local transcription info"
                                     onClick={() => setInfoDialog('transcribe')}
                                 >
-                                    <InfoOutlinedIcon fontSize="small" />
+                                    <InfoOutlinedIcon fontSize="small"/>
                                 </IconButton>
                             ) : null}
                         </div>
@@ -1242,7 +1166,7 @@ export const AiSettings = () => {
                                     aria-label="Local LLM info"
                                     onClick={() => setInfoDialog('llm')}
                                 >
-                                    <InfoOutlinedIcon fontSize="small" />
+                                    <InfoOutlinedIcon fontSize="small"/>
                                 </IconButton>
                             ) : null}
                         </div>
@@ -1480,7 +1404,8 @@ export const AiSettings = () => {
                 <DialogTitle>Local transcription</DialogTitle>
                 <DialogContent dividers>
                     <Typography variant="body2" gutterBottom>
-                        Whisper is fastest and most accurate on NVIDIA GPUs (RTX/GTX). CPU mode works, but Medium/Large models will run significantly slower without a discrete GPU.
+                        Whisper is fastest and most accurate on NVIDIA GPUs (RTX/GTX). CPU mode works, but Medium/Large
+                        models will run significantly slower without a discrete GPU.
                     </Typography>
                     <Typography variant="body2" gutterBottom>
                         Approximate download sizes:
@@ -1493,7 +1418,8 @@ export const AiSettings = () => {
                         • Large v3 — ~3&nbsp;GB
                     </Typography>
                     <Typography variant="body2" sx={{mt: 2}}>
-                        Audio never leaves your machine, so make sure you have enough free disk space and let the download finish before starting a recording.
+                        Audio never leaves your machine, so make sure you have enough free disk space and let the
+                        download finish before starting a recording.
                     </Typography>
                 </DialogContent>
                 <DialogActions>
@@ -1510,13 +1436,16 @@ export const AiSettings = () => {
                 <DialogTitle>Local LLM</DialogTitle>
                 <DialogContent dividers>
                     <Typography variant="body2" gutterBottom>
-                        Smaller local models already weigh 5–7&nbsp;GB, while meaningful ones easily reach 20–40&nbsp;GB and require a powerful GPU with plenty of VRAM.
+                        Smaller local models already weigh 5–7&nbsp;GB, while meaningful ones easily reach 20–40&nbsp;GB
+                        and require a powerful GPU with plenty of VRAM.
                     </Typography>
                     <Typography variant="body2" gutterBottom>
-                        Generation speed scales with your GPU. On weak hardware or CPU-only setups responses will be slow and may lock up the system.
+                        Generation speed scales with your GPU. On weak hardware or CPU-only setups responses will be
+                        slow and may lock up the system.
                     </Typography>
                     <Typography variant="body2">
-                        If you are unsure about your PC, prefer API keys (OpenAI / Gemini). They are easier to configure and provide predictable latency without heavy downloads.
+                        If you are unsure about your PC, prefer API keys (OpenAI / Gemini). They are easier to configure
+                        and provide predictable latency without heavy downloads.
                     </Typography>
                 </DialogContent>
                 <DialogActions>

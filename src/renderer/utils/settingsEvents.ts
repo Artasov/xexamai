@@ -2,6 +2,6 @@ type SettingsEventKey = 'streamSendHotkey' | 'audioInputType' | 'durations' | 'd
 
 export function emitSettingsChange(key: SettingsEventKey, value: unknown) {
     window.dispatchEvent(new CustomEvent('xexamai:settings-changed', {
-        detail: { key, value },
+        detail: {key, value},
     }));
 }

@@ -1,3 +1,5 @@
+// noinspection XmlDeprecatedElement
+
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
 import {useSettingsContext} from '../SettingsView/SettingsView';
@@ -63,7 +65,7 @@ export const GeneralSettings = () => {
         try {
             await window.api.settings.setAlwaysOnTop(value);
             patchLocal({alwaysOnTop: value});
-            
+
             // If disabling AlwaysOnTop, also disable HideApp
             if (!value && settings.hideApp) {
                 await window.api.settings.setHideApp(false);
@@ -81,7 +83,7 @@ export const GeneralSettings = () => {
                 await window.api.settings.setAlwaysOnTop(true);
                 patchLocal({alwaysOnTop: true});
             }
-            
+
             await window.api.settings.setHideApp(value);
             patchLocal({hideApp: value});
         } catch (error) {

@@ -1,9 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import {
-    getCurrentWindow,
-    LogicalPosition,
-    LogicalSize,
-} from '@tauri-apps/api/window';
+import {getCurrentWindow, LogicalPosition, LogicalSize,} from '@tauri-apps/api/window';
 import {
     AssistantAPI,
     AuthDeepLinkPayload,
@@ -13,33 +9,33 @@ import {
 } from '@shared/ipc';
 import {listen, UnlistenFn} from '@tauri-apps/api/event';
 import {
-    assistantProcessAudio,
-    assistantProcessAudioStream,
-    assistantTranscribeOnly,
     assistantAskChat,
-    assistantStopStream,
-    assistantOnStreamTranscript,
-    assistantOnStreamDelta,
-    assistantOnStreamDone,
-    assistantOnStreamError,
-    assistantOffStreamTranscript,
     assistantOffStreamDelta,
     assistantOffStreamDone,
     assistantOffStreamError,
+    assistantOffStreamTranscript,
+    assistantOnStreamDelta,
+    assistantOnStreamDone,
+    assistantOnStreamError,
+    assistantOnStreamTranscript,
+    assistantProcessAudio,
+    assistantProcessAudioStream,
+    assistantStopStream,
+    assistantTranscribeOnly,
     processScreenImage as assistantProcessScreenImage,
 } from '../services/nativeAssistant';
 
 const currentWindow = getCurrentWindow();
 
 async function patchSettings(payload: Record<string, unknown>) {
-    await invoke('config_update', { payload });
+    await invoke('config_update', {payload});
 }
 
 const makeSettingSetter =
     <T>(key: keyof AssistantAPI['settings'] extends never ? string : string) =>
-    async (value: T) => {
-        await patchSettings({ [key]: value });
-    };
+        async (value: T) => {
+            await patchSettings({[key]: value});
+        };
 
 async function replaceListener<T>(
     current: UnlistenFn | null,
@@ -49,7 +45,8 @@ async function replaceListener<T>(
     if (current) {
         try {
             await current();
-        } catch {}
+        } catch {
+        }
     }
     return listen<T>(event, handler);
 }
@@ -58,7 +55,8 @@ function clearListener(current: UnlistenFn | null): null {
     if (current) {
         try {
             void current();
-        } catch {}
+        } catch {
+        }
     }
     return null;
 }
@@ -67,29 +65,31 @@ const settingsApi: AssistantAPI['settings'] = {
     get: () => invoke('config_get'),
     setOpenaiApiKey: makeSettingSetter<string>('openaiApiKey'),
     setWindowOpacity: async (opacity: number) => {
-        await patchSettings({ windowOpacity: opacity });
+        await patchSettings({windowOpacity: opacity});
         // Opacity is applied in Rust via DWM
     },
     setAlwaysOnTop: async (alwaysOnTop: boolean) => {
-        await patchSettings({ alwaysOnTop });
+        await patchSettings({alwaysOnTop});
         try {
             await currentWindow.setAlwaysOnTop(alwaysOnTop);
-        } catch {}
+        } catch {
+        }
     },
     setHideApp: async (hideApp: boolean) => {
-        await patchSettings({ hideApp });
+        await patchSettings({hideApp});
         // Screen recording exclusion is applied in Rust via SetWindowDisplayAffinity
     },
     setWindowSize: async (size) => {
         const width = Math.max(size.width, 400);
         const height = Math.max(size.height, 500);
-        await patchSettings({ windowWidth: width, windowHeight: height });
+        await patchSettings({windowWidth: width, windowHeight: height});
         try {
             await currentWindow.setSize(new LogicalSize(width, height));
-        } catch {}
+        } catch {
+        }
     },
     setWindowScale: async (scale) => {
-        await patchSettings({ windowScale: scale });
+        await patchSettings({windowScale: scale});
         // Scale is applied in Rust by resizing the window and adjusting CSS zoom
     },
     setDurations: makeSettingSetter('durations'),
@@ -100,7 +100,7 @@ const settingsApi: AssistantAPI['settings'] = {
     setTranscriptionModel: makeSettingSetter('transcriptionModel'),
     setTranscriptionPrompt: makeSettingSetter('transcriptionPrompt'),
     setLlmModel: async (model, host) => {
-        const payload: Record<string, unknown> = { llmModel: model };
+        const payload: Record<string, unknown> = {llmModel: model};
         if (host === 'local') {
             payload.localLlmModel = model;
         } else if (host === 'api') {
@@ -143,7 +143,7 @@ const settingsApi: AssistantAPI['settings'] = {
 const audioApi: AssistantAPI['audio'] = {
     listDevices: () => invoke('audio_list_devices'),
     startCapture: (source: 'mic' | 'system' | 'mixed', deviceId?: string) =>
-        invoke('audio_start_capture', { source, deviceId }),
+        invoke('audio_start_capture', {source, deviceId}),
     stopCapture: () => invoke('audio_stop_capture'),
 };
 
@@ -166,12 +166,6 @@ const windowApi: AssistantAPI['window'] = {
         await currentWindow.setPosition(new LogicalPosition(bounds.x, bounds.y));
         await currentWindow.setSize(new LogicalSize(bounds.width, bounds.height));
     },
-};
-
-const unimplemented = (feature: string) => {
-    return () => {
-        throw new Error(`${feature} is not implemented in Tauri bridge yet`);
-    };
 };
 
 const assistantApi: AssistantAPI['assistant'] = {
@@ -221,8 +215,8 @@ const hotkeysApi: AssistantAPI['hotkeys'] = {
 };
 
 const loopbackApi: AssistantAPI['loopback'] = {
-    enable: async () => ({ success: false, error: 'Not implemented' }),
-    disable: async () => ({ success: false, error: 'Not implemented' }),
+    enable: async () => ({success: false, error: 'Not implemented'}),
+    disable: async () => ({success: false, error: 'Not implemented'}),
 };
 
 const screenApi: AssistantAPI['screen'] = {
@@ -244,16 +238,19 @@ const googleApi: AssistantAPI['google'] = {
     sendAudioChunk: () => {
         throw new Error('Google live is not implemented');
     },
-    stopLive: () => {},
-    onMessage: () => {},
-    onError: () => {},
+    stopLive: () => {
+    },
+    onMessage: () => {
+    },
+    onError: () => {
+    },
 };
 
 const authApi: AssistantAPI['auth'] = {
-    startOAuth: (provider) => invoke('auth_start_oauth', { provider }),
+    startOAuth: (provider) => invoke('auth_start_oauth', {provider}),
     onOAuthPayload: (cb) => {
         authListeners.add(cb);
-        ensureAuthSubscription();
+        void ensureAuthSubscription();
         return () => {
             authListeners.delete(cb);
             if (!authListeners.size && authUnlisten) {
@@ -282,14 +279,14 @@ const localSpeechApi: AssistantAPI['localSpeech'] = {
     reinstall: () => invoke<FastWhisperStatus>('local_speech_reinstall'),
     stop: () => invoke<FastWhisperStatus>('local_speech_stop'),
     checkModelDownloaded: (model: string) =>
-        invoke<boolean>('local_speech_check_model_downloaded', { model }),
+        invoke<boolean>('local_speech_check_model_downloaded', {model}),
 };
 
 const ollamaApi: AssistantAPI['ollama'] = {
     checkInstalled: () => invoke<boolean>('ollama_check_installed'),
     listModels: () => invoke<string[]>('ollama_list_models'),
-    pullModel: (model: string) => invoke('ollama_pull_model', { model }),
-    warmupModel: (model: string) => invoke('ollama_warmup_model', { model }),
+    pullModel: (model: string) => invoke('ollama_pull_model', {model}),
+    warmupModel: (model: string) => invoke('ollama_warmup_model', {model}),
 };
 
 const api: AssistantAPI = {
@@ -317,12 +314,6 @@ const api: AssistantAPI = {
         }
     },
 };
-
-declare global {
-    interface Window {
-        api: AssistantAPI;
-    }
-}
 
 if (typeof window !== 'undefined') {
     (window as any).api = api;
@@ -360,7 +351,8 @@ async function captureScreenFrame(): Promise<{ base64: string; width: number; he
         await new Promise<void>((resolve) => {
             video.onloadedmetadata = () => resolve();
         });
-        await video.play().catch(() => {});
+        await video.play().catch(() => {
+        });
         const width = video.videoWidth || 1920;
         const height = video.videoHeight || 1080;
         const canvas = document.createElement('canvas');

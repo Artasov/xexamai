@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {listen, UnlistenFn} from '@tauri-apps/api/event';
 import type {AudioDeviceInfo} from '@shared/ipc';
 
@@ -21,7 +23,7 @@ export async function listAudioDevices(): Promise<AudioDeviceInfo[]> {
 }
 
 export async function startAudioCapture(source: AudioSourceKind, deviceId?: string): Promise<void> {
-    console.log('[nativeAudio] startCapture', { source, deviceId });
+    console.log('[nativeAudio] startCapture', {source, deviceId});
     // Register listener before starting capture to avoid missing initial chunks
     await ensureListener();
     await window.api?.audio?.startCapture?.(source, deviceId);
@@ -58,18 +60,18 @@ async function ensureListener(): Promise<void> {
         try {
             const bytes = Uint8Array.from(atob(payload.data_base64), (c) => c.charCodeAt(0));
             if (bytes.length === 0) return;
-            
+
             // Data is interleaved i16: [L, R, L, R, ...] for stereo
             const channels = Math.max(1, payload.channels || 2);
             const totalSamples = bytes.length / 2;
             const samplesPerChannel = Math.floor(totalSamples / channels);
-            
+
             if (samplesPerChannel === 0) return;
-            
+
             const samples = new Int16Array(bytes.buffer, bytes.byteOffset, totalSamples);
             const perChannel: Float32Array[] = [];
             let totalSum = 0;
-            
+
             for (let c = 0; c < channels; c++) {
                 const chData = new Float32Array(samplesPerChannel);
                 let chSum = 0;
@@ -86,7 +88,7 @@ async function ensureListener(): Promise<void> {
                 perChannel.push(chData);
                 totalSum += chSum;
             }
-            
+
             const rms = Math.sqrt(totalSum / Math.max(1, totalSamples));
             const chunk: AudioChunk = {
                 sampleRate: payload.sample_rate || 48000,

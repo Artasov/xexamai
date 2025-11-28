@@ -1,15 +1,11 @@
 import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react';
-import {useAuth} from '../../../auth';
-import type {AuthProvider as OAuthProviderType} from '../../../types';
+import {useAuth} from '@renderer/auth';
+import type {AuthProvider as OAuthProviderType} from '@renderer/types';
 import GoogleIcon from '@mui/icons-material/Google';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import SvgIcon, {SvgIconProps} from '@mui/material/SvgIcon';
 import {TextField} from '@mui/material';
-import {resolveAuthApiBaseUrl, resolveSiteBaseUrl} from '../../../../shared/appUrls';
 import {WindowResizer} from '../../common/WindowResizer/WindowResizer';
-
-const AUTH_API_BASE_URL = resolveAuthApiBaseUrl();
-const SITE_BASE_URL = resolveSiteBaseUrl();
 
 function DiscordIcon(props: SvgIconProps) {
     return (
@@ -29,7 +25,6 @@ export function LoginView() {
 
     const isSubmitting = status === 'signing-in';
     const isOAuthInProgress = status === 'oauth';
-    const formDisabled = isSubmitting;
 
     const oauthProviders = useMemo(
         () => [
@@ -248,5 +243,3 @@ export function LoginView() {
         </div>
     );
 }
-
-export default LoginView;

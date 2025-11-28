@@ -1,10 +1,7 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {audioSessionState} from './audioSession/internalState';
-import {
-    startRecording,
-    stopRecording,
-    getLastSecondsFloats,
-    updateVisualizerBars,
-} from './audioSession/recorder';
+import {getLastSecondsFloats, startRecording, stopRecording, updateVisualizerBars,} from './audioSession/recorder';
 import {switchAudioInput} from './audioSession/audioInput';
 import type {SwitchAudioResult, SwitchOptions} from './audioSession/types';
 import type {PcmRingBuffer} from '../audio/pcmRingBuffer';

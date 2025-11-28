@@ -8,9 +8,9 @@ import {setupAnswerFontSizeControls} from './app/fontSizeControls';
 import {awaitPreloadBridge} from './app/preloadBridge';
 import {StreamController} from './app/streamController';
 import {ScreenshotController} from './app/screenshotController';
-import {startLogoAnimation, loadLogo} from './ui/logoAnimation';
+import {loadLogo, startLogoAnimation} from './ui/logoAnimation';
 import {checkFeatureAccess, showFeatureAccessModal} from './ui/featureAccessModal';
-import {registerStopButton, hideStopButton} from './ui/stopButton';
+import {hideStopButton, registerStopButton} from './ui/stopButton';
 import {state} from './state/appState';
 import {checkOllamaModelDownloaded} from './services/ollama';
 import {normalizeLocalWhisperModel} from './services/localSpeechModels';
@@ -20,10 +20,10 @@ async function preloadLocalModelsIfNeeded() {
     try {
         const settings = await settingsStore.load();
         const mode = settings.transcriptionMode || 'api';
-        
+
         if (mode === 'local') {
             console.info('[renderer] Preloading local models and checking server status...');
-            
+
             // Check local transcription model
             if (window.api?.localSpeech) {
                 try {
@@ -33,7 +33,7 @@ async function preloadLocalModelsIfNeeded() {
                         installed: status?.installed,
                         running: status?.running,
                     });
-                    
+
                     if (status?.installed && status?.running) {
                         const model = normalizeLocalWhisperModel(settings.localWhisperModel || 'base') || 'base';
                         const downloaded = await window.api.localSpeech.checkModelDownloaded(model);
@@ -51,7 +51,7 @@ async function preloadLocalModelsIfNeeded() {
                     console.warn('[renderer] Failed to check local speech server:', error);
                 }
             }
-            
+
             // Check local LLM model when local host is selected
             if (settings.llmHost === 'local') {
                 try {
@@ -89,11 +89,12 @@ async function setupTranscriptionDebugListener() {
 
 export async function initializeRenderer() {
     // Setup transcription debug listener (optional)
-    setupTranscriptionDebugListener().catch(() => {});
-    
+    setupTranscriptionDebugListener().catch(() => {
+    });
+
     // System audio capture is now handled by Rust WASAPI loopback
     // No need to request getDisplayMedia permission
-    
+
     setupAnswerFontSizeControls();
 
     initStatus(document.getElementById('status') as HTMLDivElement | null);
@@ -108,7 +109,7 @@ export async function initializeRenderer() {
         return;
     }
     console.info('[renderer] Preload bridge ready for use');
-    
+
     // Automatically check model availability after the bridge initializes to ensure the API is ready
     preloadLocalModelsIfNeeded().catch((error) => {
         console.warn('[renderer] Failed to preload local models:', error);
@@ -236,7 +237,7 @@ export async function initializeRenderer() {
             switch (key) {
                 case 'durations': {
                     const nextDurations: number[] = Array.isArray(value) ? value : [];
-                    settingsStore.patch({ durations: nextDurations });
+                    settingsStore.patch({durations: nextDurations});
                     updateDurations(nextDurations, (sec) => {
                         streamController.handleAskWindow(sec);
                     });
@@ -248,7 +249,7 @@ export async function initializeRenderer() {
                 }
                 case 'durationHotkeys': {
                     const map = (value ?? {}) as Record<number, string>;
-                    settingsStore.patch({ durationHotkeys: map });
+                    settingsStore.patch({durationHotkeys: map});
                     const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
                     if (!durationsEl) break;
                     const buttons = durationsEl.querySelectorAll('button');

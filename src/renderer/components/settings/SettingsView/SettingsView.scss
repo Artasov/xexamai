@@ -1,62 +1,62 @@
 .settings-view {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1rem;
 }
 
 .settings-tabs {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .settings-tab {
-    min-width: 72px;
+  min-width: 72px;
 }
 
 .settings-panel-wrapper {
-    flex: 1;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .settings-panel-wrapper::-webkit-scrollbar {
-    width: 8px;
+  width: 8px;
 }
 
 .settings-panel-wrapper::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 
 .settings-panel-wrapper::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
 }
 
 .settings-panel-wrapper::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .settings-error {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
-    border-radius: 0.5rem;
-    border: 1px solid rgba(239, 68, 68, 0.35);
-    background: rgba(127, 29, 29, 0.2);
-    color: #fecaca;
-    font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(127, 29, 29, 0.2);
+  color: #fecaca;
+  font-size: 0.875rem;
 }
 
 .settings-loading {
-    padding: 1.5rem;
-    text-align: center;
-    color: rgba(209, 213, 219, 0.8);
-    font-size: 0.9rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: rgba(209, 213, 219, 0.8);
+  font-size: 0.9rem;
 }

@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {MenuItem, TextField} from '@mui/material';
 
 type Option = { value: string; label: string; disabled?: boolean; description?: string };

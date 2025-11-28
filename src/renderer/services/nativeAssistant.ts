@@ -1,20 +1,19 @@
 import {invoke} from '@tauri-apps/api/core';
 import {
+    AppSettings,
     AssistantResponse,
     ProcessAudioArgs,
-    StopStreamRequest,
-    AppSettings,
     ScreenProcessRequest,
     ScreenProcessResponse,
+    StopStreamRequest,
 } from '@shared/ipc';
 import {
-    FAST_WHISPER_BASE_URL,
-    GOOGLE_TRANSCRIBE_MODELS,
-    OPENAI_TRANSCRIBE_MODELS,
     GEMINI_LLM_MODELS,
-    OPENAI_LLM_MODELS,
+    GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_MODELS,
     LOCAL_TRANSCRIBE_MODELS,
+    OPENAI_LLM_MODELS,
+    OPENAI_TRANSCRIBE_MODELS,
 } from '@shared/constants';
 import {logRequest, previewText} from './nativeAssistant.helpers';
 import {fetchWithTimeout} from './nativeAssistant.network';
@@ -72,8 +71,8 @@ function runWithActiveStream(
         .catch((error) => {
             if (controller.signal.aborted) return;
             const message = streamErrorMessage(error);
-            logRequest('llm:stream', 'error', { requestId, error: message });
-            emit('error', { requestId, error: message });
+            logRequest('llm:stream', 'error', {requestId, error: message});
+            emit('error', {requestId, error: message});
         })
         .finally(() => {
             activeStreams.delete(requestId);
@@ -82,7 +81,6 @@ function runWithActiveStream(
 }
 
 const GOOGLE_TRANSCRIBE_SET = new Set(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
-const OPENAI_TRANSCRIBE_SET = new Set(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
 const GEMINI_LLM_SET = new Set(GEMINI_LLM_MODELS as readonly string[]);
 const DEFAULT_LOCAL_TRANSCRIBE = LOCAL_TRANSCRIBE_MODELS[0] ?? 'base';
 const DEFAULT_API_TRANSCRIBE = OPENAI_TRANSCRIBE_MODELS[0] ?? 'gpt-4o-mini-transcribe';
@@ -148,7 +146,7 @@ function resolveLlmTarget(settings: AppSettings): LlmTarget {
             ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
             : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
 
-    return { host, model };
+    return {host, model};
 }
 
 async function transcribeWithOpenAi(
@@ -178,11 +176,11 @@ async function transcribeWithOpenAi(
         });
 
         const text = result.text || '';
-    logRequest('transcribe:openai', 'ok', {
-        model: resolvedModel,
-        textPreview: previewText(text),
-    });
-    return text;
+        logRequest('transcribe:openai', 'ok', {
+            model: resolvedModel,
+            textPreview: previewText(text),
+        });
+        return text;
     } catch (error: any) {
         logRequest('transcribe:openai', 'error', {error: error.message || String(error)});
         throw new Error(error.message || 'Transcription failed');
@@ -219,7 +217,7 @@ async function transcribeWithLocal(
     if (buffer.byteLength < 1000) {
         throw new Error(`Audio buffer too small: ${buffer.byteLength} bytes. Audio may be empty or invalid.`);
     }
-    
+
     // Validate WAV header if it's a WAV file
     if (mime === 'audio/wav' || mime === 'audio/wave') {
         const view = new DataView(buffer);
@@ -231,11 +229,11 @@ async function transcribeWithLocal(
             }
         }
     }
-    
+
     const model = (settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE).toLowerCase();
-    
+
     logRequest('transcribe:local', 'start', {model, mime, bufferSize: buffer.byteLength});
-    
+
     try {
         const result = await invoke<{ text: string }>('transcribe_audio', {
             request: {
@@ -250,16 +248,16 @@ async function transcribeWithLocal(
         });
 
         const text = result.text || '';
-        
+
         // Check if we got prompt text instead of transcription
         if (text) {
             const lower = text.toLowerCase();
-            const isPromptText = lower.includes('transcribe verbatim') 
+            const isPromptText = lower.includes('transcribe verbatim')
                 || lower.includes('original spoken language')
                 || lower.includes('do not translate')
                 || lower.includes('do not summarise')
                 || lower.includes('transcribe speech');
-            
+
             if (isPromptText) {
                 logRequest('transcribe:local', 'error', {
                     message: 'FastWhisper returned prompt text instead of transcription',
@@ -269,7 +267,7 @@ async function transcribeWithLocal(
                 throw new Error('FastWhisper returned prompt text instead of transcription. The audio file may be empty, too short, or contain no speech. Please check that audio is being captured correctly.');
             }
         }
-        
+
         if (!text || text.trim().length === 0) {
             logRequest('transcribe:local', 'error', {
                 message: 'Empty transcription from FastWhisper',
@@ -277,29 +275,16 @@ async function transcribeWithLocal(
             });
             throw new Error('FastWhisper returned empty transcription. The audio file may be empty, too short, or contain no speech.');
         }
-        
-    logRequest('transcribe:local', 'ok', {
-        model,
-        textPreview: previewText(text),
-    });
-    return text;
+
+        logRequest('transcribe:local', 'ok', {
+            model,
+            textPreview: previewText(text),
+        });
+        return text;
     } catch (error: any) {
         logRequest('transcribe:local', 'error', {error: error.message || String(error)});
         throw error;
     }
-}
-
-async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
-    const blob = new Blob([buffer]);
-    const reader = new FileReader();
-    return await new Promise((resolve, reject) => {
-        reader.onloadend = () => {
-            const result = reader.result as string;
-            resolve(result?.split(',')[1] ?? '');
-        };
-        reader.onerror = (event) => reject(event);
-        reader.readAsDataURL(blob);
-    });
 }
 
 async function transcribeWithGoogle(
@@ -310,12 +295,12 @@ async function transcribeWithGoogle(
 ): Promise<string> {
     const key = ensureGoogleKey(settings);
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
-    
+
     // Validate buffer size
     if (buffer.byteLength < 1000) {
         throw new Error(`Audio buffer too small: ${buffer.byteLength} bytes. Audio may be empty or invalid.`);
     }
-    
+
     // Validate WAV header if it's a WAV file
     if (mime === 'audio/wav' || mime === 'audio/wave') {
         const view = new DataView(buffer);
@@ -327,12 +312,12 @@ async function transcribeWithGoogle(
             }
         }
     }
-    
+
     const prompt = buildTranscriptionPrompt(settings);
-    
+
     logRequest('transcribe:google', 'start', {
-        model: resolvedModel, 
-        mime, 
+        model: resolvedModel,
+        mime,
         bufferSize: buffer.byteLength,
     });
 
@@ -346,11 +331,11 @@ async function transcribeWithGoogle(
                 mime_type: mime || 'audio/wav',
                 filename: 'audio.wav',
                 prompt: prompt || undefined,
-                },
+            },
         });
 
         const text = result.text || '';
-        
+
         if (!text || text.trim().length === 0) {
             logRequest('transcribe:google', 'error', {
                 message: 'Empty transcription from Google',
@@ -358,12 +343,12 @@ async function transcribeWithGoogle(
             });
             throw new Error('Google returned empty transcription. The audio file may be empty, too short, or contain no speech.');
         }
-        
+
         logRequest('transcribe:google', 'ok', {
             model: resolvedModel,
             textPreview: previewText(text),
         });
-                return text;
+        return text;
     } catch (error: any) {
         logRequest('transcribe:google', 'error', {error: error.message || String(error)});
         throw error;
@@ -408,7 +393,7 @@ async function chatCompletion(
             },
             settings.apiLlmTimeoutMs
         );
-        const data = await response.json().catch(async () => ({ text: await response.text() }));
+        const data = await response.json().catch(async () => ({text: await response.text()}));
         if (!response.ok) {
             logRequest('llm:openai', 'error', {status: response.status, data});
             logged = true;
@@ -474,7 +459,7 @@ async function chatWithGemini(
             },
             settings.apiLlmTimeoutMs
         );
-        const data = await response.json().catch(async () => ({ text: await response.text() }));
+        const data = await response.json().catch(async () => ({text: await response.text()}));
         if (!response.ok) {
             logRequest('llm:gemini', 'error', {status: response.status, data});
             logged = true;
@@ -548,7 +533,7 @@ async function chatWithOllama(
             },
             Math.max(settings.apiLlmTimeoutMs || 0, 600_000)
         );
-        const data = await response.json().catch(async () => ({ text: await response.text() }));
+        const data = await response.json().catch(async () => ({text: await response.text()}));
         if (!response.ok) {
             logRequest('llm:ollama', 'error', {status: response.status, data});
             logged = true;
@@ -558,7 +543,7 @@ async function chatWithOllama(
             throw new Error(message);
         }
         const message = (data as any)?.message?.content;
-        let content = '';
+        let content;
         if (Array.isArray(message)) {
             content = message.map((item: any) => item?.text ?? item?.content ?? '').join('\n').trim();
         } else if (typeof message === 'string') {
@@ -665,9 +650,9 @@ async function streamOllamaChatCompletion(
     };
 
     while (true) {
-        const { value, done } = await reader.read();
+        const {value, done} = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, {stream: true});
         flushBuffer();
     }
     flushBuffer();
@@ -687,7 +672,7 @@ async function streamChatCompletion(
     settings: AppSettings,
     controller: AbortController
 ): Promise<void> {
-    const { host, model } = resolveLlmTarget(settings);
+    const {host, model} = resolveLlmTarget(settings);
 
     logRequest('llm:stream', 'start', {
         requestId,
@@ -788,7 +773,7 @@ async function streamChatCompletion(
                 }
                 if (!text) continue;
                 full += text;
-                emit('delta', { requestId, delta: text });
+                emit('delta', {requestId, delta: text});
             } catch (error) {
                 console.warn('[assistantBridge] failed to parse chunk', error, line);
             }
@@ -796,13 +781,13 @@ async function streamChatCompletion(
     };
 
     while (true) {
-        const { value, done } = await reader.read();
+        const {value, done} = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, {stream: true});
         flushBuffer();
     }
     flushBuffer();
-    emit('done', { requestId, full });
+    emit('done', {requestId, full});
     logRequest('llm:stream', 'ok', {
         requestId,
         host,
@@ -834,7 +819,7 @@ const buildTranscriptionLogContext = (
     model: string,
     mime: string,
     stream: boolean
-) => (stream ? { mode, model, mime, stream: true } : { mode, model, mime });
+) => (stream ? {mode, model, mime, stream: true} : {mode, model, mime});
 
 const resolveTranscriptionTarget = (settings: AppSettings): { mode: TranscriptionModeValue; model: string } => {
     const mode: TranscriptionModeValue = settings.transcriptionMode === 'local' ? 'local' : 'api';
@@ -842,17 +827,17 @@ const resolveTranscriptionTarget = (settings: AppSettings): { mode: Transcriptio
         mode === 'local'
             ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
             : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
-    return { mode, model };
+    return {mode, model};
 };
 
 async function transcribeAudioBuffer({
-    settings,
-    buffer,
-    mime,
-    filename,
-    stream = false,
-}: TranscriptionRunOptions): Promise<TranscriptionRunResult> {
-    const { mode: transcriptionMode, model: transcriptionModel } = resolveTranscriptionTarget(settings);
+                                         settings,
+                                         buffer,
+                                         mime,
+                                         filename,
+                                         stream = false,
+                                     }: TranscriptionRunOptions): Promise<TranscriptionRunResult> {
+    const {mode: transcriptionMode, model: transcriptionModel} = resolveTranscriptionTarget(settings);
 
     const logPayload = buildTranscriptionLogContext(transcriptionMode, transcriptionModel, mime, stream);
     logRequest('transcribe', 'start', logPayload);
@@ -872,23 +857,23 @@ async function transcribeAudioBuffer({
         textPreview: previewText(text),
     });
 
-    return { text, mode: transcriptionMode, model: transcriptionModel };
+    return {text, mode: transcriptionMode, model: transcriptionModel};
 }
 
 export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<AssistantResponse> {
     const settings = await loadSettings();
     const buffer = args.arrayBuffer;
-    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
-        return { ok: false, error: 'Empty audio' };
+    if (buffer.byteLength === 0) {
+        return {ok: false, error: 'Empty audio'};
     }
-    const { text, mode: transcriptionMode, model: transcriptionModel } = await transcribeAudioBuffer({
+    const {text, mode: transcriptionMode, model: transcriptionModel} = await transcribeAudioBuffer({
         settings,
         buffer,
         mime: args.mime,
         filename: args.filename || 'lastN.webm',
     });
 
-    const { host: llmHost, model: llmModel } = resolveLlmTarget(settings);
+    const {host: llmHost, model: llmModel} = resolveLlmTarget(settings);
     logRequest('llm:select', 'start', {
         host: llmHost,
         model: llmModel,
@@ -915,41 +900,44 @@ export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<Ass
         textPreview: previewText(text),
         answerPreview: previewText(answer),
     });
-    return { ok: true, text, answer };
+    return {ok: true, text, answer};
 }
 
-export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{ ok: true; text: string } | {
+    ok: false;
+    error: string
+}> {
     const settings = await loadSettings();
     const buffer = args.arrayBuffer;
-    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
-        return { ok: false, error: 'Empty audio' };
+    if (buffer.byteLength === 0) {
+        return {ok: false, error: 'Empty audio'};
     }
-    const { text } = await transcribeAudioBuffer({
+    const {text} = await transcribeAudioBuffer({
         settings,
         buffer,
         mime: args.mime,
         filename: args.filename || 'lastN.webm',
     });
-    return { ok: true, text };
+    return {ok: true, text};
 }
 
 export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promise<AssistantResponse> {
     const settings = await loadSettings();
     const buffer = args.arrayBuffer;
-    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
-        return { ok: false, error: 'Empty audio' };
+    if (buffer.byteLength === 0) {
+        return {ok: false, error: 'Empty audio'};
     }
     const requestId = args.requestId || crypto.randomUUID();
-    emit('transcript', { requestId, delta: '' });
-    const { text } = await transcribeAudioBuffer({
+    emit('transcript', {requestId, delta: ''});
+    const {text} = await transcribeAudioBuffer({
         settings,
         buffer,
         mime: args.mime,
         filename: args.filename || 'lastN.webm',
         stream: true,
     });
-    emit('transcript', { requestId, delta: text });
-    const { host: llmHost, model: llmModel } = resolveLlmTarget(settings);
+    emit('transcript', {requestId, delta: text});
+    const {host: llmHost, model: llmModel} = resolveLlmTarget(settings);
     logRequest('llm:stream', 'start', {
         requestId,
         host: llmHost,
@@ -964,7 +952,7 @@ export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promi
     runWithActiveStream(requestId, (controller) =>
         streamChatCompletion(text, requestId, settings, controller)
     );
-    return { ok: true, text, answer: '' };
+    return {ok: true, text, answer: ''};
 }
 
 export async function assistantAskChat(args: { text: string; requestId?: string }) {
@@ -1025,7 +1013,7 @@ const buildScreenPrompts = (settings: AppSettings): ScreenPrompts => {
     const prompt = (settings.screenProcessingPrompt || '').trim();
     const systemPrompt = prompt || 'You are an assistant that analyses screenshots.';
     const userPrompt = prompt || 'Analyze the provided screenshot.';
-    return { systemPrompt, userPrompt };
+    return {systemPrompt, userPrompt};
 };
 
 const normalizeBase64Image = (value: string): string => {
@@ -1063,7 +1051,7 @@ async function processScreenWithOpenAi(
                     {
                         role: 'user',
                         content: [
-                            { type: 'text', text: prompts.userPrompt },
+                            {type: 'text', text: prompts.userPrompt},
                             {
                                 type: 'image_url',
                                 image_url: {
@@ -1077,7 +1065,7 @@ async function processScreenWithOpenAi(
         },
         settings.screenProcessingTimeoutMs
     );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
+    const data = await response.json().catch(async () => ({text: await response.text()}));
     if (!response.ok) {
         const message = typeof data === 'string'
             ? data
@@ -1092,7 +1080,7 @@ async function processScreenWithOpenAi(
     if (!normalized) {
         throw new Error('Empty response from OpenAI screen analysis.');
     }
-    return { answer: normalized, model: SCREEN_OPENAI_MODEL };
+    return {answer: normalized, model: SCREEN_OPENAI_MODEL};
 }
 
 async function processScreenWithGemini(
@@ -1107,7 +1095,7 @@ async function processScreenWithGemini(
             {
                 role: 'user',
                 parts: [
-                    { text: prompts.userPrompt },
+                    {text: prompts.userPrompt},
                     {
                         inline_data: {
                             mime_type: payload.mime || 'image/png',
@@ -1117,24 +1105,24 @@ async function processScreenWithGemini(
                 ],
             },
         ],
-        generationConfig: { temperature: 0.2 },
+        generationConfig: {temperature: 0.2},
     };
     if (prompts.systemPrompt) {
         body.systemInstruction = {
             role: 'system',
-            parts: [{ text: prompts.systemPrompt }],
+            parts: [{text: prompts.systemPrompt}],
         };
     }
     const response = await fetchWithTimeout(
         url,
         {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(body),
         },
         settings.screenProcessingTimeoutMs
     );
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
+    const data = await response.json().catch(async () => ({text: await response.text()}));
     if (!response.ok) {
         const message = typeof data === 'string'
             ? data
@@ -1162,7 +1150,7 @@ async function processScreenWithGemini(
     if (!text) {
         throw new Error('Empty response from Google screen analysis.');
     }
-    return { answer: text, model: SCREEN_GEMINI_MODEL };
+    return {answer: text, model: SCREEN_GEMINI_MODEL};
 }
 
 export async function processScreenImage(
@@ -1186,7 +1174,7 @@ export async function processScreenImage(
     });
 
     try {
-        const { answer, model } = provider === 'google'
+        const {answer, model} = provider === 'google'
             ? await processScreenWithGemini(normalizedPayload, settings, prompts)
             : await processScreenWithOpenAi(normalizedPayload, settings, prompts);
 

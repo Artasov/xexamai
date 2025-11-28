@@ -1,3 +1,5 @@
+// noinspection XmlDeprecatedElement
+
 import {useMemo, useState} from 'react';
 import {TextField} from '@mui/material';
 import {toast} from 'react-toastify';

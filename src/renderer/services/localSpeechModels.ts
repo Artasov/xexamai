@@ -1,9 +1,7 @@
+// noinspection JSUnusedGlobalSymbols
+
 import axios, {AxiosInstance} from 'axios';
-import {
-    FAST_WHISPER_BASE_URL,
-    LOCAL_TRANSCRIBE_ALIASES,
-    LOCAL_TRANSCRIBE_MODEL_DETAILS,
-} from '@shared/constants';
+import {FAST_WHISPER_BASE_URL, LOCAL_TRANSCRIBE_ALIASES, LOCAL_TRANSCRIBE_MODEL_DETAILS,} from '@shared/constants';
 
 const MODELS_DOWNLOAD_ENDPOINT = '/v1/models/download';
 const MODELS_WARMUP_ENDPOINT = '/v1/models/warmup';
@@ -47,7 +45,7 @@ export const normalizeLocalWhisperModel = (value?: string | null): string => {
 
 export const getLocalWhisperMetadata = (
     model: string,
-): {id: string; label: string; size: string} | null => {
+): { id: string; label: string; size: string } | null => {
     const normalized = normalizeLocalWhisperModel(model);
     if (!normalized) {
         return null;
@@ -83,7 +81,7 @@ export const isLocalModelWarming = (model: string): boolean =>
 
 export const checkLocalModelDownloaded = async (
     model: string,
-    options: {force?: boolean} = {},
+    options: { force?: boolean } = {},
 ): Promise<boolean> => {
     const normalized = normalizeLocalWhisperModel(model);
     if (!normalized) {
@@ -95,16 +93,17 @@ export const checkLocalModelDownloaded = async (
 
     try {
         const exists = await window.api?.localSpeech?.checkModelDownloaded(normalized);
-        if (typeof exists === 'boolean') {
-            modelCache.set(normalized, exists);
-            return exists;
+        if (exists !== undefined) {
+            const result = Boolean(exists);
+            modelCache.set(normalized, result);
+            return result;
         }
     } catch (error) {
         console.warn('[localSpeechModels] fallback to HTTP check', error);
     }
 
     try {
-        const {data} = await localSpeechClient.get<{exists: boolean}>(MODELS_EXISTS_ENDPOINT, {
+        const {data} = await localSpeechClient.get<{ exists: boolean }>(MODELS_EXISTS_ENDPOINT, {
             params: {model: normalized},
         });
         const exists = Boolean(data?.exists);

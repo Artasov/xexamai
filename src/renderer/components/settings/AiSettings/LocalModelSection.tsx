@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {Button, CircularProgress, IconButton, MenuItem, TextField, Typography} from '@mui/material';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
@@ -32,31 +34,31 @@ type LocalModelHandlers = {
 
 type LocalModelSectionProps = LocalModelState &
     LocalModelHandlers & {
-        localModels: readonly string[];
-        devices: readonly LocalDevice[];
-    };
+    localModels: readonly string[];
+    devices: readonly LocalDevice[];
+};
 
 export function LocalModelSection({
-    transcriptionMode,
-    localWhisperModel,
-    localStatusReady,
-    localModels,
-    localModelReady,
-    localModelError,
-    localModelWarming,
-    checkingLocalModel,
-    downloadingLocalModel,
-    localDevice,
-    devices,
-    onChangeMode,
-    onChangeModel,
-    onChangeDevice,
-    onInstall,
-    onWarmup,
-    onRestart,
-    onStop,
-    onInfo,
-}: LocalModelSectionProps) {
+                                      transcriptionMode,
+                                      localWhisperModel,
+                                      localStatusReady,
+                                      localModels,
+                                      localModelReady,
+                                      localModelError,
+                                      localModelWarming,
+                                      checkingLocalModel,
+                                      downloadingLocalModel,
+                                      localDevice,
+                                      devices,
+                                      onChangeMode,
+                                      onChangeModel,
+                                      onChangeDevice,
+                                      onInstall,
+                                      onWarmup,
+                                      onRestart,
+                                      onStop,
+                                      onInfo,
+                                  }: LocalModelSectionProps) {
     return (
         <section className="settings-card card">
             <div className="settings-card__header">
@@ -71,7 +73,7 @@ export function LocalModelSection({
                         {transcriptionMode === 'local' ? 'Switch to API' : 'Switch to Local'}
                     </Button>
                     <IconButton size="small" onClick={() => onInfo('transcribe')}>
-                        <InfoOutlinedIcon fontSize="small" />
+                        <InfoOutlinedIcon fontSize="small"/>
                     </IconButton>
                 </div>
             </div>
@@ -105,15 +107,15 @@ export function LocalModelSection({
                         ))}
                     </TextField>
                     <div className="settings-hint-row">
-                        {checkingLocalModel ? <CircularProgress size={16} /> : null}
+                        {checkingLocalModel ? <CircularProgress size={16}/> : null}
                         {localModelReady ? (
                             <span className="status-ok">
-                                <CheckCircleIcon fontSize="small" /> Ready
+                                <CheckCircleIcon fontSize="small"/> Ready
                             </span>
                         ) : null}
                         {localModelWarming ? (
                             <span className="status-warmup">
-                                <CircularProgress size={12} /> Warming up…
+                                <CircularProgress size={12}/> Warming up…
                             </span>
                         ) : null}
                         {localModelError ? <span className="status-error">{localModelError}</span> : null}
@@ -143,7 +145,7 @@ export function LocalModelSection({
                         color="primary"
                         onClick={onInstall}
                         disabled={downloadingLocalModel}
-                        startIcon={downloadingLocalModel ? <CircularProgress size={14} /> : undefined}
+                        startIcon={downloadingLocalModel ? <CircularProgress size={14}/> : undefined}
                     >
                         {downloadingLocalModel ? 'Downloading…' : 'Install / Update'}
                     </Button>
@@ -152,15 +154,15 @@ export function LocalModelSection({
                         color="secondary"
                         onClick={onWarmup}
                         disabled={!localStatusReady || downloadingLocalModel}
-                        startIcon={localModelWarming ? <CircularProgress size={14} /> : <PlayArrowIcon />}
+                        startIcon={localModelWarming ? <CircularProgress size={14}/> : <PlayArrowIcon/>}
                     >
                         Warm up
                     </Button>
                     <IconButton onClick={onRestart} disabled={!localStatusReady || downloadingLocalModel}>
-                        <RestartAltIcon />
+                        <RestartAltIcon/>
                     </IconButton>
                     <IconButton onClick={onStop} disabled={!localStatusReady || downloadingLocalModel}>
-                        <StopCircleIcon />
+                        <StopCircleIcon/>
                     </IconButton>
                 </div>
                 {!localStatusReady ? (

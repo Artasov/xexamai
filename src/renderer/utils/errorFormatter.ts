@@ -87,21 +87,21 @@ const ERROR_MAPPINGS: Record<string, ErrorInfo> = {
 
 export function formatError(error: unknown): FormattedError {
     const errorMessage = getErrorMessage(error);
-    
+
     // Look for exact match
     let errorInfo = ERROR_MAPPINGS[errorMessage];
-    
+
     // If no exact match, look for partial match
     if (!errorInfo) {
         for (const [key, info] of Object.entries(ERROR_MAPPINGS)) {
-            if (errorMessage.toLowerCase().includes(key.toLowerCase()) || 
+            if (errorMessage.toLowerCase().includes(key.toLowerCase()) ||
                 key.toLowerCase().includes(errorMessage.toLowerCase())) {
                 errorInfo = info;
                 break;
             }
         }
     }
-    
+
     if (errorInfo) {
         return {
             displayText: `${errorInfo.title}: ${errorInfo.message}`,
@@ -109,7 +109,7 @@ export function formatError(error: unknown): FormattedError {
             isUserFriendly: true
         };
     }
-    
+
     // For unknown errors, return basic message
     return {
         displayText: `Error: ${errorMessage}`,
@@ -136,12 +136,12 @@ function escapeHtml(text: string): string {
 
 function createHelpHtml(errorInfo: ErrorInfo): string {
     let html = '<div class="error-help">';
-    
+
     if (errorInfo.helpUrl) {
         const helpText = errorInfo.helpText || 'Detailed instructions';
         html += `<p><a href="${escapeHtml(errorInfo.helpUrl)}" target="_blank" class="help-link">${escapeHtml(helpText)}</a></p>`;
     }
-    
+
     if (errorInfo.actionText && errorInfo.actionUrl) {
         if (errorInfo.actionUrl.startsWith('#')) {
             html += `<p><button onclick="document.querySelector('${escapeHtml(errorInfo.actionUrl)}').scrollIntoView()" class="action-button">${escapeHtml(errorInfo.actionText)}</button></p>`;
@@ -149,7 +149,7 @@ function createHelpHtml(errorInfo: ErrorInfo): string {
             html += `<p><a href="${escapeHtml(errorInfo.actionUrl)}" target="_blank" class="action-link">${escapeHtml(errorInfo.actionText)}</a></p>`;
         }
     }
-    
+
     html += '</div>';
     return html;
 }
@@ -165,7 +165,7 @@ function createGenericHelpHtml(): string {
 // Function to add help styles
 export function addErrorHelpStyles(): void {
     if (document.getElementById('error-help-styles')) return;
-    
+
     const style = document.createElement('style');
     style.id = 'error-help-styles';
     style.textContent = `
@@ -211,6 +211,6 @@ export function addErrorHelpStyles(): void {
             background: #2563eb;
         }
     `;
-    
+
     document.head.appendChild(style);
 }

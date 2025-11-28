@@ -24,7 +24,7 @@ type CommunityLink = {
 
 type WelcomeDialogProps = {
     open: boolean;
-    onClose: (options: {dismiss?: boolean}) => void;
+    onClose: (options: { dismiss?: boolean }) => void;
 };
 
 const COMMUNITY_LINKS: CommunityLink[] = [
@@ -84,11 +84,11 @@ function openLink(url: string) {
     try {
         window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-        console.error('Failed to open link', { url, error });
+        console.error('Failed to open link', {url, error});
     }
 }
 
-function CommunityTile({link}: {link: CommunityLink}) {
+function CommunityTile({link}: { link: CommunityLink }) {
     const iconCandidates = useMemo(
         () => (Array.isArray(link.icon) ? link.icon : [link.icon]),
         [link.icon],
@@ -106,7 +106,7 @@ function CommunityTile({link}: {link: CommunityLink}) {
     };
 
     return (
-        <Box component="div" sx={{ width: '100%' }}>
+        <Box component="div" sx={{width: '100%'}}>
             <ButtonBase
                 onClick={handleClick}
                 sx={{
@@ -174,7 +174,8 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
     }
 
     return (
-        <Dialog open={open} onClose={() => {}} maxWidth="md" fullWidth>
+        <Dialog open={open} onClose={() => {
+        }} maxWidth="md" fullWidth>
             <DialogTitle>
                 <Typography variant="h5" component="h2">
                     Welcome to XEXAMAI
@@ -197,7 +198,7 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                     }}
                 >
                     {COMMUNITY_LINKS.map((link) => (
-                        <CommunityTile key={link.label} link={link} />
+                        <CommunityTile key={link.label} link={link}/>
                     ))}
                 </Box>
             </DialogContent>
@@ -224,7 +225,7 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                         variant="outlined"
                         fullWidth
                         disabled={!controlsVisible}
-                        onClick={() => controlsVisible && onClose({ dismiss })}
+                        onClick={() => controlsVisible && onClose({dismiss})}
                     >
                         Close
                     </Button>
@@ -232,7 +233,7 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                         variant="contained"
                         fullWidth
                         disabled={!controlsVisible}
-                        onClick={() => controlsVisible && onClose({ dismiss })}
+                        onClick={() => controlsVisible && onClose({dismiss})}
                     >
                         Continue
                     </Button>
@@ -262,16 +263,16 @@ function destroyWelcomeModalRoot(): void {
     welcomeModalOpen = false;
 }
 
-function renderWelcomeModal(open: boolean, onClose: (options: {dismiss?: boolean}) => void) {
+function renderWelcomeModal(open: boolean, onClose: (options: { dismiss?: boolean }) => void) {
     if (!welcomePortal.isReady()) return;
     welcomePortal.render(
         <ThemeProvider theme={muiTheme}>
-            <WelcomeDialog open={open} onClose={onClose} />
+            <WelcomeDialog open={open} onClose={onClose}/>
         </ThemeProvider>,
     );
 }
 
-async function handleWelcomeModalClose(options: {dismiss?: boolean}) {
+async function handleWelcomeModalClose(options: { dismiss?: boolean }) {
     if (!welcomeModalOpen) {
         destroyWelcomeModalRoot();
         return;

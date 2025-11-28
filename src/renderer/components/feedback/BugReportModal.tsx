@@ -1,3 +1,5 @@
+// noinspection XmlDeprecatedElement
+
 import {
     Alert,
     Box,
@@ -15,7 +17,7 @@ import {
     Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import {useBugReportState, BugReportFormPayload} from './useBugReportState';
+import {BugReportFormPayload, useBugReportState} from './useBugReportState';
 
 export type BugReportModalProps = {
     open: boolean;

@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react';
-import {TextField, MenuItem} from '@mui/material';
-import { toast } from 'react-toastify';
-import { useSettingsContext } from '../SettingsView/SettingsView';
-import type { AudioDeviceInfo } from '@shared/ipc';
-import { logger } from '../../../utils/logger';
-import { emitSettingsChange } from '../../../utils/settingsEvents';
+// noinspection XmlDeprecatedElement
+
+import {useEffect, useState} from 'react';
+import {MenuItem, TextField} from '@mui/material';
+import {toast} from 'react-toastify';
+import {useSettingsContext} from '../SettingsView/SettingsView';
+import type {AudioDeviceInfo} from '@shared/ipc';
+import {logger} from '../../../utils/logger';
+import {emitSettingsChange} from '../../../utils/settingsEvents';
 import './AudioSettings.scss';
 
 const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system' | 'mixed'; label: string }[] = [
-    { value: 'microphone', label: 'Microphone' },
-    { value: 'system', label: 'System audio' },
-    { value: 'mixed', label: 'Mic + System' },
+    {value: 'microphone', label: 'Microphone'},
+    {value: 'system', label: 'System audio'},
+    {value: 'mixed', label: 'Mic + System'},
 ];
 
 type MessageTone = 'success' | 'error';
 
 export const AudioSettings = () => {
-    const { settings, patchLocal } = useSettingsContext();
+    const {settings, patchLocal} = useSettingsContext();
     const [devices, setDevices] = useState<AudioDeviceInfo[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -35,7 +37,7 @@ export const AudioSettings = () => {
             const list = await window.api.audio.listDevices();
             setDevices(list);
         } catch (error) {
-            logger.error('settings', 'Failed to load audio devices', { error });
+            logger.error('settings', 'Failed to load audio devices', {error});
             setDevices([]);
             showMessage('Failed to load audio devices', 'error');
         } finally {
@@ -46,10 +48,10 @@ export const AudioSettings = () => {
     const handleInputTypeChange = async (type: 'microphone' | 'system' | 'mixed') => {
         try {
             await window.api.settings.setAudioInputType(type);
-            patchLocal({ audioInputType: type });
+            patchLocal({audioInputType: type});
             emitSettingsChange('audioInputType', type);
         } catch (error) {
-            logger.error('settings', 'Failed to set audio input type', { error });
+            logger.error('settings', 'Failed to set audio input type', {error});
             showMessage('Failed to update audio input type', 'error');
         }
     };
@@ -57,14 +59,17 @@ export const AudioSettings = () => {
     const handleDeviceChange = async (deviceId: string) => {
         try {
             await window.api.settings.setAudioInputDevice(deviceId);
-            patchLocal({ audioInputDeviceId: deviceId });
+            patchLocal({audioInputDeviceId: deviceId});
         } catch (error) {
-            logger.error('settings', 'Failed to set audio input device', { error });
+            logger.error('settings', 'Failed to set audio input device', {error});
             showMessage('Failed to update audio input device', 'error');
         }
     };
 
-    const deviceOptions = [{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.id, label: device.name }))];
+    const deviceOptions = [{value: '', label: 'Default device'}, ...devices.map((device) => ({
+        value: device.id,
+        label: device.name
+    }))];
     const currentDeviceId = settings.audioInputDeviceId ?? '';
     const renderDeviceLabel = (value: string) => {
         if (!value) return 'Default device';
@@ -101,11 +106,13 @@ export const AudioSettings = () => {
                             value={currentDeviceId}
                             onChange={(event) => handleDeviceChange(event.target.value)}
                             fullWidth
-                            SelectProps={{
-                                displayEmpty: true,
-                                renderValue: (value) => renderDeviceLabel((value as string) ?? ''),
+                            slotProps={{
+                                select: {
+                                    displayEmpty: true,
+                                    renderValue: (value) => renderDeviceLabel((value as string) ?? ''),
+                                },
+                                inputLabel: {shrink: true},
                             }}
-                            InputLabelProps={{ shrink: true }}
                         >
                             {deviceOptions.map((option) => (
                                 <MenuItem key={option.value} value={option.value}>

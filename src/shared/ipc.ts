@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 export type SttProcessRequest = {
     audio: Buffer | Uint8Array | ArrayBuffer | { type?: 'Buffer'; data?: number[] };
     mime: string;
@@ -215,22 +217,25 @@ export type AuthTokensPayload = {
 
 export type AuthDeepLinkPayload =
     | {
-        kind: 'success';
-        provider: AuthProvider | string;
-        tokens: AuthTokensPayload;
-        user?: Record<string, unknown> | null;
-    }
+    kind: 'success';
+    provider: AuthProvider | string;
+    tokens: AuthTokensPayload;
+    user?: Record<string, unknown> | null;
+}
     | {
-        kind: 'error';
-        provider: AuthProvider | string;
-        error: string;
-    };
+    kind: 'error';
+    provider: AuthProvider | string;
+    error: string;
+};
 
 export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
         processAudioStream: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
-        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
+        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | {
+            ok: false;
+            error: string
+        }>;
         askChat: (args: AskChatRequest) => Promise<void>;
         stopStream: (args: StopStreamRequest) => Promise<void>;
         onStreamTranscript: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
@@ -295,7 +300,12 @@ export type AssistantAPI = {
         process: (payload: ScreenProcessRequest) => Promise<ScreenProcessResponse>;
     };
     google: {
-        startLive: (opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) => Promise<void>;
+        startLive: (opts: {
+            apiKey: string;
+            response: 'TEXT' | 'AUDIO';
+            transcribeInput?: boolean;
+            transcribeOutput?: boolean
+        }) => Promise<void>;
         sendAudioChunk: (params: { data: string; mime: string }) => void;
         stopLive: () => void;
         onMessage: (cb: (message: any) => void) => void;

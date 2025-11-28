@@ -44,7 +44,7 @@ export const checkOllamaInstalled = async (): Promise<boolean> => {
     }
 };
 
-export const listInstalledOllamaModels = async (options: {force?: boolean} = {}): Promise<string[]> => {
+export const listInstalledOllamaModels = async (options: { force?: boolean } = {}): Promise<string[]> => {
     if (!options.force && installedModelCache && Date.now() - installedModelCache.timestamp < MODEL_CACHE_TTL) {
         return installedModelCache.models;
     }
@@ -65,7 +65,7 @@ export const invalidateOllamaModelCache = () => {
 
 export const checkOllamaModelDownloaded = async (
     model: string,
-    options: {force?: boolean} = {},
+    options: { force?: boolean } = {},
 ): Promise<boolean> => {
     const normalized = normalizeOllamaModelName(model);
     if (!normalized) {

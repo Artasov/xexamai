@@ -1,3 +1,6 @@
+// noinspection JSUnusedGlobalSymbols
+// noinspection XmlDeprecatedElement
+
 import {TextField} from '@mui/material';
 
 type Props = {

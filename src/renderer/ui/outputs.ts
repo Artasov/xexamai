@@ -1,5 +1,5 @@
-import { marked } from 'marked';
-import { formatError, addErrorHelpStyles } from '../utils/errorFormatter';
+import {marked} from 'marked';
+import {addErrorHelpStyles, formatError} from '../utils/errorFormatter';
 
 // Initialize styles for error help blocks
 addErrorHelpStyles();
@@ -31,13 +31,7 @@ export function showAnswer(text: string) {
     const currentScrollHeight = target.scrollHeight;
     const isAtBottom = currentScrollTop + target.clientHeight >= currentScrollHeight - 5; // 5px tolerance
 
-    if (text) {
-        // Render Markdown via marked
-        const html = marked.parse(text, { async: false }) as string;
-        target.innerHTML = html;
-    } else {
-        target.innerHTML = '';
-    }
+    target.innerHTML = text ? (marked.parse(text, {async: false}) as string) : '';
 
     // Restore scroll position only if the user was not at the bottom
     if (!isAtBottom) {
@@ -47,7 +41,7 @@ export function showAnswer(text: string) {
 
 export function showError(error: unknown) {
     const formattedError = formatError(error);
-    
+
     const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
     if (!target) return;
 

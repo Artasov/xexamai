@@ -1,70 +1,72 @@
+/* noinspection CssUnusedSymbol */
+
 .window-resize-handles {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 12000;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12000;
 }
 
 .resize-handle {
-    position: fixed;
-    pointer-events: auto;
-    z-index: 12000;
+  position: fixed;
+  pointer-events: auto;
+  z-index: 12000;
 }
 
 .resize-handle--top,
 .resize-handle--bottom {
-    left: 16px;
-    right: 16px;
-    height: 8px;
+  left: 16px;
+  right: 16px;
+  height: 8px;
 }
 
 .resize-handle--top {
-    top: -2px;
+  top: -2px;
 }
 
 .resize-handle--bottom {
-    bottom: -2px;
+  bottom: -2px;
 }
 
 .resize-handle--left,
 .resize-handle--right {
-    top: 16px;
-    bottom: 16px;
-    width: 8px;
+  top: 16px;
+  bottom: 16px;
+  width: 8px;
 }
 
 .resize-handle--left {
-    left: -2px;
+  left: -2px;
 }
 
 .resize-handle--right {
-    right: -2px;
+  right: -2px;
 }
 
 .resize-handle--top-left,
 .resize-handle--top-right,
 .resize-handle--bottom-left,
 .resize-handle--bottom-right {
-    width: 14px;
-    height: 14px;
+  width: 14px;
+  height: 14px;
 }
 
 .resize-handle--top-left {
-    top: -3px;
-    left: -3px;
+  top: -3px;
+  left: -3px;
 }
 
 .resize-handle--top-right {
-    top: -3px;
-    right: -3px;
+  top: -3px;
+  right: -3px;
 }
 
 .resize-handle--bottom-left {
-    bottom: -3px;
-    left: -3px;
+  bottom: -3px;
+  left: -3px;
 }
 
 .resize-handle--bottom-right {
-    bottom: -3px;
-    right: -3px;
+  bottom: -3px;
+  right: -3px;
 }

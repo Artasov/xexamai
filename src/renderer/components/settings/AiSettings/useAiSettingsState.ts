@@ -1,7 +1,12 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {useEffect, useRef, useState} from 'react';
 import type {FastWhisperStatus} from '@shared/ipc';
-import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '../../../types';
 import {useSettingsContext} from '../SettingsView/SettingsView';
+
+type TimeoutRef = ReturnType<typeof useRef<ReturnType<typeof setTimeout> | null>>;
+type BooleanRef = ReturnType<typeof useRef<boolean>>;
+type StringRef = ReturnType<typeof useRef<string | null>>;
 
 export type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
 
@@ -19,8 +24,8 @@ export type AiSettingsState = {
     localModelError: string | null;
     localModelWarming: boolean;
     localWarmupHydrated: boolean;
-    localWarmupDebounceRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
-    localWarmupPendingRef: React.MutableRefObject<boolean>;
+    localWarmupDebounceRef: TimeoutRef;
+    localWarmupPendingRef: BooleanRef;
     infoDialog: 'transcribe' | 'llm' | null;
     ollamaInstalled: boolean | null;
     ollamaChecking: boolean;
@@ -29,8 +34,8 @@ export type AiSettingsState = {
     ollamaDownloading: boolean;
     ollamaModelError: string | null;
     ollamaModelWarming: boolean;
-    lastLocalWarmupRef: React.MutableRefObject<string | null>;
-    localStatusDebounceRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
+    lastLocalWarmupRef: StringRef;
+    localStatusDebounceRef: TimeoutRef;
 };
 
 export function useAiSettingsState() {

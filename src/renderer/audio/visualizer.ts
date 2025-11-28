@@ -54,8 +54,7 @@ export class AudioVisualizer {
 
     ingestLevel(level: number) {
         const boosted = Math.max(0, Math.min(1, level * this.levelGain));
-        const clamped = boosted < this.levelFloor ? 0 : boosted;
-        this.latestLevel = clamped;
+        this.latestLevel = boosted < this.levelFloor ? 0 : boosted;
     }
 
     stop() {
@@ -75,7 +74,7 @@ export class AudioVisualizer {
         }
         if (this.ctx) {
             try {
-                this.ctx.close();
+                void this.ctx.close();
             } catch {
             }
         }

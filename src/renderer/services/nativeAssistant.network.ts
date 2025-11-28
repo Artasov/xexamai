@@ -1,6 +1,6 @@
 const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs?: number) => {
     const hasTimeout = typeof timeoutMs === 'number' && timeoutMs > 0;
-    
+
     const fetchOptions: RequestInit = {
         ...init,
     };
@@ -17,7 +17,7 @@ const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, tim
             controller.abort((userSignal as any).reason);
         } else {
             const abortHandler = () => controller.abort((userSignal as any).reason);
-            userSignal.addEventListener('abort', abortHandler, { once: true });
+            userSignal.addEventListener('abort', abortHandler, {once: true});
         }
     }
 
@@ -27,7 +27,7 @@ const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, tim
     }
 
     try {
-        return await fetch(input, { ...fetchOptions, signal: controller.signal });
+        return await fetch(input, {...fetchOptions, signal: controller.signal});
     } finally {
         if (timeoutId) {
             clearTimeout(timeoutId);
@@ -35,4 +35,4 @@ const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, tim
     }
 };
 
-export { fetchWithTimeout };
+export {fetchWithTimeout};

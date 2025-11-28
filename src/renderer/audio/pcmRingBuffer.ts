@@ -8,7 +8,7 @@ export class PcmRingBuffer {
     private chunks: PcmChunk[] = [];
     private maxMs: number;
     private sampleRate: number;
-    private channels: number;
+    private readonly channels: number;
 
     constructor(sampleRate: number, channels: number, maxSeconds: number) {
         this.sampleRate = sampleRate;
@@ -16,6 +16,7 @@ export class PcmRingBuffer {
         this.maxMs = Math.max(1, maxSeconds) * 1000;
     }
 
+    // noinspection JSUnusedGlobalSymbols
     setWindowSeconds(sec: number) {
         this.maxMs = Math.max(1, sec) * 1000;
         this.compact();

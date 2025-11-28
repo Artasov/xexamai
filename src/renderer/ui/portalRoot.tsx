@@ -37,5 +37,5 @@ export function createPortalRoot(): PortalRoot {
 
     const isReady = () => Boolean(root && container);
 
-    return { ensure, destroy, render, isReady };
+    return {ensure, destroy, render, isReady};
 }

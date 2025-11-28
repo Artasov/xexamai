@@ -24,7 +24,7 @@ class RendererLogger {
         // Send to the main process via IPC
         const hasBridgeLogger = Boolean(window.api?.log);
         if (hasBridgeLogger) {
-            window.api.log(entry);
+            void window.api.log(entry);
         }
 
         // Also print to console during development
