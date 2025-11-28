@@ -16,15 +16,20 @@ import {
     LOCAL_LLM_MODELS,
     LOCAL_TRANSCRIBE_MODELS,
 } from '@shared/constants';
-import {logger} from '../utils/logger';
+import {logRequest, previewText} from './nativeAssistant.helpers';
+import {fetchWithTimeout} from './nativeAssistant.network';
+
+type StreamEventPayloads = {
+    transcript: { requestId?: string; delta: string };
+    delta: { requestId?: string; delta: string };
+    done: { requestId?: string; full: string };
+    error: { requestId?: string; error: string };
+};
 
 type StreamListener<T> = (event: unknown, payload: T) => void;
 
 type StreamEvents = {
-    transcript: Set<StreamListener<{ requestId?: string; delta: string }>>;
-    delta: Set<StreamListener<{ requestId?: string; delta: string }>>;
-    done: Set<StreamListener<{ requestId?: string; full: string }>>;
-    error: Set<StreamListener<{ requestId?: string; error: string }>>;
+    [K in keyof StreamEventPayloads]: Set<StreamListener<StreamEventPayloads[K]>>;
 };
 
 const streamEvents: StreamEvents = {
@@ -34,7 +39,47 @@ const streamEvents: StreamEvents = {
     error: new Set(),
 };
 
+function addStreamListener<K extends keyof StreamEventPayloads>(
+    key: K,
+    listener: StreamListener<StreamEventPayloads[K]>
+) {
+    streamEvents[key].add(listener);
+}
+
+function removeStreamListener<K extends keyof StreamEventPayloads>(
+    key: K,
+    listener?: StreamListener<StreamEventPayloads[K]>
+) {
+    if (listener) {
+        streamEvents[key].delete(listener);
+    } else {
+        streamEvents[key].clear();
+    }
+}
+
 const activeStreams = new Map<string, AbortController>();
+
+const streamErrorMessage = (error: unknown): string =>
+    error instanceof Error ? error.message : String(error);
+
+function runWithActiveStream(
+    requestId: string,
+    runner: (controller: AbortController) => Promise<void>
+): AbortController {
+    const controller = new AbortController();
+    activeStreams.set(requestId, controller);
+    runner(controller)
+        .catch((error) => {
+            if (controller.signal.aborted) return;
+            const message = streamErrorMessage(error);
+            logRequest('llm:stream', 'error', { requestId, error: message });
+            emit('error', { requestId, error: message });
+        })
+        .finally(() => {
+            activeStreams.delete(requestId);
+        });
+    return controller;
+}
 
 const GOOGLE_TRANSCRIBE_SET = new Set(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
 const OPENAI_TRANSCRIBE_SET = new Set(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
@@ -47,8 +92,10 @@ const DEFAULT_LOCAL_LLM = LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
 const OPENAI_BASE =
     (import.meta.env.VITE_OPENAI_BASE_URL as string | undefined)?.replace(/\/$/, '') ||
     'https://api.openai.com';
+const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
+const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
 
-function emit<K extends keyof StreamEvents>(key: K, payload: Parameters<StreamListener<any>>[1]) {
+function emit<K extends keyof StreamEventPayloads>(key: K, payload: StreamEventPayloads[K]) {
     const listeners = streamEvents[key];
     for (const listener of listeners) {
         try {
@@ -79,29 +126,6 @@ function ensureGoogleKey(settings: AppSettings): string {
     return key;
 }
 
-const MAX_LOG_PREVIEW_LENGTH = 400;
-
-const previewText = (text: string | undefined, maxLength: number = MAX_LOG_PREVIEW_LENGTH): string => {
-    const normalized = (text ?? '').toString();
-    if (!normalized) return '';
-    if (normalized.length <= maxLength) return normalized;
-    return `${normalized.slice(0, maxLength)}… (${normalized.length} chars)`;
-};
-
-const buildLogPayload = (details: Record<string, unknown> = {}) => {
-    const payload: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(details)) {
-        if (typeof value === 'string') {
-            payload[key] = previewText(value);
-        } else if (Array.isArray(value)) {
-            payload[key] = value.length > 10 ? [...value.slice(0, 10), `…(${value.length - 10} more)`] : value;
-        } else {
-            payload[key] = value;
-        }
-    }
-    return payload;
-};
-
 const buildTranscriptionPrompt = (settings: AppSettings): string | undefined => {
     const userPrompt = settings.transcriptionPrompt?.trim();
     const guard =
@@ -112,44 +136,20 @@ const buildTranscriptionPrompt = (settings: AppSettings): string | undefined => 
     return guard;
 };
 
-const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs?: number) => {
-    const hasTimeout = typeof timeoutMs === 'number' && timeoutMs > 0;
-    
-    // In Tauri, fetch works without CORS restrictions
-    // Don't set mode or credentials - let Tauri handle it
-    const fetchOptions: RequestInit = {
-        ...init,
-    };
-
-    if (!hasTimeout && !init.signal) {
-        return fetch(input, fetchOptions);
-    }
-
-    const controller = new AbortController();
-    const userSignal = init.signal;
-
-    if (userSignal) {
-        if (userSignal.aborted) {
-            controller.abort((userSignal as any).reason);
-        } else {
-            const abortHandler = () => controller.abort((userSignal as any).reason);
-            userSignal.addEventListener('abort', abortHandler, { once: true });
-        }
-    }
-
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    if (hasTimeout) {
-        timeoutId = setTimeout(() => controller.abort('timeout'), timeoutMs);
-    }
-
-    try {
-        return await fetch(input, { ...fetchOptions, signal: controller.signal });
-    } finally {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
-    }
+type LlmTarget = {
+    host: 'local' | 'api';
+    model: string;
 };
+
+function resolveLlmTarget(settings: AppSettings): LlmTarget {
+    const host: LlmTarget['host'] = settings.llmHost === 'local' ? 'local' : 'api';
+    const model =
+        host === 'local'
+            ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
+            : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+
+    return { host, model };
+}
 
 async function transcribeWithOpenAi(
     buffer: ArrayBuffer,
@@ -301,20 +301,6 @@ async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
         reader.readAsDataURL(blob);
     });
 }
-
-const logRequest = (
-    label: string,
-    status: 'start' | 'ok' | 'error',
-    details: Record<string, unknown> = {}
-) => {
-    const payload = buildLogPayload(details);
-    const message = `${label}: ${status}`;
-    if (status === 'error') {
-        logger.error('network', message, payload);
-        return;
-    }
-    logger.info('network', message, payload);
-};
 
 async function transcribeWithGoogle(
     buffer: ArrayBuffer,
@@ -701,10 +687,7 @@ async function streamChatCompletion(
     settings: AppSettings,
     controller: AbortController
 ): Promise<void> {
-    const host = settings.llmHost === 'local' ? 'local' : 'api';
-    const model = host === 'local'
-        ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
-        : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+    const { host, model } = resolveLlmTarget(settings);
 
     logRequest('llm:stream', 'start', {
         requestId,
@@ -830,44 +813,82 @@ async function streamChatCompletion(
     });
 }
 
+type TranscriptionModeValue = 'api' | 'local';
+
+type TranscriptionRunOptions = {
+    settings: AppSettings;
+    buffer: ArrayBuffer;
+    mime: string;
+    filename: string;
+    stream?: boolean;
+};
+
+type TranscriptionRunResult = {
+    text: string;
+    mode: TranscriptionModeValue;
+    model: string;
+};
+
+const buildTranscriptionLogContext = (
+    mode: TranscriptionModeValue,
+    model: string,
+    mime: string,
+    stream: boolean
+) => (stream ? { mode, model, mime, stream: true } : { mode, model, mime });
+
+const resolveTranscriptionTarget = (settings: AppSettings): { mode: TranscriptionModeValue; model: string } => {
+    const mode: TranscriptionModeValue = settings.transcriptionMode === 'local' ? 'local' : 'api';
+    const model =
+        mode === 'local'
+            ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
+            : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
+    return { mode, model };
+};
+
+async function transcribeAudioBuffer({
+    settings,
+    buffer,
+    mime,
+    filename,
+    stream = false,
+}: TranscriptionRunOptions): Promise<TranscriptionRunResult> {
+    const { mode: transcriptionMode, model: transcriptionModel } = resolveTranscriptionTarget(settings);
+
+    const logPayload = buildTranscriptionLogContext(transcriptionMode, transcriptionModel, mime, stream);
+    logRequest('transcribe', 'start', logPayload);
+
+    const text = await (async () => {
+        if (transcriptionMode === 'local') {
+            return transcribeWithLocal(buffer, mime, filename, settings);
+        }
+        if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
+            return transcribeWithGoogle(buffer, mime, settings, transcriptionModel);
+        }
+        return transcribeWithOpenAi(buffer, mime, filename, settings, transcriptionModel);
+    })();
+
+    logRequest('transcribe', 'ok', {
+        ...logPayload,
+        textPreview: previewText(text),
+    });
+
+    return { text, mode: transcriptionMode, model: transcriptionModel };
+}
+
 export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<AssistantResponse> {
     const settings = await loadSettings();
     const buffer = args.arrayBuffer;
     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
         return { ok: false, error: 'Empty audio' };
     }
-    const transcriptionMode = settings.transcriptionMode || 'api';
-    const transcriptionModel = transcriptionMode === 'local'
-        ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
-        : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
-
-    logRequest('transcribe', 'start', {mode: transcriptionMode, model: transcriptionModel, mime: args.mime});
-
-    let text = '';
-    if (transcriptionMode === 'local') {
-        text = await transcribeWithLocal(buffer, args.mime, args.filename || 'lastN.webm', settings);
-    } else if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
-        text = await transcribeWithGoogle(buffer, args.mime, settings, transcriptionModel);
-    } else {
-        text = await transcribeWithOpenAi(
-            buffer,
-            args.mime,
-            args.filename || 'lastN.webm',
-            settings,
-            transcriptionModel
-        );
-    }
-    logRequest('transcribe', 'ok', {
-        mode: transcriptionMode,
-        model: transcriptionModel,
+    const { text, mode: transcriptionMode, model: transcriptionModel } = await transcribeAudioBuffer({
+        settings,
+        buffer,
         mime: args.mime,
-        textPreview: previewText(text),
+        filename: args.filename || 'lastN.webm',
     });
 
-    const llmHost = settings.llmHost === 'local' ? 'local' : 'api';
-    const llmModel = llmHost === 'local'
-        ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
-        : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+    const { host: llmHost, model: llmModel } = resolveLlmTarget(settings);
     logRequest('llm:select', 'start', {
         host: llmHost,
         model: llmModel,
@@ -903,31 +924,11 @@ export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{
     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
         return { ok: false, error: 'Empty audio' };
     }
-    const transcriptionMode = settings.transcriptionMode || 'api';
-    const transcriptionModel = transcriptionMode === 'local'
-        ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
-        : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
-    logRequest('transcribe', 'start', {mode: transcriptionMode, model: transcriptionModel, mime: args.mime});
-    const text = await (async () => {
-        if (transcriptionMode === 'local') {
-            return transcribeWithLocal(buffer, args.mime, args.filename || 'lastN.webm', settings);
-        }
-        if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
-            return transcribeWithGoogle(buffer, args.mime, settings, transcriptionModel);
-        }
-        return transcribeWithOpenAi(
-            buffer,
-            args.mime,
-            args.filename || 'lastN.webm',
-            settings,
-            transcriptionModel
-        );
-    })();
-    logRequest('transcribe', 'ok', {
-        mode: transcriptionMode,
-        model: transcriptionModel,
+    const { text } = await transcribeAudioBuffer({
+        settings,
+        buffer,
         mime: args.mime,
-        textPreview: previewText(text),
+        filename: args.filename || 'lastN.webm',
     });
     return { ok: true, text };
 }
@@ -940,41 +941,15 @@ export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promi
     }
     const requestId = args.requestId || crypto.randomUUID();
     emit('transcript', { requestId, delta: '' });
-    const transcriptionMode = settings.transcriptionMode || 'api';
-    const transcriptionModel = transcriptionMode === 'local'
-        ? settings.localWhisperModel || DEFAULT_LOCAL_TRANSCRIBE
-        : settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
-    logRequest('transcribe', 'start', {mode: transcriptionMode, model: transcriptionModel, mime: args.mime, stream: true});
-    const text = await (async () => {
-        if (transcriptionMode === 'local') {
-            return transcribeWithLocal(buffer, args.mime, args.filename || 'lastN.webm', settings);
-        }
-        if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
-            return transcribeWithGoogle(buffer, args.mime, settings, transcriptionModel);
-        }
-        return transcribeWithOpenAi(
-            buffer,
-            args.mime,
-            args.filename || 'lastN.webm',
-            settings,
-            transcriptionModel
-        );
-    })();
-    logRequest('transcribe', 'ok', {
-        mode: transcriptionMode,
-        model: transcriptionModel,
+    const { text } = await transcribeAudioBuffer({
+        settings,
+        buffer,
         mime: args.mime,
+        filename: args.filename || 'lastN.webm',
         stream: true,
-        textPreview: previewText(text),
     });
     emit('transcript', { requestId, delta: text });
-    const controller = new AbortController();
-    activeStreams.set(requestId, controller);
-
-    const llmHost = settings.llmHost === 'local' ? 'local' : 'api';
-    const llmModel = llmHost === 'local'
-        ? settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM
-        : settings.apiLlmModel || settings.llmModel || DEFAULT_API_LLM;
+    const { host: llmHost, model: llmModel } = resolveLlmTarget(settings);
     logRequest('llm:stream', 'start', {
         requestId,
         host: llmHost,
@@ -986,34 +961,18 @@ export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promi
         promptPreview: previewText(text),
     });
 
-    streamChatCompletion(text, requestId, settings, controller).catch((error) => {
-        if (controller.signal.aborted) return;
-        logRequest('llm:stream', 'error', {requestId, error: error instanceof Error ? error.message : String(error)});
-        emit('error', {
-            requestId,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }).finally(() => {
-        activeStreams.delete(requestId);
-    });
+    runWithActiveStream(requestId, (controller) =>
+        streamChatCompletion(text, requestId, settings, controller)
+    );
     return { ok: true, text, answer: '' };
 }
 
 export async function assistantAskChat(args: { text: string; requestId?: string }) {
     const settings = await loadSettings();
     const requestId = args.requestId || crypto.randomUUID();
-    const controller = new AbortController();
-    activeStreams.set(requestId, controller);
-    streamChatCompletion(args.text, requestId, settings, controller).catch((error) => {
-        if (controller.signal.aborted) return;
-        logRequest('llm:stream', 'error', {requestId, error: error instanceof Error ? error.message : String(error)});
-        emit('error', {
-            requestId,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }).finally(() => {
-        activeStreams.delete(requestId);
-    });
+    runWithActiveStream(requestId, (controller) =>
+        streamChatCompletion(args.text, requestId, settings, controller)
+    );
 }
 
 export async function assistantStopStream(args: StopStreamRequest): Promise<void> {
@@ -1026,107 +985,231 @@ export async function assistantStopStream(args: StopStreamRequest): Promise<void
 }
 
 export function assistantOnStreamTranscript(cb: StreamListener<{ requestId?: string; delta: string }>) {
-    streamEvents.transcript.add(cb);
+    addStreamListener('transcript', cb);
 }
 
 export function assistantOnStreamDelta(cb: StreamListener<{ requestId?: string; delta: string }>) {
-    streamEvents.delta.add(cb);
+    addStreamListener('delta', cb);
 }
 
 export function assistantOnStreamDone(cb: StreamListener<{ requestId?: string; full: string }>) {
-    streamEvents.done.add(cb);
+    addStreamListener('done', cb);
 }
 
 export function assistantOnStreamError(cb: StreamListener<{ requestId?: string; error: string }>) {
-    streamEvents.error.add(cb);
+    addStreamListener('error', cb);
 }
 
 export function assistantOffStreamTranscript(cb?: StreamListener<{ requestId?: string; delta: string }>) {
-    if (cb) {
-        streamEvents.transcript.delete(cb);
-    } else {
-        streamEvents.transcript.clear();
-    }
+    removeStreamListener('transcript', cb);
 }
 
 export function assistantOffStreamDelta(cb?: StreamListener<{ requestId?: string; delta: string }>) {
-    if (cb) {
-        streamEvents.delta.delete(cb);
-    } else {
-        streamEvents.delta.clear();
-    }
+    removeStreamListener('delta', cb);
 }
 
 export function assistantOffStreamDone(cb?: StreamListener<{ requestId?: string; full: string }>) {
-    if (cb) {
-        streamEvents.done.delete(cb);
-    } else {
-        streamEvents.done.clear();
-    }
+    removeStreamListener('done', cb);
 }
 
 export function assistantOffStreamError(cb?: StreamListener<{ requestId?: string; error: string }>) {
-    if (cb) {
-        streamEvents.error.delete(cb);
-    } else {
-        streamEvents.error.clear();
+    removeStreamListener('error', cb);
+}
+
+type ScreenPrompts = {
+    systemPrompt: string;
+    userPrompt: string;
+};
+
+const buildScreenPrompts = (settings: AppSettings): ScreenPrompts => {
+    const prompt = (settings.screenProcessingPrompt || '').trim();
+    const systemPrompt = prompt || 'You are an assistant that analyses screenshots.';
+    const userPrompt = prompt || 'Analyze the provided screenshot.';
+    return { systemPrompt, userPrompt };
+};
+
+const normalizeBase64Image = (value: string): string => {
+    if (!value) return '';
+    const commaIndex = value.indexOf(',');
+    if (commaIndex >= 0) {
+        return value.slice(commaIndex + 1);
     }
+    return value;
+};
+
+async function processScreenWithOpenAi(
+    payload: ScreenProcessRequest,
+    settings: AppSettings,
+    prompts: ScreenPrompts
+): Promise<{ answer: string; model: string }> {
+    const apiKey = ensureOpenAiKey(settings);
+    const url = `${OPENAI_BASE}/v1/chat/completions`;
+    const response = await fetchWithTimeout(
+        url,
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: SCREEN_OPENAI_MODEL,
+                temperature: 0.2,
+                messages: [
+                    {
+                        role: 'system',
+                        content: prompts.systemPrompt,
+                    },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: prompts.userPrompt },
+                            {
+                                type: 'image_url',
+                                image_url: {
+                                    url: `data:${payload.mime || 'image/png'};base64,${payload.imageBase64}`,
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }),
+        },
+        settings.screenProcessingTimeoutMs
+    );
+    const data = await response.json().catch(async () => ({ text: await response.text() }));
+    if (!response.ok) {
+        const message = typeof data === 'string'
+            ? data
+            : data?.error?.message || 'Screen processing failed';
+        throw new Error(message);
+    }
+    const answer = data?.choices?.[0]?.message?.content;
+    const text = Array.isArray(answer)
+        ? answer.map((entry: any) => entry?.text || entry?.content || '').join('')
+        : answer;
+    const normalized = typeof text === 'string' ? text.trim() : '';
+    if (!normalized) {
+        throw new Error('Empty response from OpenAI screen analysis.');
+    }
+    return { answer: normalized, model: SCREEN_OPENAI_MODEL };
+}
+
+async function processScreenWithGemini(
+    payload: ScreenProcessRequest,
+    settings: AppSettings,
+    prompts: ScreenPrompts
+): Promise<{ answer: string; model: string }> {
+    const accessToken = ensureGoogleKey(settings);
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCREEN_GEMINI_MODEL}:generateContent?key=${accessToken}`;
+    const body: any = {
+        contents: [
+            {
+                role: 'user',
+                parts: [
+                    { text: prompts.userPrompt },
+                    {
+                        inline_data: {
+                            mime_type: payload.mime || 'image/png',
+                            data: payload.imageBase64,
+                        },
+                    },
+                ],
+            },
+        ],
+        generationConfig: { temperature: 0.2 },
+    };
+    if (prompts.systemPrompt) {
+        body.systemInstruction = {
+            role: 'system',
+            parts: [{ text: prompts.systemPrompt }],
+        };
+    }
+    const response = await fetchWithTimeout(
+        url,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        },
+        settings.screenProcessingTimeoutMs
+    );
+    const data = await response.json().catch(async () => ({ text: await response.text() }));
+    if (!response.ok) {
+        const message = typeof data === 'string'
+            ? data
+            : data?.error?.message || 'Screen processing failed';
+        throw new Error(message);
+    }
+    let text = '';
+    const candidates = (data as any)?.candidates;
+    if (Array.isArray(candidates) && candidates.length) {
+        const parts = candidates[0]?.content?.parts;
+        if (Array.isArray(parts)) {
+            text = parts
+                .map((part: any) => part?.text || '')
+                .filter(Boolean)
+                .join('\n')
+                .trim();
+        }
+    }
+    if (!text) {
+        const fallback = extractSpeechText(data);
+        if (fallback) {
+            text = fallback.trim();
+        }
+    }
+    if (!text) {
+        throw new Error('Empty response from Google screen analysis.');
+    }
+    return { answer: text, model: SCREEN_GEMINI_MODEL };
 }
 
 export async function processScreenImage(
     payload: ScreenProcessRequest
 ): Promise<ScreenProcessResponse> {
     const settings = await loadSettings();
-    const apiKey = ensureOpenAiKey(settings);
-    const url = `${OPENAI_BASE}/v1/chat/completions`;
-    const prompt = (settings.screenProcessingPrompt || '').trim();
-    const model = settings.screenProcessingModel === 'google'
-        ? 'gpt-4o-mini'
-        : 'gpt-4o-mini';
-    const userPrompt = prompt || 'Analyze the provided screenshot.';
+    const prompts = buildScreenPrompts(settings);
+    const provider = settings.screenProcessingModel === 'google' ? 'google' : 'openai';
+    const normalizedPayload: ScreenProcessRequest = {
+        ...payload,
+        imageBase64: normalizeBase64Image(payload.imageBase64),
+    };
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model,
-            temperature: 0.2,
-            messages: [
-                {
-                    role: 'system',
-                    content: settings.screenProcessingPrompt || 'You are an assistant that analyses screenshots.',
-                },
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: userPrompt },
-                        {
-                            type: 'image_url',
-                            image_url: {
-                                url: `data:${payload.mime};base64,${payload.imageBase64}`,
-                            },
-                        },
-                    ],
-                },
-            ],
-        }),
+    logRequest('screen', 'start', {
+        provider,
+        model: provider === 'google' ? SCREEN_GEMINI_MODEL : SCREEN_OPENAI_MODEL,
+        mime: payload.mime,
+        width: payload.width,
+        height: payload.height,
+        promptPreview: previewText(prompts.userPrompt),
     });
-    const data = await response.json().catch(async () => ({ text: await response.text() }));
-    if (!response.ok) {
+
+    try {
+        const { answer, model } = provider === 'google'
+            ? await processScreenWithGemini(normalizedPayload, settings, prompts)
+            : await processScreenWithOpenAi(normalizedPayload, settings, prompts);
+
+        logRequest('screen', 'ok', {
+            provider,
+            model,
+            responsePreview: previewText(answer),
+        });
+
+        return {
+            ok: true,
+            answer,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logRequest('screen', 'error', {
+            provider,
+            mime: payload.mime,
+            error: message,
+        });
         return {
             ok: false,
-            error: typeof data === 'string' ? data : data?.error?.message || 'Screen processing failed',
+            error: message,
         };
     }
-    const answer = data?.choices?.[0]?.message?.content;
-    const text = Array.isArray(answer)
-        ? answer.map((entry: any) => entry?.text || entry?.content || '').join('')
-        : answer;
-    return {
-        ok: true,
-        answer: typeof text === 'string' ? text.trim() : '',
-    };
 }

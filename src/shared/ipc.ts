@@ -20,7 +20,7 @@ export type TranscriptionMode = 'api' | 'local';
 
 export type LlmHost = 'api' | 'local';
 
-export type LocalDevice = 'cpu' | 'gpu';
+export type LocalDevice = 'auto' | 'cpu' | 'cuda' | 'metal' | 'gpu';
 
 export type ScreenProcessingProvider = 'openai' | 'google';
 

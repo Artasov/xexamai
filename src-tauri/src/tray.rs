@@ -35,7 +35,7 @@ fn store_tray_icon(icon: TrayIcon) {
 
 pub fn set_tray_visible(visible: bool) {
     if let Some(mutex) = TRAY_ICON.get() {
-        if let Ok(mut guard) = mutex.lock() {
+        if let Ok(guard) = mutex.lock() {
             if let Some(tray) = guard.as_ref() {
                 if let Err(error) = tray.set_visible(visible) {
                     eprintln!("[tray] failed to set visibility: {error}");

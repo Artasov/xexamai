@@ -25,6 +25,7 @@ export const AudioSettings = () => {
     }, []);
 
     const showMessage = (text: string, tone: MessageTone = 'success') => {
+        if (tone === 'success') return;
         toast[tone](text);
     };
 
@@ -47,7 +48,6 @@ export const AudioSettings = () => {
             await window.api.settings.setAudioInputType(type);
             patchLocal({ audioInputType: type });
             emitSettingsChange('audioInputType', type);
-            showMessage(`Audio input switched to ${type}`);
         } catch (error) {
             logger.error('settings', 'Failed to set audio input type', { error });
             showMessage('Failed to update audio input type', 'error');
@@ -58,14 +58,18 @@ export const AudioSettings = () => {
         try {
             await window.api.settings.setAudioInputDevice(deviceId);
             patchLocal({ audioInputDeviceId: deviceId });
-            showMessage('Audio input device saved');
         } catch (error) {
             logger.error('settings', 'Failed to set audio input device', { error });
             showMessage('Failed to update audio input device', 'error');
         }
     };
 
+    const deviceOptions = [{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.id, label: device.name }))];
     const currentDeviceId = settings.audioInputDeviceId ?? '';
+    const renderDeviceLabel = (value: string) => {
+        if (!value) return 'Default device';
+        return deviceOptions.find((option) => option.value === value)?.label ?? 'Default device';
+    };
 
     return (
         <div className="audio-settings">
@@ -88,30 +92,34 @@ export const AudioSettings = () => {
                     </TextField>
                 </div>
 
-                <div className="settings-field">
-                    <TextField
-                        select
-                        size="small"
-                        label="Device"
-                        value={currentDeviceId}
-                        onChange={(event) => handleDeviceChange(event.target.value)}
-                        fullWidth
-                        disabled={settings.audioInputType === 'system'}
-                    >
-                        {[{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.id, label: device.name }))].map(
-                            (option) => (
+                {settings.audioInputType === 'system' ? null : (
+                    <div className="settings-field">
+                        <TextField
+                            select
+                            size="small"
+                            label="Device"
+                            value={currentDeviceId}
+                            onChange={(event) => handleDeviceChange(event.target.value)}
+                            fullWidth
+                            SelectProps={{
+                                displayEmpty: true,
+                                renderValue: (value) => renderDeviceLabel((value as string) ?? ''),
+                            }}
+                            InputLabelProps={{ shrink: true }}
+                        >
+                            {deviceOptions.map((option) => (
                                 <MenuItem key={option.value} value={option.value}>
                                     {option.label}
                                 </MenuItem>
-                            )
-                        )}
-                    </TextField>
-                    <div className="audio-settings__actions">
-                        <button type="button" className="btn btn-sm" onClick={loadDevices} disabled={loading}>
-                            Refresh devices
-                        </button>
+                            ))}
+                        </TextField>
+                        <div className="audio-settings__actions">
+                            <button type="button" className="btn btn-sm" onClick={loadDevices} disabled={loading}>
+                                Refresh devices
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
             </section>
         </div>
     );

@@ -7,16 +7,9 @@ use serde::Serialize;
 use std::sync::{mpsc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
-#[cfg(windows)]
-use windows::{
-    core::*,
-    Win32::Media::Audio::*,
-    Win32::Media::Audio::Endpoints::*,
-};
 
 const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 const DEFAULT_CHANNELS: u16 = 2;
-const CHUNK_FRAMES: usize = 2048;
 
 #[cfg(target_os = "macos")]
 const SYSTEM_DEVICE_KEYWORDS: &[&str] =
@@ -28,6 +21,7 @@ const SYSTEM_DEVICE_KEYWORDS: &[&str] =
 const SYSTEM_DEVICE_KEYWORDS: &[&str] =
     &["loopback", "(wasapi)", "monitor", "stereo mix", "динамики", "headphones"];
 
+#[cfg(not(windows))]
 fn is_probable_mic(lower: &str) -> bool {
     lower.contains("mic")
         || lower.contains("microphone")
@@ -200,7 +194,7 @@ impl AudioManager {
                 {
                     // Start WASAPI loopback capture for system audio with channel for mixing
                     let (wasapi_tx, wasapi_rx) = unbounded::<Vec<i16>>();
-                    match start_wasapi_loopback_capture_for_mixing(app.clone(), stop_tx.clone(), wasapi_tx.clone()) {
+                    match start_wasapi_loopback_capture_for_mixing(stop_tx.clone(), wasapi_tx.clone()) {
                         Ok(stop_flag) => {
                             // Add WASAPI receiver to the list
                             // We'll handle it specially in the capture loop
@@ -702,7 +696,6 @@ fn choose_config(device: &Device) -> Result<(SupportedStreamConfig, SampleFormat
         if let Ok(cfg) = device.default_output_config() {
             // Create a compatible input config from output config
             let fmt = cfg.sample_format();
-            let sample_rate = cfg.sample_rate();
             let channels = cfg.channels();
             // Try to create input config with same parameters
             if let Ok(mut input_configs) = device.supported_input_configs() {
@@ -863,7 +856,6 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
     use std::sync::Arc;
     use std::time::Duration;
     use windows::Win32::Media::Audio::*;
-    use windows::Win32::Media::Audio::Endpoints::*;
     use windows::Win32::System::Com::*;
     use windows::core::Interface;
     
@@ -916,7 +908,7 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
             // Activate audio client
             // In Windows API, IMMDevice::Activate is used to get IAudioClient
             // We need to call Activate method directly through COM interface
-            let audio_client: IAudioClient = match unsafe {
+            let audio_client: IAudioClient = match {
                 // Get raw pointer to IMMDevice
                 let device_ptr = device.as_raw() as *mut _;
                 // Call Activate method through vtable
@@ -980,7 +972,6 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
             let sample_rate = mix_format.nSamplesPerSec;
             let channels = mix_format.nChannels as u16;
             let bits_per_sample = mix_format.wBitsPerSample;
-            let block_align = mix_format.nBlockAlign as usize;
             
             // Determine actual bits per sample
             // For WAVEFORMATEXTENSIBLE, wBitsPerSample in WAVEFORMATEX is usually 0 or invalid
@@ -989,18 +980,18 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
                 // It's WAVEFORMATEXTENSIBLE, read the extended structure
                 // In WAVEFORMATEXTENSIBLE, the actual bits per sample is at offset 22 (wValidBitsPerSample)
                 // But we should use wBitsPerSample from WAVEFORMATEX if it's valid, otherwise read from extended
-                if bits_per_sample > 0 && bits_per_sample <= 32 {
-                    bits_per_sample
-                } else {
-                    // Read from extended structure at offset 22 (wValidBitsPerSample)
-                    let ext_ptr = mix_format_ptr as *const u8;
-                    let valid_bits_ptr = unsafe { ext_ptr.add(22) as *const u16 };
-                    let valid_bits = unsafe { *valid_bits_ptr };
-                    if valid_bits > 0 && valid_bits <= 32 {
-                        valid_bits
+                    if bits_per_sample > 0 && bits_per_sample <= 32 {
+                        bits_per_sample
                     } else {
-                        // Default to 16 if we can't determine
-                        16
+                        // Read from extended structure at offset 22 (wValidBitsPerSample)
+                        let ext_ptr = mix_format_ptr as *const u8;
+                        let valid_bits_ptr = ext_ptr.add(22) as *const u16;
+                        let valid_bits = *valid_bits_ptr;
+                        if valid_bits > 0 && valid_bits <= 32 {
+                            valid_bits
+                        } else {
+                            // Default to 16 if we can't determine
+                            16
                     }
                 }
             } else {
@@ -1103,16 +1094,14 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
                 }
                 
                 // Convert to i16 samples
-                // Calculate bytes per frame
-                let bytes_per_frame = (actual_bits_per_sample / 8) * channels as u16;
-                let total_bytes = available_frames as usize * bytes_per_frame as usize;
+                let frame_samples = available_frames as usize * channels as usize;
                 
                 let samples: Vec<i16> = match actual_bits_per_sample {
                     16 => {
                         // Data is already i16
                         let data_slice = std::slice::from_raw_parts(
                             data_ptr as *const i16,
-                            available_frames as usize * channels as usize
+                            frame_samples,
                         );
                         data_slice.to_vec()
                     }
@@ -1120,7 +1109,7 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
                         // Data is f32, convert to i16
                         let float_slice = std::slice::from_raw_parts(
                             data_ptr as *const f32,
-                            available_frames as usize * channels as usize
+                            frame_samples,
                         );
                         float_slice.iter()
                             .map(|&f| {
@@ -1131,9 +1120,6 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
                     }
                     _ => {
                         eprintln!("[audio] Unsupported bits per sample: {}, trying to convert from bytes", actual_bits_per_sample);
-                        // Try to read as raw bytes and convert
-                        let bytes_slice = std::slice::from_raw_parts(data_ptr, total_bytes);
-                        // For now, just skip unsupported formats
                         let _ = capture_client.ReleaseBuffer(available_frames);
                         thread::sleep(Duration::from_millis(10));
                         continue;
@@ -1172,7 +1158,6 @@ fn start_wasapi_loopback_capture(app: AppHandle, _stop_tx: Sender<()>) -> Result
 
 #[cfg(windows)]
 fn start_wasapi_loopback_capture_for_mixing(
-    app: AppHandle, 
     _stop_tx: Sender<()>,
     tx: Sender<Vec<i16>>,
 ) -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>> {
@@ -1180,7 +1165,6 @@ fn start_wasapi_loopback_capture_for_mixing(
     use std::sync::Arc;
     use std::time::Duration;
     use windows::Win32::Media::Audio::*;
-    use windows::Win32::Media::Audio::Endpoints::*;
     use windows::Win32::System::Com::*;
     use windows::core::Interface;
     
@@ -1222,7 +1206,7 @@ fn start_wasapi_loopback_capture_for_mixing(
             };
             
             // Activate audio client
-            let audio_client: IAudioClient = match unsafe {
+            let audio_client: IAudioClient = match {
                 let device_ptr = device.as_raw() as *mut _;
                 type ActivateFn = unsafe extern "system" fn(
                     *mut core::ffi::c_void,
@@ -1286,8 +1270,8 @@ fn start_wasapi_loopback_capture_for_mixing(
                     bits_per_sample
                 } else {
                     let ext_ptr = mix_format_ptr as *const u8;
-                    let valid_bits_ptr = unsafe { ext_ptr.add(22) as *const u16 };
-                    let valid_bits = unsafe { *valid_bits_ptr };
+                    let valid_bits_ptr = ext_ptr.add(22) as *const u16;
+                    let valid_bits = *valid_bits_ptr;
                     if valid_bits > 0 && valid_bits <= 32 {
                         valid_bits
                     } else {
@@ -1333,6 +1317,7 @@ fn start_wasapi_loopback_capture_for_mixing(
                     return;
                 }
             };
+            eprintln!("[audio] WASAPI buffer frames (mixing): {}", buffer_frames);
             
             // Get capture client
             let capture_client: IAudioCaptureClient = match audio_client.GetService::<IAudioCaptureClient>() {
@@ -1383,21 +1368,20 @@ fn start_wasapi_loopback_capture_for_mixing(
                     continue;
                 }
                 
-                let bytes_per_frame = (actual_bits_per_sample / 8) * channels as u16;
-                let total_bytes = available_frames as usize * bytes_per_frame as usize;
+                let frame_samples = available_frames as usize * channels as usize;
                 
                 let samples: Vec<i16> = match actual_bits_per_sample {
                     16 => {
                         let data_slice = std::slice::from_raw_parts(
                             data_ptr as *const i16,
-                            available_frames as usize * channels as usize
+                            frame_samples,
                         );
                         data_slice.to_vec()
                     }
                     32 => {
                         let float_slice = std::slice::from_raw_parts(
                             data_ptr as *const f32,
-                            available_frames as usize * channels as usize
+                            frame_samples,
                         );
                         float_slice.iter()
                             .map(|&f| {

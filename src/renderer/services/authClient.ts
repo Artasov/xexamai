@@ -71,6 +71,10 @@ export class AuthError extends Error {
 
 const AUTH_STORAGE_KEY = 'xexamai.auth.tokens';
 const DEFAULT_BASE_URL = resolveAuthApiBaseUrl();
+const JSON_HEADERS: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+};
 
 type TokenResponsePayload = {
     access?: unknown;
@@ -186,6 +190,22 @@ export class AuthClient {
         this.tokens = readStorage();
     }
 
+    private buildHeaders(baseHeaders?: AxiosRequestConfig['headers'], accessToken?: string): Record<string, string> {
+        const headers: Record<string, string> = { ...JSON_HEADERS };
+        const provided = baseHeaders as Record<string, string> | undefined;
+        if (provided) {
+            for (const [key, value] of Object.entries(provided)) {
+                if (typeof value === 'string') {
+                    headers[key] = value;
+                }
+            }
+        }
+        if (accessToken) {
+            headers.Authorization = `Bearer ${accessToken}`;
+        }
+        return headers;
+    }
+
     public initializeFromStorage(): AuthTokens | null {
         this.tokens = readStorage();
         return this.tokens;
@@ -211,10 +231,7 @@ export class AuthClient {
     public async login(email: string, password: string): Promise<AuthUser> {
         try {
             const { data } = await axios.post(`${this.baseUrl}/auth/login/`, { email, password }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                },
+                headers: { ...JSON_HEADERS },
             });
             const tokens = this.parseTokenResponse(data);
             this.updateTokens(tokens);
@@ -268,10 +285,7 @@ export class AuthClient {
         this.refreshPromise = (async () => {
             try {
                 const { data } = await axios.post(`${this.baseUrl}/auth/refresh/`, { refresh: refreshToken }, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                    },
+                    headers: { ...JSON_HEADERS },
                 });
 
                 const tokens = this.parseTokenResponse(data);
@@ -328,22 +342,7 @@ export class AuthClient {
 
     private async authenticatedRequest<T>(config: AxiosRequestConfig, allowRetry: boolean = true): Promise<T> {
         const baseConfig: AxiosRequestConfig = { ...config };
-        const headers: Record<string, string> = {
-            Accept: 'application/json',
-        };
-
-        const providedHeaders = baseConfig.headers as Record<string, string> | undefined;
-        if (providedHeaders) {
-            for (const [key, value] of Object.entries(providedHeaders)) {
-                if (typeof value === 'string') {
-                    headers[key] = value;
-                }
-            }
-        }
-
-        if (this.tokens?.access) {
-            headers.Authorization = `Bearer ${this.tokens.access}`;
-        }
+        const headers = this.buildHeaders(baseConfig.headers, this.tokens?.access || undefined);
 
         const finalConfig: AxiosRequestConfig = {
             ...baseConfig,

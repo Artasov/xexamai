@@ -35,11 +35,37 @@ async function patchSettings(payload: Record<string, unknown>) {
     await invoke('config_update', { payload });
 }
 
+const makeSettingSetter =
+    <T>(key: keyof AssistantAPI['settings'] extends never ? string : string) =>
+    async (value: T) => {
+        await patchSettings({ [key]: value });
+    };
+
+async function replaceListener<T>(
+    current: UnlistenFn | null,
+    event: string,
+    handler: (event: any) => void
+): Promise<UnlistenFn> {
+    if (current) {
+        try {
+            await current();
+        } catch {}
+    }
+    return listen<T>(event, handler);
+}
+
+function clearListener(current: UnlistenFn | null): null {
+    if (current) {
+        try {
+            void current();
+        } catch {}
+    }
+    return null;
+}
+
 const settingsApi: AssistantAPI['settings'] = {
     get: () => invoke('config_get'),
-    setOpenaiApiKey: async (key: string) => {
-        await patchSettings({ openaiApiKey: key });
-    },
+    setOpenaiApiKey: makeSettingSetter<string>('openaiApiKey'),
     setWindowOpacity: async (opacity: number) => {
         await patchSettings({ windowOpacity: opacity });
         // Opacity is applied in Rust via DWM
@@ -66,27 +92,13 @@ const settingsApi: AssistantAPI['settings'] = {
         await patchSettings({ windowScale: scale });
         // Scale is applied in Rust by resizing the window and adjusting CSS zoom
     },
-    setDurations: async (durations) => {
-        await patchSettings({ durations });
-    },
-    setDurationHotkeys: async (map) => {
-        await patchSettings({ durationHotkeys: map });
-    },
-    setAudioInputDevice: async (deviceId) => {
-        await patchSettings({ audioInputDeviceId: deviceId });
-    },
-    setToggleInputHotkey: async (key) => {
-        await patchSettings({ toggleInputHotkey: key });
-    },
-    setAudioInputType: async (type) => {
-        await patchSettings({ audioInputType: type });
-    },
-    setTranscriptionModel: async (model) => {
-        await patchSettings({ transcriptionModel: model });
-    },
-    setTranscriptionPrompt: async (prompt) => {
-        await patchSettings({ transcriptionPrompt: prompt });
-    },
+    setDurations: makeSettingSetter('durations'),
+    setDurationHotkeys: makeSettingSetter('durationHotkeys'),
+    setAudioInputDevice: makeSettingSetter('audioInputDeviceId'),
+    setToggleInputHotkey: makeSettingSetter('toggleInputHotkey'),
+    setAudioInputType: makeSettingSetter('audioInputType'),
+    setTranscriptionModel: makeSettingSetter('transcriptionModel'),
+    setTranscriptionPrompt: makeSettingSetter('transcriptionPrompt'),
     setLlmModel: async (model, host) => {
         const payload: Record<string, unknown> = { llmModel: model };
         if (host === 'local') {
@@ -96,27 +108,13 @@ const settingsApi: AssistantAPI['settings'] = {
         }
         await patchSettings(payload);
     },
-    setLlmPrompt: async (prompt) => {
-        await patchSettings({ llmPrompt: prompt });
-    },
-    setTranscriptionMode: async (mode) => {
-        await patchSettings({ transcriptionMode: mode });
-    },
-    setLlmHost: async (host) => {
-        await patchSettings({ llmHost: host });
-    },
-    setLocalWhisperModel: async (model) => {
-        await patchSettings({ localWhisperModel: model });
-    },
-    setLocalDevice: async (device) => {
-        await patchSettings({ localDevice: device });
-    },
-    setApiSttTimeoutMs: async (timeoutMs) => {
-        await patchSettings({ apiSttTimeoutMs: timeoutMs });
-    },
-    setApiLlmTimeoutMs: async (timeoutMs) => {
-        await patchSettings({ apiLlmTimeoutMs: timeoutMs });
-    },
+    setLlmPrompt: makeSettingSetter('llmPrompt'),
+    setTranscriptionMode: makeSettingSetter('transcriptionMode'),
+    setLlmHost: makeSettingSetter('llmHost'),
+    setLocalWhisperModel: makeSettingSetter('localWhisperModel'),
+    setLocalDevice: makeSettingSetter('localDevice'),
+    setApiSttTimeoutMs: makeSettingSetter('apiSttTimeoutMs'),
+    setApiLlmTimeoutMs: makeSettingSetter('apiLlmTimeoutMs'),
     getAudioDevices: async () => {
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
@@ -134,24 +132,12 @@ const settingsApi: AssistantAPI['settings'] = {
     openConfigFolder: async () => {
         await invoke('open_config_folder');
     },
-    setScreenProcessingModel: async (provider) => {
-        await patchSettings({ screenProcessingModel: provider });
-    },
-    setScreenProcessingPrompt: async (prompt) => {
-        await patchSettings({ screenProcessingPrompt: prompt });
-    },
-    setScreenProcessingTimeoutMs: async (timeoutMs) => {
-        await patchSettings({ screenProcessingTimeoutMs: timeoutMs });
-    },
-    setWelcomeModalDismissed: async (dismissed) => {
-        await patchSettings({ welcomeModalDismissed: dismissed });
-    },
-    setGoogleApiKey: async (key) => {
-        await patchSettings({ googleApiKey: key });
-    },
-    setStreamSendHotkey: async (key: string) => {
-        await patchSettings({ streamSendHotkey: key });
-    },
+    setScreenProcessingModel: makeSettingSetter('screenProcessingModel'),
+    setScreenProcessingPrompt: makeSettingSetter('screenProcessingPrompt'),
+    setScreenProcessingTimeoutMs: makeSettingSetter('screenProcessingTimeoutMs'),
+    setWelcomeModalDismissed: makeSettingSetter('welcomeModalDismissed'),
+    setGoogleApiKey: makeSettingSetter('googleApiKey'),
+    setStreamSendHotkey: makeSettingSetter<string>('streamSendHotkey'),
 };
 
 const audioApi: AssistantAPI['audio'] = {
@@ -210,37 +196,27 @@ let toggleUnlisten: UnlistenFn | null = null;
 const hotkeysApi: AssistantAPI['hotkeys'] = {
     onDuration: (cb) => {
         void (async () => {
-            if (durationUnlisten) {
-                await durationUnlisten();
-                durationUnlisten = null;
-            }
-            durationUnlisten = await listen<{ sec: number }>('hotkeys:duration', (event) => {
-                cb(event, event.payload);
-            });
+            durationUnlisten = await replaceListener<{ sec: number }>(
+                durationUnlisten,
+                'hotkeys:duration',
+                (event) => cb(event, event.payload)
+            );
         })();
     },
     offDuration: () => {
-        if (durationUnlisten) {
-            void durationUnlisten();
-            durationUnlisten = null;
-        }
+        durationUnlisten = clearListener(durationUnlisten);
     },
     onToggleInput: (cb) => {
         void (async () => {
-            if (toggleUnlisten) {
-                await toggleUnlisten();
-                toggleUnlisten = null;
-            }
-            toggleUnlisten = await listen('hotkeys:toggle-input', () => {
-                cb();
-            });
+            toggleUnlisten = await replaceListener(
+                toggleUnlisten,
+                'hotkeys:toggle-input',
+                () => cb()
+            );
         })();
     },
     offToggleInput: () => {
-        if (toggleUnlisten) {
-            void toggleUnlisten();
-            toggleUnlisten = null;
-        }
+        toggleUnlisten = clearListener(toggleUnlisten);
     },
 };
 

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
@@ -31,14 +31,10 @@ const checkedCheckboxIcon = (
 
 export const GeneralSettings = () => {
     const {settings, patchLocal} = useSettingsContext();
-    const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey ?? '');
-    const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
     const [windowOpacity, setWindowOpacity] = useState(settings.windowOpacity ?? 100);
     const [windowScale, setWindowScale] = useState(settings.windowScale ?? 1);
     const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
     const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
-    const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastWindowSizeRef = useRef<{ width: number; height: number }>({
         width: settings.windowWidth ?? DEFAULT_WINDOW_WIDTH,
@@ -47,8 +43,6 @@ export const GeneralSettings = () => {
 
 
     useEffect(() => {
-        setOpenaiKey(settings.openaiApiKey ?? '');
-        setGoogleKey(settings.googleApiKey ?? '');
         setWindowOpacity(settings.windowOpacity ?? 100);
         setWindowScale(settings.windowScale ?? 1);
         const nextWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
@@ -64,32 +58,6 @@ export const GeneralSettings = () => {
     const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
         toast[tone](text);
     };
-
-    const saveOpenAi = useCallback(async (value: string) => {
-        const key = value.trim();
-        try {
-            await window.api.settings.setOpenaiApiKey(key);
-            patchLocal({openaiApiKey: key});
-            logger.info('settings', 'OpenAI API key saved');
-            showMessage(key ? 'OpenAI API key saved' : 'OpenAI API key cleared');
-        } catch (error) {
-            logger.error('settings', 'Failed to save OpenAI API key', {error});
-            showMessage('Failed to save OpenAI key', 'error');
-        }
-    }, [patchLocal]);
-
-    const saveGoogle = useCallback(async (value: string) => {
-        const key = value.trim();
-        try {
-            await window.api.settings.setGoogleApiKey(key);
-            patchLocal({googleApiKey: key});
-            logger.info('settings', 'Google API key saved');
-            showMessage(key ? 'Google API key saved' : 'Google API key cleared');
-        } catch (error) {
-            logger.error('settings', 'Failed to save Google API key', {error});
-            showMessage('Failed to save Google key', 'error');
-        }
-    }, [patchLocal]);
 
     const toggleAlwaysOnTop = async (value: boolean) => {
         try {
@@ -168,53 +136,6 @@ export const GeneralSettings = () => {
     }, [patchLocal]);
 
     useEffect(() => {
-        if (openAiSaveTimeout.current) {
-            clearTimeout(openAiSaveTimeout.current);
-            openAiSaveTimeout.current = null;
-        }
-
-        const trimmed = openaiKey.trim();
-        const current = settings.openaiApiKey ?? '';
-
-        if (trimmed === current) {
-            return;
-        }
-
-        openAiSaveTimeout.current = setTimeout(() => {
-            void saveOpenAi(trimmed);
-        }, 500);
-        return () => {
-            if (openAiSaveTimeout.current) {
-                clearTimeout(openAiSaveTimeout.current);
-                openAiSaveTimeout.current = null;
-            }
-        };
-    }, [openaiKey, saveOpenAi, settings.openaiApiKey]);
-
-    useEffect(() => {
-        if (googleSaveTimeout.current) {
-            clearTimeout(googleSaveTimeout.current);
-            googleSaveTimeout.current = null;
-        }
-        const trimmed = googleKey.trim();
-        const current = settings.googleApiKey ?? '';
-
-        if (trimmed === current) {
-            return;
-        }
-
-        googleSaveTimeout.current = setTimeout(() => {
-            void saveGoogle(trimmed);
-        }, 500);
-        return () => {
-            if (googleSaveTimeout.current) {
-                clearTimeout(googleSaveTimeout.current);
-                googleSaveTimeout.current = null;
-            }
-        };
-    }, [googleKey, saveGoogle, settings.googleApiKey]);
-
-    useEffect(() => {
         if (sizeSaveTimeout.current) {
             clearTimeout(sizeSaveTimeout.current);
         }
@@ -251,32 +172,6 @@ export const GeneralSettings = () => {
 
     return (
         <div className="settings-sections fc gap-3">
-            <section className="settings-card card">
-                <h3 className="settings-card__title">API Keys</h3>
-                <div className="settings-grid">
-                    <div className="settings-field">
-                        <TextField
-                            label="OpenAI"
-                            type="password"
-                            size={'small'}
-                            value={openaiKey}
-                            placeholder="Enter your OpenAI API key"
-                            onChange={(event) => setOpenaiKey(event.target.value)}
-                        />
-                    </div>
-                    <div className="settings-field">
-                        <TextField
-                            label="Google AI"
-                            type="password"
-                            size={'small'}
-                            value={googleKey}
-                            placeholder="Enter your Google API key"
-                            onChange={(event) => setGoogleKey(event.target.value)}
-                        />
-                    </div>
-                </div>
-            </section>
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">Window Behaviour</h3>
                 <div className="fc -mt-2">

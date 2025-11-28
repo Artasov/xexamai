@@ -12,16 +12,29 @@ export type BrowserAudioChunk = {
 
 type ChunkListener = (chunk: BrowserAudioChunk) => void;
 
-let micStream: MediaStream | null = null;
-let systemStream: MediaStream | null = null;
-let micAudioContext: AudioContext | null = null;
-let systemAudioContext: AudioContext | null = null;
-let micSourceNode: MediaStreamAudioSourceNode | null = null;
-let systemSourceNode: MediaStreamAudioSourceNode | null = null;
-let micProcessor: ScriptProcessorNode | null = null;
-let systemProcessor: ScriptProcessorNode | null = null;
-let micGainNode: GainNode | null = null;
-let systemGainNode: GainNode | null = null;
+type AudioResources = {
+    stream: MediaStream | null;
+    context: AudioContext | null;
+    source: MediaStreamAudioSourceNode | null;
+    processor: ScriptProcessorNode | null;
+    gain: GainNode | null;
+};
+
+const mic: AudioResources = {
+    stream: null,
+    context: null,
+    source: null,
+    processor: null,
+    gain: null,
+};
+
+const system: AudioResources = {
+    stream: null,
+    context: null,
+    source: null,
+    processor: null,
+    gain: null,
+};
 
 const micListeners = new Set<ChunkListener>();
 const systemListeners = new Set<ChunkListener>();
@@ -68,8 +81,37 @@ function processAudioChunk(
     });
 }
 
+const closeAudioContext = (ctx: AudioContext | null) => {
+    if (!ctx) return;
+    ctx.close().catch(() => {});
+};
+
+const stopTracks = (stream: MediaStream | null) => {
+    if (!stream) return;
+    stream.getTracks().forEach((t) => t.stop());
+};
+
+const disconnectChain = (resources: AudioResources) => {
+    try {
+        resources.source?.disconnect();
+    } catch {}
+    try {
+        resources.processor?.disconnect();
+    } catch {}
+    try {
+        resources.gain?.disconnect();
+    } catch {}
+    closeAudioContext(resources.context);
+    stopTracks(resources.stream);
+    resources.stream = null;
+    resources.context = null;
+    resources.source = null;
+    resources.processor = null;
+    resources.gain = null;
+};
+
 async function startMicCapture(deviceId?: string): Promise<void> {
-    if (micStream) {
+    if (mic.stream) {
         return;
     }
 
@@ -82,23 +124,23 @@ async function startMicCapture(deviceId?: string): Promise<void> {
                 : true,
         };
 
-        micStream = await navigator.mediaDevices.getUserMedia(constraints);
-        micAudioContext = new AudioContext({sampleRate: 48000});
-        micSourceNode = micAudioContext.createMediaStreamSource(micStream);
-        const micChannelCount = micStream.getAudioTracks()[0]?.getSettings().channelCount || 2;
-        micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, micChannelCount, micChannelCount);
-        micGainNode = micAudioContext.createGain();
-        micGainNode.gain.value = 0; // Silent output to avoid playback
+        mic.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        mic.context = new AudioContext({sampleRate: 48000});
+        mic.source = mic.context.createMediaStreamSource(mic.stream);
+        const micChannelCount = mic.stream.getAudioTracks()[0]?.getSettings().channelCount || 2;
+        mic.processor = mic.context.createScriptProcessor(BUFFER_SIZE, micChannelCount, micChannelCount);
+        mic.gain = mic.context.createGain();
+        mic.gain.gain.value = 0; // Silent output to avoid playback
 
-        micProcessor.onaudioprocess = (event) => {
+        mic.processor.onaudioprocess = (event) => {
             if (event.inputBuffer) {
                 processAudioChunk(event.inputBuffer, 'mic', micListeners);
             }
         };
 
-        micSourceNode.connect(micProcessor);
-        micProcessor.connect(micGainNode);
-        micGainNode.connect(micAudioContext.destination);
+        mic.source.connect(mic.processor);
+        mic.processor.connect(mic.gain);
+        mic.gain.connect(mic.context.destination);
 
         logger.info('browserAudio', 'Mic capture started');
     } catch (error) {
@@ -108,14 +150,14 @@ async function startMicCapture(deviceId?: string): Promise<void> {
 }
 
 async function startSystemCapture(): Promise<void> {
-    if (systemStream) {
+    if (system.stream) {
         return;
     }
 
     try {
         // In Tauri we must request both video and audio even if video is unused
         // Some implementations require video: true for audio to work
-        systemStream = await navigator.mediaDevices.getDisplayMedia({
+        system.stream = await navigator.mediaDevices.getDisplayMedia({
             video: {
                 displaySurface: 'monitor',
             } as MediaTrackConstraints,
@@ -127,35 +169,35 @@ async function startSystemCapture(): Promise<void> {
         });
 
         // Stop video tracks; we do not need them
-        systemStream.getVideoTracks().forEach((track) => {
+        system.stream.getVideoTracks().forEach((track) => {
             track.stop();
         });
 
         // Ensure audio tracks exist
-        const audioTracks = systemStream.getAudioTracks();
+        const audioTracks = system.stream.getAudioTracks();
         if (audioTracks.length === 0) {
             throw new Error('No audio tracks available in system capture stream');
         }
 
-        systemAudioContext = new AudioContext({sampleRate: 48000});
-        systemSourceNode = systemAudioContext.createMediaStreamSource(systemStream);
+        system.context = new AudioContext({sampleRate: 48000});
+        system.source = system.context.createMediaStreamSource(system.stream);
         const systemChannelCount = audioTracks[0]?.getSettings().channelCount || 2;
-        systemProcessor = systemAudioContext.createScriptProcessor(BUFFER_SIZE, systemChannelCount, systemChannelCount);
-        systemGainNode = systemAudioContext.createGain();
-        systemGainNode.gain.value = 0; // Silent output to avoid playback
+        system.processor = system.context.createScriptProcessor(BUFFER_SIZE, systemChannelCount, systemChannelCount);
+        system.gain = system.context.createGain();
+        system.gain.gain.value = 0; // Silent output to avoid playback
 
-        systemProcessor.onaudioprocess = (event) => {
+        system.processor.onaudioprocess = (event) => {
             if (event.inputBuffer) {
                 processAudioChunk(event.inputBuffer, 'system', systemListeners);
             }
         };
 
-        systemSourceNode.connect(systemProcessor);
-        systemProcessor.connect(systemGainNode);
-        systemGainNode.connect(systemAudioContext.destination);
+        system.source.connect(system.processor);
+        system.processor.connect(system.gain);
+        system.gain.connect(system.context.destination);
 
         // Handle user stopping the track
-        systemStream.getAudioTracks().forEach((track) => {
+        system.stream.getAudioTracks().forEach((track) => {
             track.onended = () => {
                 logger.info('browserAudio', 'System audio track ended by user');
                 stopSystemCapture();
@@ -170,68 +212,12 @@ async function startSystemCapture(): Promise<void> {
 }
 
 function stopMicCapture(): void {
-    if (micGainNode) {
-        try {
-            micGainNode.disconnect();
-        } catch {
-        }
-        micGainNode = null;
-    }
-    if (micProcessor) {
-        try {
-            micProcessor.disconnect();
-        } catch {
-        }
-        micProcessor = null;
-    }
-    if (micSourceNode) {
-        try {
-            micSourceNode.disconnect();
-        } catch {
-        }
-        micSourceNode = null;
-    }
-    if (micAudioContext) {
-        micAudioContext.close().catch(() => {});
-        micAudioContext = null;
-    }
-    if (micStream) {
-        micStream.getTracks().forEach((t) => t.stop());
-        micStream = null;
-    }
+    disconnectChain(mic);
     micListeners.clear();
 }
 
 function stopSystemCapture(): void {
-    if (systemGainNode) {
-        try {
-            systemGainNode.disconnect();
-        } catch {
-        }
-        systemGainNode = null;
-    }
-    if (systemProcessor) {
-        try {
-            systemProcessor.disconnect();
-        } catch {
-        }
-        systemProcessor = null;
-    }
-    if (systemSourceNode) {
-        try {
-            systemSourceNode.disconnect();
-        } catch {
-        }
-        systemSourceNode = null;
-    }
-    if (systemAudioContext) {
-        systemAudioContext.close().catch(() => {});
-        systemAudioContext = null;
-    }
-    if (systemStream) {
-        systemStream.getTracks().forEach((t) => t.stop());
-        systemStream = null;
-    }
+    disconnectChain(system);
     systemListeners.clear();
 }
 

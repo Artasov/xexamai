@@ -16,6 +16,8 @@ use crate::constants::{
     DEFAULT_WINDOW_WIDTH,
 };
 
+const VALID_LOCAL_DEVICES: &[&str] = &["auto", "cpu", "cuda", "metal", "gpu"];
+
 fn default_durations() -> Vec<u32> {
     DEFAULT_DURATIONS.to_vec()
 }
@@ -273,7 +275,10 @@ impl AppConfig {
         if self.local_whisper_model.trim().is_empty() {
             self.local_whisper_model = DEFAULT_LOCAL_WHISPER_MODEL.to_string();
         }
-        if !matches!(self.local_device.as_str(), "cpu" | "gpu") {
+        let normalized_device = self.local_device.trim().to_lowercase();
+        if VALID_LOCAL_DEVICES.contains(&normalized_device.as_str()) {
+            self.local_device = normalized_device;
+        } else {
             self.local_device = DEFAULT_LOCAL_DEVICE.to_string();
         }
 

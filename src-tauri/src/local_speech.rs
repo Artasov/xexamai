@@ -2,13 +2,9 @@ use std::fs;
 use std::fs::File;
 use std::future::Future;
 use std::io::Cursor;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-#[cfg(windows)]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
@@ -108,17 +104,6 @@ fn load_install_dir_from_hint(app: &AppHandle) -> Option<PathBuf> {
     normalize_install_dir(&contents).map(normalize_saved_path)
 }
 
-fn paths_equal(lhs: &PathBuf, rhs: &PathBuf) -> bool {
-    #[cfg(windows)]
-    {
-        lhs.to_string_lossy().to_lowercase() == rhs.to_string_lossy().to_lowercase()
-    }
-    #[cfg(not(windows))]
-    {
-        lhs == rhs
-    }
-}
-
 fn remember_install_dir(path: &PathBuf) {
     let value = path.to_string_lossy();
     std::env::set_var(FAST_WHISPER_INSTALL_ENV_VAR, value.as_ref());
@@ -170,7 +155,6 @@ async fn persist_windows_env_var(path: PathBuf) -> Result<()> {
 pub struct FastWhisperManager {
     status: Mutex<FastWhisperStatus>,
     lock: Mutex<()>,
-    install_override: StdMutex<Option<PathBuf>>,
 }
 
 impl FastWhisperManager {
@@ -178,13 +162,6 @@ impl FastWhisperManager {
         Self {
             status: Mutex::new(FastWhisperStatus::new("Local server is not installed.")),
             lock: Mutex::new(()),
-            install_override: StdMutex::new(None),
-        }
-    }
-
-    pub async fn set_install_override(&self, path: Option<PathBuf>) {
-        if let Ok(mut guard) = self.install_override.lock() {
-            *guard = path;
         }
     }
 
@@ -659,12 +636,6 @@ impl FastWhisperManager {
     }
 
     fn install_root(&self, app: &AppHandle) -> PathBuf {
-        if let Ok(guard) = self.install_override.lock() {
-            if let Some(path) = guard.clone() {
-                return path;
-            }
-        }
-
         if let Some(saved) = self.load_saved_install_root(app) {
             self.remember_install_dir(&saved);
             return saved;

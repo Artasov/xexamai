@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use serde::Serialize;
 use std::io;
 use std::process::Stdio;
 use tokio::process::Command;
@@ -49,11 +48,6 @@ pub async fn check_installed() -> Result<bool> {
             }
         }
     }
-}
-
-#[derive(Serialize)]
-pub struct OllamaModelList {
-    pub models: Vec<String>,
 }
 
 pub async fn list_models() -> Result<Vec<String>> {

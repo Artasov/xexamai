@@ -58,6 +58,24 @@ export class StreamController {
     private streamModeInitialized = false;
     private googleStreamingActive = false;
 
+    private toErrorMessage(error: unknown): string {
+        return error instanceof Error ? error.message : String(error);
+    }
+
+    private setErrorStatus(message: string): void {
+        setStatus(message, 'error');
+        setProcessing(false);
+        updateButtonsState();
+    }
+
+    private async loadSettingsSafe(): Promise<any> {
+        try {
+            return settingsStore.get();
+        } catch {
+            return settingsStore.load();
+        }
+    }
+
     private readonly onTranscript = (text: string) => {
         if (!this.streamResults) return;
         this.streamResults.value += `${text} `;
@@ -112,12 +130,7 @@ export class StreamController {
     }
 
     async syncInitialSettings(): Promise<void> {
-        let settings: any;
-        try {
-            settings = settingsStore.get();
-        } catch {
-            settings = await settingsStore.load();
-        }
+        const settings = await this.loadSettingsSafe();
         this.currentStreamSendHotkey = settings.streamSendHotkey || '~';
         const audioInputType = (settings.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
         setAudioInputType(audioInputType);
@@ -198,105 +211,26 @@ export class StreamController {
             return;
         }
 
-        // Check if audio has actual signal (not just silence)
+        let audioBuffer: ArrayBuffer;
         let maxAmplitude = 0;
-        let sumSquared = 0;
-        let sampleCount = 0;
-        for (const channel of pcm.channels) {
-            for (let i = 0; i < channel.length; i++) {
-                const amp = Math.abs(channel[i]);
-                sumSquared += channel[i] * channel[i];
-                sampleCount++;
-                if (amp > maxAmplitude) {
-                    maxAmplitude = amp;
-                }
-            }
-        }
-        const rms = Math.sqrt(sumSquared / Math.max(1, sampleCount));
-        
-        // If amplitude is too low, likely silence or very quiet
-        // Lowered threshold because Rust code now applies gain
-        if (maxAmplitude < 0.0001 && rms < 0.00005) {
-            logger.warn('ui', 'Audio appears to be silence', { 
-                maxAmplitude, 
-                rms,
-                seconds, 
-                frames: pcm.channels[0].length 
-            });
-            setStatus('No audio signal detected (silence). Check microphone and speak louder.', 'error');
-            setProcessing(false);
-            updateButtonsState();
-            return;
-        }
-        
-        // Warn if audio is very quiet but not completely silent
-        if (maxAmplitude < 0.01) {
-            logger.warn('ui', 'Audio is very quiet, may cause transcription issues', { 
-                maxAmplitude, 
-                rms,
-                seconds 
-            });
-        }
-
-        // Additional validation: check if all channels have same length
-        const expectedFrames = pcm.channels[0]?.length || 0;
-        for (let i = 1; i < pcm.channels.length; i++) {
-            if (pcm.channels[i]?.length !== expectedFrames) {
-                logger.error('ui', 'Channel length mismatch', {
-                    channel0: pcm.channels[0]?.length,
-                    channelI: pcm.channels[i]?.length,
-                    channelIndex: i,
-                });
-            }
-        }
-        
-        const wav = floatsToWav(pcm.channels, pcm.sampleRate);
-        const arrayBuffer = await wav.arrayBuffer();
-        
-        // Validate WAV file size (should be at least 44 bytes header + some data)
-        if (arrayBuffer.byteLength < 1000) {
-            logger.error('ui', 'WAV file too small', { 
-                size: arrayBuffer.byteLength, 
-                seconds, 
-                frames: expectedFrames,
-                sampleRate: pcm.sampleRate,
-                channels: pcm.channels.length,
-            });
-            setStatus('Audio buffer too small or empty', 'error');
-            setProcessing(false);
-            updateButtonsState();
-            return;
-        }
-        
-        // Validate WAV header
-        const view = new DataView(arrayBuffer);
-        const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
-        const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
-        if (riff !== 'RIFF' || wave !== 'WAVE') {
-            logger.error('ui', 'Invalid WAV header', { riff, wave });
-            setStatus('Invalid audio format', 'error');
-            setProcessing(false);
-            updateButtonsState();
-            return;
-        }
-        
-        // Check actual audio data (skip 44-byte header)
+        let rms = 0;
+        let expectedFrames = 0;
         let dataMaxAmp = 0;
-        let dataSampleCount = 0;
-        if (arrayBuffer.byteLength > 44) {
-            const dataView = new DataView(arrayBuffer, 44);
-            const sampleCount = (arrayBuffer.byteLength - 44) / 2;
-            for (let i = 0; i < Math.min(sampleCount, 1000); i++) {
-                const sample = dataView.getInt16(i * 2, true);
-                const amp = Math.abs(sample / 32767.0);
-                if (amp > dataMaxAmp) dataMaxAmp = amp;
-                dataSampleCount++;
-            }
+        try {
+            const result = await this.prepareAudioBuffer(pcm, seconds);
+            audioBuffer = result.arrayBuffer;
+            maxAmplitude = result.maxAmplitude;
+            rms = result.rms;
+            expectedFrames = result.expectedFrames;
+            dataMaxAmp = result.dataMaxAmp;
+        } catch (error) {
+            this.setErrorStatus(this.toErrorMessage(error));
+            return;
         }
         
         const requestId = `ask-window-${seconds}-` + Date.now();
         logger.info('ui', 'Sending audio for transcription', {
-            size: arrayBuffer.byteLength,
+            size: audioBuffer.byteLength,
             seconds,
             sampleRate: pcm.sampleRate,
             channels: pcm.channels.length,
@@ -309,7 +243,7 @@ export class StreamController {
 
         try {
             const transcribeRes = await window.api.assistant.transcribeOnly({
-                arrayBuffer,
+                arrayBuffer: audioBuffer,
                 mime: 'audio/wav',
                 filename: `last_${seconds}s.wav`,
                 audioSeconds: seconds,
@@ -436,6 +370,96 @@ export class StreamController {
         }
     }
 
+    private async prepareAudioBuffer(
+        pcm: { channels: Float32Array[]; sampleRate: number },
+        seconds: number
+    ): Promise<{
+        arrayBuffer: ArrayBuffer;
+        maxAmplitude: number;
+        rms: number;
+        expectedFrames: number;
+        dataMaxAmp: number;
+    }> {
+        let maxAmplitude = 0;
+        let sumSquared = 0;
+        let sampleCount = 0;
+        for (const channel of pcm.channels) {
+            for (let i = 0; i < channel.length; i++) {
+                const amp = Math.abs(channel[i]);
+                sumSquared += channel[i] * channel[i];
+                sampleCount++;
+                if (amp > maxAmplitude) {
+                    maxAmplitude = amp;
+                }
+            }
+        }
+        const rms = Math.sqrt(sumSquared / Math.max(1, sampleCount));
+
+        if (maxAmplitude < 0.0001 && rms < 0.00005) {
+            logger.warn('ui', 'Audio appears to be silence', {
+                maxAmplitude,
+                rms,
+                seconds,
+                frames: pcm.channels[0].length,
+            });
+            throw new Error('No audio signal detected (silence). Check microphone and speak louder.');
+        }
+
+        if (maxAmplitude < 0.01) {
+            logger.warn('ui', 'Audio is very quiet, may cause transcription issues', {
+                maxAmplitude,
+                rms,
+                seconds,
+            });
+        }
+
+        const expectedFrames = pcm.channels[0]?.length || 0;
+        for (let i = 1; i < pcm.channels.length; i++) {
+            if (pcm.channels[i]?.length !== expectedFrames) {
+                logger.error('ui', 'Channel length mismatch', {
+                    channel0: pcm.channels[0]?.length,
+                    channelI: pcm.channels[i]?.length,
+                    channelIndex: i,
+                });
+            }
+        }
+
+        const wav = floatsToWav(pcm.channels, pcm.sampleRate);
+        const arrayBuffer = await wav.arrayBuffer();
+
+        if (arrayBuffer.byteLength < 1000) {
+            logger.error('ui', 'WAV file too small', {
+                size: arrayBuffer.byteLength,
+                seconds,
+                frames: expectedFrames,
+                sampleRate: pcm.sampleRate,
+                channels: pcm.channels.length,
+            });
+            throw new Error('Audio buffer too small or empty');
+        }
+
+        const view = new DataView(arrayBuffer);
+        const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+        const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+        if (riff !== 'RIFF' || wave !== 'WAVE') {
+            logger.error('ui', 'Invalid WAV header', { riff, wave });
+            throw new Error('Invalid audio format');
+        }
+
+        let dataMaxAmp = 0;
+        if (arrayBuffer.byteLength > 44) {
+            const dataView = new DataView(arrayBuffer, 44);
+            const sampleCount = (arrayBuffer.byteLength - 44) / 2;
+            for (let i = 0; i < Math.min(sampleCount, 1000); i++) {
+                const sample = dataView.getInt16(i * 2, true);
+                const amp = Math.abs(sample / 32767.0);
+                if (amp > dataMaxAmp) dataMaxAmp = amp;
+            }
+        }
+
+        return { arrayBuffer, maxAmplitude, rms, expectedFrames, dataMaxAmp };
+    }
+
     private async sendChatRequest(requestId: string, text: string): Promise<void> {
         if (!(await this.ensureLlmReady())) {
             return;
@@ -492,12 +516,7 @@ export class StreamController {
     }
 
     private async ensureLlmReady(): Promise<boolean> {
-        let settings: any;
-        try {
-            settings = settingsStore.get();
-        } catch {
-            settings = await settingsStore.load();
-        }
+        const settings = await this.loadSettingsSafe();
 
         if (settings.llmHost !== 'local') {
             return true;
@@ -580,12 +599,7 @@ export class StreamController {
 
     private async handleAudioInputToggle(source: ToggleSource): Promise<void> {
         try {
-            let settingsSnapshot: any;
-            try {
-                settingsSnapshot = settingsStore.get();
-            } catch {
-                settingsSnapshot = await settingsStore.load();
-            }
+            const settingsSnapshot = await this.loadSettingsSafe();
             const currentType = (settingsSnapshot.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
             const nextType: 'microphone' | 'system' | 'mixed' =
                 currentType === 'microphone'
@@ -636,12 +650,7 @@ export class StreamController {
 
         if (state.isRecording) {
             try {
-                let settings: any;
-                try {
-                    settings = settingsStore.get();
-                } catch {
-                    settings = await settingsStore.load();
-                }
+                const settings = await this.loadSettingsSafe();
                 await this.googleStreamingService.stop();
                 this.googleStreamingActive = false;
                 setStatus('Recording...', 'recording');
@@ -666,13 +675,8 @@ export class StreamController {
 
         let type: 'microphone' | 'system' | 'mixed' | undefined = preferred as any;
         if (!type) {
-            try {
-                const settings = settingsStore.get();
-                type = (settings.audioInputType || 'mixed') as any;
-            } catch {
-                const settings = await settingsStore.load();
-                type = (settings.audioInputType || 'mixed') as any;
-            }
+            const settings = await this.loadSettingsSafe();
+            type = (settings.audioInputType || 'mixed') as any;
         }
         if (!type) type = getAudioInputType();
 

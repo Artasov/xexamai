@@ -1,5 +1,4 @@
 import {MouseEvent, useEffect, useMemo, useState} from 'react';
-import {createRoot, Root} from 'react-dom/client';
 import {
     Box,
     Button,
@@ -15,6 +14,7 @@ import {
 } from '@mui/material';
 import {ThemeProvider} from '@mui/material/styles';
 import {muiTheme} from '../mui/config.mui';
+import {createPortalRoot} from './portalRoot';
 
 type CommunityLink = {
     label: string;
@@ -250,32 +250,21 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
     );
 }
 
-let welcomeModalContainer: HTMLDivElement | null = null;
-let welcomeModalRoot: Root | null = null;
 let welcomeModalOpen = false;
+const welcomePortal = createPortalRoot();
 
 function ensureWelcomeModalRoot(): void {
-    if (welcomeModalRoot && welcomeModalContainer) return;
-    welcomeModalContainer = document.createElement('div');
-    document.body.appendChild(welcomeModalContainer);
-    welcomeModalRoot = createRoot(welcomeModalContainer);
+    welcomePortal.ensure();
 }
 
 function destroyWelcomeModalRoot(): void {
-    if (welcomeModalRoot) {
-        welcomeModalRoot.unmount();
-        welcomeModalRoot = null;
-    }
-    if (welcomeModalContainer) {
-        welcomeModalContainer.remove();
-        welcomeModalContainer = null;
-    }
+    welcomePortal.destroy();
     welcomeModalOpen = false;
 }
 
 function renderWelcomeModal(open: boolean, onClose: (options: {dismiss?: boolean}) => void) {
-    if (!welcomeModalRoot || !welcomeModalContainer) return;
-    welcomeModalRoot.render(
+    if (!welcomePortal.isReady()) return;
+    welcomePortal.render(
         <ThemeProvider theme={muiTheme}>
             <WelcomeDialog open={open} onClose={onClose} />
         </ThemeProvider>,
