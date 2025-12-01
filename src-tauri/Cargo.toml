@@ -29,6 +29,16 @@ url = "2.5"
 urlencoding = "2.1"
 uuid = { version = "1.8", features = ["serde", "v4"] }
 winapi = { version = "0.3", features = ["winuser", "dwmapi"] }
+zip = "0.6"
+flate2 = "1.0"
+futures-util = "0.3"
+image = "0.25"
+cpal = "0.15"
+crossbeam-channel = "0.5"
+bytemuck = { version = "1.15", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
 windows = { version = "0.60", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
@@ -38,14 +48,6 @@ windows = { version = "0.60", features = [
     "Win32_System_Com",
     "Win32_System_Ole",
 ] }
-zip = "0.6"
-flate2 = "1.0"
-futures-util = "0.3"
-image = "0.25"
-winreg = "0.52"
-cpal = "0.15"
-crossbeam-channel = "0.5"
-bytemuck = { version = "1.15", features = ["derive"] }
 
 [features]
 default = ["custom-protocol"]
