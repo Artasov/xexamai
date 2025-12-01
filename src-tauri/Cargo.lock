@@ -6985,7 +6985,7 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[package]]
 name = "xexamai"
-version = "2.0.2"
+version = "2.0.3"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
