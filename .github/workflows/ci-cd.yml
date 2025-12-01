@@ -45,8 +45,8 @@ jobs:
       - name: Type check
         run: npm run lint
 
-      - name: Build renderer and main bundles
-        run: npm run build:assets
+      - name: Build renderer bundle
+        run: npm run build:renderer
 
   package:
     name: Package ${{ matrix.os }}
