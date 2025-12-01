@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 const FONT_SIZE_KEY = 'xexamai-answer-font-size';
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 24;
@@ -18,7 +20,7 @@ export function detachAnswerFontSizeControls(): void {
 
 function attachWheelListener(): void {
     if (wheelListenerAttached) return;
-    document.addEventListener('wheel', handleFontSizeWheel, { passive: false });
+    document.addEventListener('wheel', handleFontSizeWheel, {passive: false});
     wheelListenerAttached = true;
 }
 

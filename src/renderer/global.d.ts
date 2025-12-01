@@ -1,4 +1,6 @@
-import type {AssistantAPI} from '../shared/ipc';
+// noinspection JSUnusedGlobalSymbols
+
+import type {AssistantAPI} from '@shared/ipc';
 
 declare global {
     interface Window {

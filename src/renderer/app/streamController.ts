@@ -7,17 +7,22 @@ import {logger} from '../utils/logger';
 import {settingsStore} from '../state/settingsStore';
 import {GoogleStreamingService} from '../services/googleStreamingService';
 import {
+    checkOllamaInstalled,
+    checkOllamaModelDownloaded,
+    isOllamaModelDownloading,
+    isOllamaModelWarming,
+    normalizeOllamaModelName
+} from '../services/ollama';
+import {LOCAL_LLM_MODELS} from '@shared/constants';
+import type {SwitchAudioResult} from './audioSession';
+import {
+    getAudioInputType,
+    getLastSecondsFloats,
+    setAudioInputType,
     startRecording as startAudioRecording,
     stopRecording as stopAudioRecording,
     switchAudioInput as switchAudioInputDevice,
-    getAudioInputType,
-    setAudioInputType,
-    getCurrentStream,
-    getLastSecondsFloats,
-    clonePersistentSystemTrack,
-    registerPersistentSystemTrack,
 } from './audioSession';
-import type {SwitchAudioResult} from './audioSession';
 import {hideStopButton, showStopButton} from '../ui/stopButton';
 
 type StreamElements = {
@@ -52,6 +57,24 @@ export class StreamController {
     private streamAccumulator = '';
     private streamModeInitialized = false;
     private googleStreamingActive = false;
+
+    private toErrorMessage(error: unknown): string {
+        return error instanceof Error ? error.message : String(error);
+    }
+
+    private setErrorStatus(message: string): void {
+        setStatus(message, 'error');
+        setProcessing(false);
+        updateButtonsState();
+    }
+
+    private async loadSettingsSafe(): Promise<any> {
+        try {
+            return settingsStore.get();
+        } catch {
+            return settingsStore.load();
+        }
+    }
 
     private readonly onTranscript = (text: string) => {
         if (!this.streamResults) return;
@@ -107,15 +130,12 @@ export class StreamController {
     }
 
     async syncInitialSettings(): Promise<void> {
-        let settings: any;
-        try {
-            settings = settingsStore.get();
-        } catch {
-            settings = await settingsStore.load();
-        }
+        const settings = await this.loadSettingsSafe();
         this.currentStreamSendHotkey = settings.streamSendHotkey || '~';
-        await this.updateToggleButtonLabel(settings.audioInputType as 'microphone' | 'system' | undefined);
-        await this.updateStreamModeVisibility(settings.streamMode as 'base' | 'stream' | undefined);
+        const audioInputType = (settings.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
+        setAudioInputType(audioInputType);
+        await this.updateToggleButtonLabel(audioInputType);
+        await this.updateStreamModeVisibility('base');
     }
 
     handleSettingsChange(key: string, value: unknown): boolean | Promise<boolean> {
@@ -124,13 +144,9 @@ export class StreamController {
                 this.currentStreamSendHotkey = (value as string) || '~';
                 return true;
             }
-            case 'streamMode': {
-                settingsStore.patch({ streamMode: value as 'base' | 'stream' });
-                return this.updateStreamModeVisibility(value as 'base' | 'stream').then(() => true);
-            }
             case 'audioInputType': {
-                const normalized = value === 'system' ? 'system' : 'microphone';
-                settingsStore.patch({ audioInputType: normalized });
+                const normalized = value === 'system' ? 'system' : (value === 'mixed' ? 'mixed' : 'microphone');
+                settingsStore.patch({audioInputType: normalized});
                 setAudioInputType(normalized);
                 return this.updateToggleButtonLabel(normalized).then(() => true);
             }
@@ -143,7 +159,7 @@ export class StreamController {
         try {
             if (shouldRecord) {
                 await startAudioRecording();
-                await this.updateStreamModeVisibility();
+                await this.updateStreamModeVisibility('base');
             } else {
                 await stopAudioRecording();
                 await this.googleStreamingService.stop();
@@ -154,9 +170,9 @@ export class StreamController {
             const message = error instanceof Error ? error.message : String(error);
             const code = (error as any)?.code;
             if (code === 'system-audio-capture-failed' || message === 'system-audio-capture-failed') {
-                setStatus('Не удалось захватить системный звук. Разрешите доступ или переключитесь на микрофон.', 'error');
+                setStatus('System audio capture failed. Grant access or switch to microphone.', 'error');
             } else {
-                setStatus('Ошибка запуска записи', 'error');
+                setStatus('Failed to start recording', 'error');
             }
             setRecording(false);
             updateButtonsState();
@@ -165,11 +181,7 @@ export class StreamController {
     }
 
     async handleAskWindow(seconds: number): Promise<void> {
-        logger.info('ui', 'Handle ask window', { seconds });
-
-        if (this.isStreamMode) {
-            return;
-        }
+        logger.info('ui', 'Handle ask window', {seconds});
 
         if (this.currentRequestId) {
             await this.stopActiveStream();
@@ -186,19 +198,52 @@ export class StreamController {
 
         const pcm = getLastSecondsFloats(seconds);
         if (!pcm || pcm.channels[0].length === 0) {
+            logger.warn('ui', 'No audio in buffer', {
+                seconds,
+                hasPcm: !!pcm,
+                channelsLength: pcm?.channels?.length || 0,
+                firstChannelLength: pcm?.channels[0]?.length || 0,
+                inputType: getAudioInputType()
+            });
             setStatus('No audio in buffer', 'error');
             setProcessing(false);
             updateButtonsState();
             return;
         }
 
-        const wav = floatsToWav(pcm.channels, pcm.sampleRate);
-        const arrayBuffer = await wav.arrayBuffer();
+        let audioBuffer: ArrayBuffer;
+        let maxAmplitude = 0;
+        let rms = 0;
+        let expectedFrames = 0;
+        let dataMaxAmp = 0;
+        try {
+            const result = await this.prepareAudioBuffer(pcm, seconds);
+            audioBuffer = result.arrayBuffer;
+            maxAmplitude = result.maxAmplitude;
+            rms = result.rms;
+            expectedFrames = result.expectedFrames;
+            dataMaxAmp = result.dataMaxAmp;
+        } catch (error) {
+            this.setErrorStatus(this.toErrorMessage(error));
+            return;
+        }
+
         const requestId = `ask-window-${seconds}-` + Date.now();
+        logger.info('ui', 'Sending audio for transcription', {
+            size: audioBuffer.byteLength,
+            seconds,
+            sampleRate: pcm.sampleRate,
+            channels: pcm.channels.length,
+            frames: expectedFrames,
+            maxAmplitude,
+            rms,
+            wavDataMaxAmp: dataMaxAmp,
+            wavHeaderValid: true,
+        });
 
         try {
             const transcribeRes = await window.api.assistant.transcribeOnly({
-                arrayBuffer,
+                arrayBuffer: audioBuffer,
                 mime: 'audio/wav',
                 filename: `last_${seconds}s.wav`,
                 audioSeconds: seconds,
@@ -281,9 +326,9 @@ export class StreamController {
         }
 
         const requestId = this.currentRequestId;
-        logger.info('ui', 'Stop stream requested', { requestId });
+        logger.info('ui', 'Stop stream requested', {requestId});
         try {
-            await window.api.assistant.stopStream({ requestId });
+            await window.api.assistant.stopStream({requestId});
         } catch (error) {
             console.error('Stop stream error', error);
         } finally {
@@ -301,52 +346,19 @@ export class StreamController {
         await this.handleAudioInputToggle('hotkey');
     }
 
-    async updateStreamModeVisibility(preferred?: 'base' | 'stream'): Promise<void> {
+    async updateStreamModeVisibility(_preferred?: 'base' | 'stream'): Promise<void> {
         try {
-            let streamMode = preferred;
-            if (!streamMode) {
-                try {
-                    const snapshot = settingsStore.get();
-                    streamMode = (snapshot.streamMode || 'base') as 'base' | 'stream';
-                } catch {
-                    const snapshot = await settingsStore.load();
-                    streamMode = (snapshot.streamMode || 'base') as 'base' | 'stream';
-                }
-            }
-            const nextIsStreamMode = streamMode === 'stream';
-            const modeChanged = !this.streamModeInitialized || this.isStreamMode !== nextIsStreamMode;
-            this.isStreamMode = nextIsStreamMode;
+            this.isStreamMode = false;
             this.streamModeInitialized = true;
-
-            if (modeChanged) {
-                if (this.streamModeContainer) {
-                    this.streamModeContainer.classList.toggle('hidden', !this.isStreamMode);
-                    this.streamModeContainer.style.display = this.isStreamMode ? 'block' : 'none';
-                }
-                if (this.durationsContainer) {
-                    this.durationsContainer.classList.toggle('hidden', this.isStreamMode);
-                    this.durationsContainer.style.display = this.isStreamMode ? 'none' : 'block';
-                }
+            if (this.streamModeContainer) {
+                this.streamModeContainer.classList.add('hidden');
+                this.streamModeContainer.style.display = 'none';
             }
-
-            const activeStream = getCurrentStream();
-            if (this.isStreamMode && activeStream) {
-                if (!this.googleStreamingActive || modeChanged) {
-                    try {
-                        setStatus('Preparing Google stream...', 'processing');
-                    } catch {
-                    }
-                    try {
-                        await this.googleStreamingService.start(activeStream);
-                        this.googleStreamingActive = true;
-                        setStatus('Google streaming active', 'processing');
-                    } catch (error) {
-                        this.googleStreamingActive = false;
-                        console.error('Failed to start Google streaming:', error);
-                        setStatus('Failed to start Google streaming', 'error');
-                    }
-                }
-            } else if (this.googleStreamingActive && (!this.isStreamMode || modeChanged)) {
+            if (this.durationsContainer) {
+                this.durationsContainer.classList.remove('hidden');
+                this.durationsContainer.style.display = 'block';
+            }
+            if (this.googleStreamingActive) {
                 try {
                     await this.googleStreamingService.stop();
                 } catch {
@@ -358,29 +370,104 @@ export class StreamController {
         }
     }
 
-    private async finalizeStreamIfActive(localRequestId?: string): Promise<void> {
-        try {
-            if (!this.currentRequestId) return;
-            if (localRequestId && this.currentRequestId !== localRequestId) return;
-            this.currentRequestId = null;
-            try {
-                setStatus('Done', 'ready');
-            } catch {
+    private async prepareAudioBuffer(
+        pcm: { channels: Float32Array[]; sampleRate: number },
+        seconds: number
+    ): Promise<{
+        arrayBuffer: ArrayBuffer;
+        maxAmplitude: number;
+        rms: number;
+        expectedFrames: number;
+        dataMaxAmp: number;
+    }> {
+        let maxAmplitude = 0;
+        let sumSquared = 0;
+        let sampleCount = 0;
+        for (const channel of pcm.channels) {
+            for (let i = 0; i < channel.length; i++) {
+                const amp = Math.abs(channel[i]);
+                sumSquared += channel[i] * channel[i];
+                sampleCount++;
+                if (amp > maxAmplitude) {
+                    maxAmplitude = amp;
+                }
             }
-            setProcessing(false);
-            hideStopButton();
-            updateButtonsState();
-            this.removeStreamHandlers();
-        } catch {
         }
+        const rms = Math.sqrt(sumSquared / Math.max(1, sampleCount));
+
+        if (maxAmplitude < 0.0001 && rms < 0.00005) {
+            logger.warn('ui', 'Audio appears to be silence', {
+                maxAmplitude,
+                rms,
+                seconds,
+                frames: pcm.channels[0].length,
+            });
+            throw new Error('No audio signal detected (silence). Check microphone and speak louder.');
+        }
+
+        if (maxAmplitude < 0.01) {
+            logger.warn('ui', 'Audio is very quiet, may cause transcription issues', {
+                maxAmplitude,
+                rms,
+                seconds,
+            });
+        }
+
+        const expectedFrames = pcm.channels[0]?.length || 0;
+        for (let i = 1; i < pcm.channels.length; i++) {
+            if (pcm.channels[i]?.length !== expectedFrames) {
+                logger.error('ui', 'Channel length mismatch', {
+                    channel0: pcm.channels[0]?.length,
+                    channelI: pcm.channels[i]?.length,
+                    channelIndex: i,
+                });
+            }
+        }
+
+        const wav = floatsToWav(pcm.channels, pcm.sampleRate);
+        const arrayBuffer = await wav.arrayBuffer();
+
+        if (arrayBuffer.byteLength < 1000) {
+            logger.error('ui', 'WAV file too small', {
+                size: arrayBuffer.byteLength,
+                seconds,
+                frames: expectedFrames,
+                sampleRate: pcm.sampleRate,
+                channels: pcm.channels.length,
+            });
+            throw new Error('Audio buffer too small or empty');
+        }
+
+        const view = new DataView(arrayBuffer);
+        const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+        const wave = String.fromCharCode(view.getUint8(8), view.getUint8(9), view.getUint8(10), view.getUint8(11));
+        if (riff !== 'RIFF' || wave !== 'WAVE') {
+            logger.error('ui', 'Invalid WAV header', {riff, wave});
+            throw new Error('Invalid audio format');
+        }
+
+        let dataMaxAmp = 0;
+        if (arrayBuffer.byteLength > 44) {
+            const dataView = new DataView(arrayBuffer, 44);
+            const sampleCount = (arrayBuffer.byteLength - 44) / 2;
+            for (let i = 0; i < Math.min(sampleCount, 1000); i++) {
+                const sample = dataView.getInt16(i * 2, true);
+                const amp = Math.abs(sample / 32767.0);
+                if (amp > dataMaxAmp) dataMaxAmp = amp;
+            }
+        }
+
+        return {arrayBuffer, maxAmplitude, rms, expectedFrames, dataMaxAmp};
     }
 
     private async sendChatRequest(requestId: string, text: string): Promise<void> {
+        if (!(await this.ensureLlmReady())) {
+            return;
+        }
         this.currentRequestId = requestId;
         this.prepareStreamHandlers(requestId);
         showStopButton();
-        await window.api.assistant.askChat({ text, requestId });
-        await this.finalizeStreamIfActive(requestId);
+        await window.api.assistant.askChat({text, requestId});
     }
 
     private prepareStreamHandlers(requestId: string): void {
@@ -397,7 +484,7 @@ export class StreamController {
 
         this.streamDoneHandler = (_e: unknown, payload: { requestId?: string; full: string }) => {
             if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-            logger.info('stream', 'Stream done handler called', { requestId: payload.requestId });
+            logger.info('stream', 'Stream done handler called', {requestId: payload.requestId});
             this.currentRequestId = null;
             setStatus('Done', 'ready');
             setProcessing(false);
@@ -408,7 +495,7 @@ export class StreamController {
 
         this.streamErrorHandler = (_e: unknown, payload: { requestId?: string; error: string }) => {
             if (!payload || (payload.requestId && payload.requestId !== requestId)) return;
-            logger.info('stream', 'Stream error handler called', { requestId: payload.requestId, error: payload.error });
+            logger.info('stream', 'Stream error handler called', {requestId: payload.requestId, error: payload.error});
             this.currentRequestId = null;
             const msg = (payload.error || '').toString();
             if (msg.toLowerCase().includes('aborted')) {
@@ -426,6 +513,52 @@ export class StreamController {
         window.api.assistant.onStreamDelta(this.streamDeltaHandler);
         window.api.assistant.onStreamDone(this.streamDoneHandler);
         window.api.assistant.onStreamError(this.streamErrorHandler);
+    }
+
+    private async ensureLlmReady(): Promise<boolean> {
+        const settings = await this.loadSettingsSafe();
+
+        if (settings.llmHost !== 'local') {
+            return true;
+        }
+
+        const model = normalizeOllamaModelName(
+            settings.localLlmModel || settings.llmModel || LOCAL_LLM_MODELS[0] || 'gpt-oss:20b'
+        );
+
+        try {
+            const installed = await checkOllamaInstalled();
+            if (!installed) {
+                setStatus('Install Ollama to use local LLMs', 'error');
+                return false;
+            }
+        } catch (error) {
+            logger.error('llm', 'Failed to detect Ollama', {error});
+            setStatus('Failed to detect Ollama installation', 'error');
+            return false;
+        }
+
+        try {
+            const downloaded = await checkOllamaModelDownloaded(model, {force: true});
+            if (!downloaded) {
+                setStatus(`Download the ${model} LLM model first`, 'error');
+                return false;
+            }
+            if (isOllamaModelDownloading(model)) {
+                setStatus(`The ${model} model is downloading`, 'error');
+                return false;
+            }
+            if (isOllamaModelWarming(model)) {
+                setStatus(`The ${model} model is warming up`, 'error');
+                return false;
+            }
+        } catch (error) {
+            logger.error('llm', 'Failed to verify Ollama model', {error});
+            setStatus('Failed to verify local LLM model', 'error');
+            return false;
+        }
+
+        return true;
     }
 
     private removeStreamHandlers(): void {
@@ -464,36 +597,28 @@ export class StreamController {
         return key;
     }
 
-    private async handleAudioInputToggle(source: ToggleSource): Promise<void> {
+    private async handleAudioInputToggle(_source: ToggleSource): Promise<void> {
         try {
-            let settingsSnapshot: any;
-            try {
-                settingsSnapshot = settingsStore.get();
-            } catch {
-                settingsSnapshot = await settingsStore.load();
-            }
-            const currentType = (settingsSnapshot.audioInputType || 'microphone') as 'microphone' | 'system';
-            const nextType: 'microphone' | 'system' = currentType === 'microphone' ? 'system' : 'microphone';
+            const settingsSnapshot = await this.loadSettingsSafe();
+            const currentType = (settingsSnapshot.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
+            const nextType: 'microphone' | 'system' | 'mixed' =
+                currentType === 'microphone'
+                    ? 'system'
+                    : currentType === 'system'
+                        ? 'mixed'
+                        : 'microphone';
 
-            let preStream: MediaStream | null | undefined;
-            if (state.isRecording && nextType === 'system') {
-                preStream = await this.prepareSystemStream(source);
-                if (preStream === null) {
-                    return;
-                }
-            }
-
-            const result = await this.switchAudioInput(nextType, { preStream, gesture: source === 'button' });
+            const result = await this.switchAudioInput(nextType);
             if (result.success) {
-                settingsStore.patch({ audioInputType: nextType });
+                settingsStore.patch({audioInputType: nextType});
             }
         } catch (error) {
             console.error('Toggle input failed', error);
         }
     }
 
-    private async switchAudioInput(newType: 'microphone' | 'system', opts?: { preStream?: MediaStream | null; gesture?: boolean }): Promise<SwitchAudioResult> {
-        logger.info('audio', 'Switch input requested', { newType });
+    private async switchAudioInput(newType: 'microphone' | 'system' | 'mixed'): Promise<SwitchAudioResult> {
+        logger.info('audio', 'Switch input requested', {newType});
 
         const previousType = getAudioInputType();
         setAudioInputType(newType);
@@ -503,9 +628,19 @@ export class StreamController {
         } catch {
         }
 
-        const result = await switchAudioInputDevice(newType, opts);
+        // Update icon immediately for better UX
+        try {
+            await this.updateToggleButtonLabel(newType);
+        } catch {
+        }
+
+        const result = await switchAudioInputDevice(newType);
         if (!result.success) {
             setAudioInputType(previousType);
+            try {
+                await window.api.settings.setAudioInputType(previousType);
+            } catch {
+            }
             try {
                 await this.updateToggleButtonLabel(previousType);
             } catch {
@@ -513,38 +648,11 @@ export class StreamController {
             return result;
         }
 
-        try {
-            await this.updateToggleButtonLabel(newType);
-        } catch {
-        }
-
         if (state.isRecording) {
             try {
-                let settings: any;
-                try {
-                    settings = settingsStore.get();
-                } catch {
-                    settings = await settingsStore.load();
-                }
-                const streamMode = settings.streamMode || 'base';
-                if (streamMode === 'stream') {
-                    try {
-                        setStatus('Preparing Google stream...', 'processing');
-                    } catch {
-                    }
-                    const streamToUse = result.stream ?? getCurrentStream();
-                    if (streamToUse) {
-                        await this.googleStreamingService.start(streamToUse);
-                        this.googleStreamingActive = true;
-                        setStatus('Google streaming active', 'processing');
-                    } else {
-                        this.googleStreamingActive = false;
-                    }
-                } else {
-                    await this.googleStreamingService.stop();
-                    this.googleStreamingActive = false;
-                    setStatus('Recording...', 'recording');
-                }
+                await this.googleStreamingService.stop();
+                this.googleStreamingActive = false;
+                setStatus('Recording...', 'recording');
             } catch (error) {
                 console.error('Failed to refresh recorder status after input switch', error);
             }
@@ -553,113 +661,65 @@ export class StreamController {
         return result;
     }
 
-    private async prepareSystemStream(source: ToggleSource): Promise<MediaStream | null | undefined> {
-        if (source === 'button') {
-            return this.prepareSystemStreamWithGesture();
-        }
-        return this.prepareSystemStreamWithoutGesture();
-    }
-
-    private async prepareSystemStreamWithGesture(): Promise<MediaStream | null> {
-        try {
-            try {
-                (window as any).api?.loopback?.enable?.();
-            } catch {
-            }
-            const displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
-            const audioTracks = displayStream.getAudioTracks();
-            const sysTrack = audioTracks[0];
-            let preStream: MediaStream | undefined;
-            if (sysTrack) {
-                registerPersistentSystemTrack(sysTrack);
-                const clone = sysTrack.clone();
-                preStream = new MediaStream([clone]);
-            } else if (audioTracks.length) {
-                preStream = new MediaStream(audioTracks.map((track) => track.clone()));
-            }
-            displayStream.getVideoTracks().forEach((track) => track.stop());
-            return preStream ?? null;
-        } catch (error) {
-            console.error('System audio capture cancelled/failed', error);
-            setStatus('System audio requires a user selection', 'error');
-            return null;
-        }
-    }
-
-    private async prepareSystemStreamWithoutGesture(): Promise<MediaStream | null> {
-        const persistedClone = clonePersistentSystemTrack();
-        if (persistedClone) {
-            try {
-                try {
-                    (window as any).api?.loopback?.enable?.();
-                } catch {
-                }
-                return new MediaStream([persistedClone]);
-            } catch {
-            }
-        }
-
-        try {
-            try {
-                (window as any).api?.loopback?.enable?.();
-            } catch {
-            }
-            const sourceId = await (window as any).api?.media?.getPrimaryDisplaySourceId?.();
-            const constraints: any = sourceId
-                ? {
-                      audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
-                      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
-                  }
-                : {
-                      audio: { mandatory: { chromeMediaSource: 'desktop' } },
-                      video: { mandatory: { chromeMediaSource: 'desktop' } },
-                  };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            const audioTracks = stream.getAudioTracks();
-            const sysTrack = audioTracks[0] || null;
-            let preStream: MediaStream | null = null;
-            if (sysTrack) {
-                registerPersistentSystemTrack(sysTrack);
-                const clone = sysTrack.clone();
-                preStream = new MediaStream([clone]);
-            }
-            try {
-                stream.getVideoTracks().forEach((track) => track.stop());
-            } catch {
-            }
-            return preStream;
-        } catch (error) {
-            console.error('desktopCapturer getUserMedia fallback failed', error);
-            return null;
-        }
-    }
-
-    private async updateToggleButtonLabel(preferred?: 'microphone' | 'system'): Promise<void> {
+    private async updateToggleButtonLabel(preferred?: 'microphone' | 'system' | 'mixed'): Promise<void> {
         const btn = this.toggleInputButton ?? (document.getElementById('btnToggleInput') as HTMLButtonElement | null);
-        const icon = this.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
+        let icon = this.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
         this.toggleInputButton = btn;
-        this.toggleInputIcon = icon;
-        if (!btn || !icon) return;
+        if (!btn) return;
 
-        let type: 'microphone' | 'system' | undefined = preferred;
+        let type: 'microphone' | 'system' | 'mixed' | undefined = preferred as any;
         if (!type) {
-            try {
-                const settings = settingsStore.get();
-                type = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
-            } catch {
-                const settings = await settingsStore.load();
-                type = (settings.audioInputType || 'microphone') as 'microphone' | 'system';
-            }
+            const settings = await this.loadSettingsSafe();
+            type = (settings.audioInputType || 'mixed') as any;
         }
         if (!type) type = getAudioInputType();
 
         setAudioInputType(type);
-        const iconSrc = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
-        const iconAlt = type === 'microphone' ? 'MIC' : 'SYS';
-        const title = type === 'microphone' ? 'Using Microphone' : 'Using System Audio';
+        const iconAlt = type === 'microphone' ? 'MIC' : type === 'system' ? 'SYS' : 'MIX';
+        btn.title = type === 'microphone'
+            ? 'Using Microphone'
+            : type === 'system'
+                ? 'Using System Audio'
+                : 'Using Mic + System Audio';
 
-        icon.src = iconSrc;
-        icon.alt = iconAlt;
-        btn.title = title;
+        // For mixed mode show two icons side by side
+        if (type === 'mixed') {
+            // Clear existing button content
+            btn.innerHTML = '';
+            // Create container for two icons
+            const container = document.createElement('div');
+            container.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+
+            // Microphone icon
+            const micIcon = document.createElement('img');
+            micIcon.src = 'img/icons/mic.png';
+            micIcon.alt = 'MIC';
+            micIcon.className = 'h-5 w-5';
+            micIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
+
+            // System audio icon
+            const audioIcon = document.createElement('img');
+            audioIcon.src = 'img/icons/audio.png';
+            audioIcon.alt = 'SYS';
+            audioIcon.className = 'h-5 w-5';
+            audioIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
+
+            container.appendChild(micIcon);
+            container.appendChild(audioIcon);
+            btn.appendChild(container);
+        } else {
+            // For other modes show a single icon and restore default structure when missing
+            if (!icon || !btn.contains(icon)) {
+                btn.innerHTML = '';
+                icon = document.createElement('img');
+                icon.id = 'toggleInputIcon';
+                icon.className = 'h-5 w-5';
+                icon.style.cssText = 'filter: invert(1); opacity: 80%;';
+                btn.appendChild(icon);
+                this.toggleInputIcon = icon;
+            }
+            icon.src = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
+            icon.alt = iconAlt;
+        }
     }
 }

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { AppSettings } from '../types';
-import { DefaultSettings } from '../types';
-import { settingsStore } from '../state/settingsStore';
-import { logger } from '../utils/logger';
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import type {AppSettings} from '../types';
+import {DefaultSettings} from '../types';
+import {settingsStore} from '../state/settingsStore';
+import {logger} from '../utils/logger';
 
 type UseSettingsResult = {
     settings: AppSettings;
@@ -25,7 +25,7 @@ export function useSettings(): UseSettingsResult {
             setError(null);
         } catch (err) {
             const normalized = err instanceof Error ? err : new Error(String(err));
-            logger.error('settings', 'Failed to load settings', { error: normalized.message });
+            logger.error('settings', 'Failed to load settings', {error: normalized.message});
             setError(normalized);
         } finally {
             setLoading(false);
@@ -55,7 +55,7 @@ export function useSettings(): UseSettingsResult {
 
     const patchLocal = useCallback((partial: Partial<AppSettings>) => {
         settingsStore.patch(partial);
-        setSettings((prev) => ({ ...prev, ...partial }));
+        setSettings((prev) => ({...prev, ...partial}));
     }, []);
 
     return useMemo(() => ({

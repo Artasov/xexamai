@@ -30,16 +30,37 @@ type AuthProviderProps = {
     children: ReactNode;
 };
 
+const AuthInitialState = {
+    status: 'initializing' as AuthStatus,
+    user: null as AuthUser | null,
+    error: null as string | null,
+};
+
 function normalizeAuthError(error: unknown): AuthError {
     if (error instanceof AuthError) return error;
     if (error instanceof Error) return new AuthError(error.message);
     return new AuthError(String(error ?? 'Unknown error'));
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
-    const [status, setStatus] = useState<AuthStatus>('initializing');
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [error, setError] = useState<string | null>(null);
+async function loadProfile(): Promise<AuthUser> {
+    return authClient.getCurrentUser(true);
+}
+
+const applyUnauthenticated = (
+    setStatus: (status: AuthStatus) => void,
+    setUser: (user: AuthUser | null) => void,
+    setError: (error: string | null) => void
+) => {
+    authClient.clearTokens();
+    setUser(null);
+    setStatus('unauthenticated');
+    setError(null);
+};
+
+export function AuthProvider({children}: AuthProviderProps) {
+    const [status, setStatus] = useState<AuthStatus>(AuthInitialState.status);
+    const [user, setUser] = useState<AuthUser | null>(AuthInitialState.user);
+    const [error, setError] = useState<string | null>(AuthInitialState.error);
 
     useEffect(() => {
         let cancelled = false;
@@ -48,13 +69,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             try {
                 const tokens = authClient.initializeFromStorage();
                 if (!tokens?.access) {
-                    setStatus('unauthenticated');
-                    setUser(null);
+                    applyUnauthenticated(setStatus, setUser, setError);
                     return;
                 }
 
                 setStatus('checking');
-                const profile = await authClient.getCurrentUser(true);
+                const profile = await loadProfile();
                 if (cancelled) return;
                 setUser(profile);
                 setStatus('authenticated');
@@ -62,17 +82,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
             } catch (err) {
                 if (cancelled) return;
                 const normalized = normalizeAuthError(err);
-                logger.warn('auth', 'Failed to restore session', { error: normalized.message, status: normalized.status });
-                authClient.clearTokens();
-                setUser(null);
-                setStatus('unauthenticated');
-                setError(null);
+                logger.warn('auth', 'Failed to restore session', {
+                    error: normalized.message,
+                    status: normalized.status
+                });
+                applyUnauthenticated(setStatus, setUser, setError);
             }
         };
 
         bootstrap().catch((err) => {
             const normalized = normalizeAuthError(err);
-            logger.error('auth', 'Session bootstrap failed', { error: normalized.message, status: normalized.status });
+            logger.error('auth', 'Session bootstrap failed', {error: normalized.message, status: normalized.status});
         });
 
         return () => {
@@ -87,7 +107,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const handleOAuthPayload = (payload: AuthDeepLinkPayload) => {
             if (cancelled || !payload) return;
             if (payload.kind === 'success') {
-                logger.info('auth', 'OAuth payload received', { provider: payload.provider });
+                logger.info('auth', 'OAuth payload received', {provider: payload.provider});
                 try {
                     authClient.storeTokens({
                         access: payload.tokens.access,
@@ -95,17 +115,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     });
                 } catch (error) {
                     const normalized = normalizeAuthError(error);
-                    logger.error('auth', 'Failed to store OAuth tokens', { error: normalized.message });
-                    authClient.clearTokens();
-                    setStatus('unauthenticated');
-                    setUser(null);
+                    logger.error('auth', 'Failed to store OAuth tokens', {error: normalized.message});
+                    applyUnauthenticated(setStatus, setUser, setError);
                     setError(normalized.message);
                     return;
                 }
 
                 setStatus('checking');
                 setError(null);
-                authClient.getCurrentUser(true)
+                loadProfile()
                     .then((profile) => {
                         if (cancelled) return;
                         setUser(profile);
@@ -115,23 +133,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     .catch((err) => {
                         if (cancelled) return;
                         const normalized = normalizeAuthError(err);
-                        logger.warn('auth', 'OAuth profile fetch failed', { error: normalized.message });
-                        authClient.clearTokens();
-                        setUser(null);
-                        setStatus('unauthenticated');
+                        logger.warn('auth', 'OAuth profile fetch failed', {error: normalized.message});
+                        applyUnauthenticated(setStatus, setUser, setError);
                         setError(normalized.message);
                     });
             } else {
-                logger.warn('auth', 'OAuth flow returned error', { provider: payload.provider, error: payload.error });
-                authClient.clearTokens();
-                setUser(null);
-                setStatus('unauthenticated');
+                logger.warn('auth', 'OAuth flow returned error', {provider: payload.provider, error: payload.error});
+                applyUnauthenticated(setStatus, setUser, setError);
                 setError(payload.error || 'OAuth authorization failed');
             }
         };
 
         const unsubscribe = window.api.auth.onOAuthPayload(handleOAuthPayload);
-        window.api.auth.consumePendingOAuthPayloads().catch(() => {});
+        window.api.auth.consumePendingOAuthPayloads().catch(() => {
+        });
 
         return () => {
             cancelled = true;
@@ -155,7 +170,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setStatus('unauthenticated');
             setUser(null);
             setError(normalized.message);
-            logger.error('auth', 'Sign-in failed', { error: normalized.message, status: normalized.status });
+            logger.error('auth', 'Sign-in failed', {error: normalized.message, status: normalized.status});
             throw normalized;
         }
     }, []);
@@ -170,7 +185,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             await window.api.auth.startOAuth(provider);
         } catch (err) {
             const normalized = normalizeAuthError(err);
-            logger.error('auth', 'Failed to initiate OAuth', { provider, error: normalized.message });
+            logger.error('auth', 'Failed to initiate OAuth', {provider, error: normalized.message});
             setStatus('unauthenticated');
             setError(normalized.message);
             throw normalized;
@@ -202,7 +217,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             return profile;
         } catch (err) {
             const normalized = normalizeAuthError(err);
-            logger.warn('auth', 'Failed to reload user', { error: normalized.message, status: normalized.status });
+            logger.warn('auth', 'Failed to reload user', {error: normalized.message, status: normalized.status});
             authClient.clearTokens();
             setUser(null);
             setStatus('unauthenticated');

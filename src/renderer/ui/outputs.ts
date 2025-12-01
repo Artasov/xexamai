@@ -1,7 +1,7 @@
-import { marked } from 'marked';
-import { formatError, addErrorHelpStyles } from '../utils/errorFormatter';
+import {marked} from 'marked';
+import {addErrorHelpStyles, formatError} from '../utils/errorFormatter';
 
-// Инициализируем стили для помощи при ошибках
+// Initialize styles for error help blocks
 addErrorHelpStyles();
 
 let textOut: HTMLDivElement | null = null;
@@ -26,20 +26,14 @@ export function showAnswer(text: string) {
 
     answerOut = target;
 
-    // Сохраняем текущую позицию скролла
+    // Preserve current scroll position
     const currentScrollTop = target.scrollTop;
     const currentScrollHeight = target.scrollHeight;
     const isAtBottom = currentScrollTop + target.clientHeight >= currentScrollHeight - 5; // 5px tolerance
 
-    if (text) {
-        // Рендерим Markdown через marked
-        const html = marked.parse(text, { async: false }) as string;
-        target.innerHTML = html;
-    } else {
-        target.innerHTML = '';
-    }
+    target.innerHTML = text ? (marked.parse(text, {async: false}) as string) : '';
 
-    // Восстанавливаем позицию скролла только если пользователь не был внизу
+    // Restore scroll position only if the user was not at the bottom
     if (!isAtBottom) {
         target.scrollTop = currentScrollTop;
     }
@@ -47,7 +41,7 @@ export function showAnswer(text: string) {
 
 export function showError(error: unknown) {
     const formattedError = formatError(error);
-    
+
     const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
     if (!target) return;
 

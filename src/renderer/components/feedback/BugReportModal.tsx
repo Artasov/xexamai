@@ -1,4 +1,5 @@
-import {ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState} from 'react';
+// noinspection XmlDeprecatedElement
+
 import {
     Alert,
     Box,
@@ -16,13 +17,7 @@ import {
     Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-
-export type BugReportFormPayload = {
-    subject: string;
-    message: string;
-    telegram?: string;
-    files: File[];
-};
+import {BugReportFormPayload, useBugReportState} from './useBugReportState';
 
 export type BugReportModalProps = {
     open: boolean;
@@ -32,84 +27,15 @@ export type BugReportModalProps = {
 };
 
 export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugReportModalProps) {
-    const [subject, setSubject] = useState('');
-    const [message, setMessage] = useState('');
-    const [telegram, setTelegram] = useState('');
-    const [files, setFiles] = useState<File[]>([]);
-    const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-    useEffect(() => {
-        if (!open) {
-            setSubject('');
-            setMessage('');
-            setTelegram('');
-            setFiles([]);
-            setSubmitting(false);
-            setError(null);
-            setSuccess(false);
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
-        } else {
-            setSubmitting(false);
-            setError(null);
-        }
-    }, [open]);
-
-    const isSubmitDisabled = useMemo(() => {
-        if (!subject.trim() || !message.trim()) return true;
-        return submitting;
-    }, [subject, message, submitting]);
-
-    const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-        const nextFiles = Array.from(event.target.files ?? []).slice(0, 5);
-        setFiles(nextFiles);
-    };
-
-    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if (success) {
-            onClose();
-            return;
-        }
-
-        if (!onSubmit) {
-            setSuccess(true);
-            onAfterSuccess?.();
-            return;
-        }
-
-        const payload: BugReportFormPayload = {
-            subject: subject.trim(),
-            message: message.trim(),
-            telegram: telegram.trim() || undefined,
-            files,
-        };
-
-        setSubmitting(true);
-        setError(null);
-        try {
-            await onSubmit(payload);
-            setSuccess(true);
-            onAfterSuccess?.();
-        } catch (err) {
-            const messageText =
-                err instanceof Error
-                    ? err.message
-                    : typeof err === 'string'
-                        ? err
-                        : 'Failed to send the report. Please try again.';
-            setError(messageText);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+    const {fields, flags, actions, refs} = useBugReportState(open, onSubmit, onAfterSuccess);
+    const {subject, message, telegram, files} = fields;
+    const {submitting, success, error, isSubmitDisabled} = flags;
+    const {setSubject, setMessage, setTelegram, handleFileChange, handleSubmit, resetAfterClose} = actions;
+    const {fileInputRef} = refs;
 
     const handleClose = () => {
         if (submitting) return;
+        resetAfterClose();
         onClose();
     };
 

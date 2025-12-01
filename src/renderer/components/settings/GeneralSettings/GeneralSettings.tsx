@@ -1,272 +1,272 @@
-import { useEffect, useMemo, useState } from 'react';
-import {TextField} from '@mui/material';
-import { useSettingsContext } from '../SettingsView/SettingsView';
-import { logger } from '../../../utils/logger';
-import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
+// noinspection XmlDeprecatedElement
+
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
+import {useSettingsContext} from '../SettingsView/SettingsView';
+import {logger} from '../../../utils/logger';
+import {toast} from 'react-toastify';
 import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
 const MIN_WINDOW_HEIGHT = 500;
+const DEFAULT_WINDOW_WIDTH = 420;
+const DEFAULT_WINDOW_HEIGHT = 780;
 
-type Message = { text: string; tone: 'success' | 'error' };
+const baseCheckboxIcon = (
+    <span className="winky-checkbox__control">
+    </span>
+);
+
+const checkedCheckboxIcon = (
+    <span className="winky-checkbox__control winky-checkbox__control--checked">
+        <svg className="winky-checkbox__check" viewBox="0 0 16 16" aria-hidden focusable="false">
+            <polyline
+                points="3.5 8.5 6.5 11.5 12.5 4.5"
+                fill="none"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    </span>
+);
 
 export const GeneralSettings = () => {
-    const { settings, patchLocal } = useSettingsContext();
-    const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey ?? '');
-    const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
+    const {settings, patchLocal} = useSettingsContext();
     const [windowOpacity, setWindowOpacity] = useState(settings.windowOpacity ?? 100);
     const [windowScale, setWindowScale] = useState(settings.windowScale ?? 1);
-    const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? 420);
-    const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? 780);
-    const [message, setMessage] = useState<Message | null>(null);
+    const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
+    const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
+    const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastWindowSizeRef = useRef<{ width: number; height: number }>({
+        width: settings.windowWidth ?? DEFAULT_WINDOW_WIDTH,
+        height: settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT,
+    });
 
-    const restartNoteVisible = useMemo(() => {
-        const initial = settings.windowScale ?? 1;
-        return Math.abs(initial - windowScale) > 1e-3;
-    }, [settings.windowScale, windowScale]);
 
     useEffect(() => {
-        setOpenaiKey(settings.openaiApiKey ?? '');
-        setGoogleKey(settings.googleApiKey ?? '');
         setWindowOpacity(settings.windowOpacity ?? 100);
         setWindowScale(settings.windowScale ?? 1);
-        setWindowWidth(settings.windowWidth ?? 420);
-        setWindowHeight(settings.windowHeight ?? 780);
+        const nextWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
+        const nextHeight = settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT;
+        const {width: prevWidth, height: prevHeight} = lastWindowSizeRef.current;
+        if (nextWidth !== prevWidth || nextHeight !== prevHeight) {
+            lastWindowSizeRef.current = {width: nextWidth, height: nextHeight};
+            setWindowWidth(nextWidth);
+            setWindowHeight(nextHeight);
+        }
     }, [settings]);
 
-    const showMessage = (text: string, tone: Message['tone'] = 'success') => {
-        setMessage({ text, tone });
-        setTimeout(() => {
-            setMessage((current) => (current?.text === text ? null : current));
-        }, 3000);
-    };
-
-    const handleSaveOpenAi = async () => {
-        const key = openaiKey.trim();
-        if (!key) {
-            showMessage('OpenAI API key cannot be empty', 'error');
-            return;
-        }
-        try {
-            await window.api.settings.setOpenaiApiKey(key);
-            patchLocal({ openaiApiKey: key });
-            logger.info('settings', 'OpenAI API key saved');
-            showMessage('OpenAI API key saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save OpenAI API key', { error });
-            showMessage('Failed to save OpenAI key', 'error');
-        }
-    };
-
-    const handleSaveGoogle = async () => {
-        const key = googleKey.trim();
-        if (!key) {
-            showMessage('Google API key cannot be empty', 'error');
-            return;
-        }
-        try {
-            await window.api.settings.setGoogleApiKey(key);
-            patchLocal({ googleApiKey: key });
-            logger.info('settings', 'Google API key saved');
-            showMessage('Google API key saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save Google API key', { error });
-            showMessage('Failed to save Google key', 'error');
-        }
+    const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
+        toast[tone](text);
     };
 
     const toggleAlwaysOnTop = async (value: boolean) => {
         try {
             await window.api.settings.setAlwaysOnTop(value);
-            patchLocal({ alwaysOnTop: value });
-            showMessage(`Always on top ${value ? 'enabled' : 'disabled'}`);
+            patchLocal({alwaysOnTop: value});
+
+            // If disabling AlwaysOnTop, also disable HideApp
+            if (!value && settings.hideApp) {
+                await window.api.settings.setHideApp(false);
+                patchLocal({hideApp: false});
+            }
         } catch (error) {
-            logger.error('settings', 'Failed to update always on top', { error });
-            showMessage('Failed to update always on top', 'error');
+            logger.error('settings', 'Failed to update always on top', {error});
         }
     };
 
     const toggleHideApp = async (value: boolean) => {
         try {
+            // Enabling HideApp requires AlwaysOnTop, so enable it if needed
+            if (value && !settings.alwaysOnTop) {
+                await window.api.settings.setAlwaysOnTop(true);
+                patchLocal({alwaysOnTop: true});
+            }
+
             await window.api.settings.setHideApp(value);
-            patchLocal({ hideApp: value });
-            showMessage(`Hide app ${value ? 'enabled' : 'disabled'}`);
+            patchLocal({hideApp: value});
         } catch (error) {
-            logger.error('settings', 'Failed to update hide app', { error });
-            showMessage('Failed to update hide app', 'error');
+            logger.error('settings', 'Failed to update hide app', {error});
         }
     };
 
-    const updateOpacity = async (value: number) => {
+    const updateOpacity = (value: number) => {
+        // Only update local state for immediate UI feedback
         setWindowOpacity(value);
+    };
+
+    const saveOpacity = async (value: number) => {
+        // Persist to config only when the user releases the slider
         try {
             await window.api.settings.setWindowOpacity(value);
-            patchLocal({ windowOpacity: value });
+            patchLocal({windowOpacity: value});
         } catch (error) {
-            logger.error('settings', 'Failed to update window opacity', { error });
+            logger.error('settings', 'Failed to update window opacity', {error});
         }
     };
 
-    const updateScale = async (value: number) => {
+    const updateScale = (value: number) => {
+        // Only update local state for immediate UI feedback
         setWindowScale(value);
+    };
+
+    const saveScale = async (value: number) => {
+        // Persist to config only when the user releases the slider
         try {
             await window.api.settings.setWindowScale(value);
-            patchLocal({ windowScale: value });
+            patchLocal({windowScale: value});
         } catch (error) {
-            logger.error('settings', 'Failed to update window scale', { error });
+            logger.error('settings', 'Failed to update window scale', {error});
             showMessage('Failed to update window scale', 'error');
         }
     };
 
-    const saveWindowSize = async () => {
-        const width = Math.max(MIN_WINDOW_WIDTH, Math.round(windowWidth));
-        const height = Math.max(MIN_WINDOW_HEIGHT, Math.round(windowHeight));
+    const saveWindowSize = useCallback(async (widthValue: number, heightValue: number) => {
+        const width = Math.max(MIN_WINDOW_WIDTH, Math.round(widthValue));
+        const height = Math.max(MIN_WINDOW_HEIGHT, Math.round(heightValue));
         setWindowWidth(width);
         setWindowHeight(height);
         try {
-            await window.api.settings.setWindowSize({ width, height });
-            patchLocal({ windowWidth: width, windowHeight: height });
+            await window.api.settings.setWindowSize({width, height});
+            patchLocal({windowWidth: width, windowHeight: height});
             showMessage('Window size saved');
         } catch (error) {
-            logger.error('settings', 'Failed to save window size', { error });
+            logger.error('settings', 'Failed to save window size', {error});
             showMessage('Failed to save window size', 'error');
         }
-    };
+    }, [patchLocal]);
+
+    useEffect(() => {
+        if (sizeSaveTimeout.current) {
+            clearTimeout(sizeSaveTimeout.current);
+        }
+        sizeSaveTimeout.current = null;
+
+        const normalizedWidth = Math.max(MIN_WINDOW_WIDTH, Math.round(windowWidth));
+        const normalizedHeight = Math.max(MIN_WINDOW_HEIGHT, Math.round(windowHeight));
+        const currentWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
+        const currentHeight = settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT;
+
+        if (normalizedWidth === currentWidth && normalizedHeight === currentHeight) {
+            return;
+        }
+
+        sizeSaveTimeout.current = setTimeout(() => {
+            void saveWindowSize(normalizedWidth, normalizedHeight);
+        }, 600);
+        return () => {
+            if (sizeSaveTimeout.current) {
+                clearTimeout(sizeSaveTimeout.current);
+                sizeSaveTimeout.current = null;
+            }
+        };
+    }, [windowWidth, windowHeight, saveWindowSize, settings.windowWidth, settings.windowHeight]);
 
     const openConfigFolder = async () => {
         try {
             await window.api.settings.openConfigFolder();
         } catch (error) {
-            logger.error('settings', 'Failed to open config folder', { error });
+            logger.error('settings', 'Failed to open config folder', {error});
             showMessage('Unable to open config folder', 'error');
         }
     };
 
     return (
-        <div className="settings-sections">
-            <SettingsToast message={message} />
-
-            <section className="settings-card card">
-                <h3 className="settings-card__title">API Keys</h3>
-                <div className="settings-grid">
-                    <div className="settings-field">
-                        <label className="settings-field__label">OpenAI</label>
-                        <TextField
-                            type="password"
-                            size={'small'}
-                            value={openaiKey}
-                            placeholder="Enter your OpenAI API key"
-                            onChange={(event) => setOpenaiKey(event.target.value)}
-                        />
-                        <button type="button" className="btn btn-sm" onClick={handleSaveOpenAi}>
-                            Save
-                        </button>
-                    </div>
-                    <div className="settings-field">
-                        <label className="settings-field__label">Google AI</label>
-                        <TextField
-                            type="password"
-                            size={'small'}
-                            value={googleKey}
-                            placeholder="Enter your Google API key"
-                            onChange={(event) => setGoogleKey(event.target.value)}
-                        />
-                        <button type="button" className="btn btn-sm" onClick={handleSaveGoogle}>
-                            Save
-                        </button>
-                    </div>
-                </div>
-            </section>
-
+        <div className="settings-sections fc gap-3">
             <section className="settings-card card">
                 <h3 className="settings-card__title">Window Behaviour</h3>
-                <div className="settings-toggle">
-                    <label className="settings-toggle__label">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(settings.alwaysOnTop)}
-                            onChange={(event) => toggleAlwaysOnTop(event.target.checked)}
-                        />
-                        Always on top
-                    </label>
-                    <label className="settings-toggle__label">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(settings.hideApp)}
-                            onChange={(event) => toggleHideApp(event.target.checked)}
-                        />
-                        Hide app from screen recording
-                    </label>
+                <div className="fc -mt-2">
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                size="small"
+                                checked={Boolean(settings.alwaysOnTop)}
+                                onChange={(event) => toggleAlwaysOnTop(event.target.checked)}
+                                icon={baseCheckboxIcon}
+                                checkedIcon={checkedCheckboxIcon}
+                                disableRipple
+                            />
+                        }
+                        label="Always on top"
+                    />
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                size="small"
+                                checked={Boolean(settings.hideApp)}
+                                onChange={(event) => toggleHideApp(event.target.checked)}
+                                icon={baseCheckboxIcon}
+                                checkedIcon={checkedCheckboxIcon}
+                                disableRipple
+                            />
+                        }
+                        label="Hide app from screen recording"
+                    />
                 </div>
 
-                <div className="settings-slider">
+                <div className="settings-slider -mt-2">
                     <span className="settings-slider__label">Window opacity</span>
-                    <div className="settings-slider__control">
-                        <input
-                            type="range"
+                    <div className="settings-slider__control -mt-2">
+                        <Slider
                             min={5}
                             max={100}
                             value={windowOpacity}
-                            className="settings-range"
-                            onChange={(event) => updateOpacity(Number(event.target.value))}
+                            onChange={(_event, value) => updateOpacity(Number(value))}
+                            onChangeCommitted={(_event, value) => saveOpacity(Number(value))}
+                            valueLabelDisplay="auto"
+                            size="small"
                         />
                         <span className="settings-slider__value">{windowOpacity}%</span>
                     </div>
                 </div>
 
-                <div className="settings-slider">
+                <div className="settings-slider -mt-3">
                     <span className="settings-slider__label">Window scale</span>
-                    <div className="settings-slider__control">
-                        <input
-                            type="range"
+                    <div className="settings-slider__control -mt-2">
+                        <Slider
                             min={0.5}
                             max={3}
                             step={0.1}
                             value={windowScale}
-                            className="settings-range"
-                            onChange={(event) => updateScale(Number(event.target.value))}
+                            onChange={(_event, value) => updateScale(Number(value))}
+                            onChangeCommitted={(_event, value) => saveScale(Number(value))}
+                            valueLabelDisplay="auto"
+                            size="small"
                         />
                         <span className="settings-slider__value">{windowScale.toFixed(1)}x</span>
                     </div>
                 </div>
-                {restartNoteVisible ? (
-                    <div className="settings-note">
-                        ⚠️ Changing the scale requires restarting the application
-                    </div>
-                ) : null}
             </section>
 
             <section className="settings-card card">
                 <h3 className="settings-card__title">Window size on startup</h3>
                 <div className="settings-window-size">
                     <div className="settings-field">
-                        <label className="settings-field__label">Width (min {MIN_WINDOW_WIDTH})</label>
                         <TextField
+                            label={`Width (min ${MIN_WINDOW_WIDTH})`}
                             type="number"
                             value={windowWidth}
                             size={'small'}
                             onChange={(event) => setWindowWidth(Number(event.target.value))}
-                            inputProps={{ min: MIN_WINDOW_WIDTH }}
+                            inputProps={{min: MIN_WINDOW_WIDTH}}
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">Height (min {MIN_WINDOW_HEIGHT})</label>
                         <TextField
+                            label={`Height (min ${MIN_WINDOW_HEIGHT})`}
                             type="number"
                             size={'small'}
                             value={windowHeight}
                             onChange={(event) => setWindowHeight(Number(event.target.value))}
-                            inputProps={{ min: MIN_WINDOW_HEIGHT }}
+                            inputProps={{min: MIN_WINDOW_HEIGHT}}
                         />
                     </div>
                 </div>
-                <button type="button" className="btn btn-sm" onClick={saveWindowSize}>
-                    Save
-                </button>
             </section>
 
             <section className="settings-card card">
-            <h3 className="settings-card__title">Config folder</h3>
+                <h3 className="settings-card__title">Config folder</h3>
                 <button type="button" className="btn btn-sm" onClick={openConfigFolder}>
                     Open config folder
                 </button>

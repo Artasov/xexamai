@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 export type AudioChunk = {
     t: number; // timestamp ms (Date.now)
     blob: Blob;
@@ -12,6 +14,7 @@ export class AudioRingBuffer {
         this.maxMs = maxSeconds * 1000;
     }
 
+    // noinspection JSUnusedGlobalSymbols
     setWindowSeconds(sec: number) {
         this.maxMs = sec * 1000;
         this.compact();

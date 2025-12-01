@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite';
+import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +16,7 @@ export default defineConfig({
     plugins: [react()],
     base: './',
     server: {
-        port: 5174,
+        port: 1420,
         strictPort: true,
     },
     build: {

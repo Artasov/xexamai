@@ -1,125 +1,170 @@
-import { useEffect, useMemo, useState } from 'react';
-import {TextField} from '@mui/material';
-import { useSettingsContext } from '../SettingsView/SettingsView';
-import type { LlmHost, ScreenProcessingProvider, TranscriptionMode } from '../../../types';
-import { logger } from '../../../utils/logger';
-import { emitSettingsChange } from '../../../utils/settingsEvents';
-import CustomSelect from '../../common/CustomSelect/CustomSelect';
-import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
+// noinspection XmlDeprecatedElement
+
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {
+    Box,
+    Button,
+    CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    IconButton,
+    MenuItem,
+    TextField,
+    Typography,
+} from '@mui/material';
+import {listen, type UnlistenFn} from '@tauri-apps/api/event';
+import {
+    API_LLM_MODELS,
+    GEMINI_LLM_MODELS,
+    GOOGLE_TRANSCRIBE_MODELS,
+    LOCAL_LLM_MODELS,
+    LOCAL_TRANSCRIBE_MODELS,
+    OPENAI_LLM_MODELS,
+    OPENAI_TRANSCRIBE_MODELS,
+    TRANSCRIBE_API_MODELS,
+} from '@shared/constants';
+import type {FastWhisperStatus} from '@shared/ipc';
+import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '@renderer/types';
+import {useSettingsContext} from '../SettingsView/SettingsView';
+import {logger} from '@renderer/utils/logger';
+import {toast} from 'react-toastify';
+import {
+    checkLocalModelDownloaded,
+    downloadLocalSpeechModel,
+    getLocalWhisperMetadata,
+    normalizeLocalWhisperModel,
+    subscribeToLocalModelWarmup,
+    warmupLocalSpeechModel,
+} from '../../../services/localSpeechModels';
+import {
+    checkOllamaInstalled,
+    downloadOllamaModel,
+    listInstalledOllamaModels,
+    normalizeOllamaModelName,
+    subscribeToOllamaDownloads,
+    subscribeToOllamaWarmup,
+    warmupOllamaModel,
+} from '../../../services/ollama';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import StopCircleIcon from '@mui/icons-material/StopCircle';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import {formatLlmLabel, formatTranscribeLabel} from './formatters';
 import './AiSettings.scss';
 
-type MessageTone = 'success' | 'error';
-type Message = { text: string; tone: MessageTone } | null;
+type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
 
-const TRANSCRIPTION_MODE_OPTIONS: { value: TranscriptionMode; label: string }[] = [
-    { value: 'api', label: 'API' },
-    { value: 'local', label: 'Local' },
-];
+type WithLabel = { value: string; label: string };
 
-const LLM_HOST_OPTIONS: { value: LlmHost; label: string }[] = [
-    { value: 'api', label: 'API' },
-    { value: 'local', label: 'Local' },
-];
-
-const STREAM_MODE_OPTIONS = [
-    { value: 'base', label: 'Base mode' },
-    { value: 'stream', label: 'Google stream' },
-];
-
-const TRANSCRIPTION_MODEL_OPTIONS = [
-    { value: 'gpt-4o-mini-transcribe', label: 'GPT-4o Mini Transcribe (Default)' },
-    { value: 'whisper-1', label: 'Whisper-1 (Balanced)' },
-    { value: 'gpt-4o-transcribe', label: 'GPT-4o Transcribe (High Quality)' },
-];
-
-const LOCAL_WHISPER_OPTIONS = [
-    { value: 'tiny', label: 'Tiny' },
-    { value: 'base', label: 'Base' },
-    { value: 'small', label: 'Small' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'large', label: 'Large' },
-    { value: 'large-v2', label: 'Large V2' },
-    { value: 'large-v3', label: 'Large V3' },
-];
-
-const LOCAL_DEVICE_OPTIONS = [
-    { value: 'cpu', label: 'CPU' },
-    { value: 'gpu', label: 'GPU' },
-];
-
-const API_LLM_MODELS = [
-    { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano (Default)' },
-    { value: 'gpt-4o', label: 'GPT-4o' },
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-    { value: 'gpt-4', label: 'GPT-4' },
-    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-    { value: 'gpt-3.5-turbo-16k', label: 'GPT-3.5 Turbo 16K' },
-    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-];
-
-const LOCAL_LLM_MODELS = [
-    { value: 'gpt-oss:120b', label: 'GPT-OSS 120B (Local)' },
-    { value: 'gpt-oss:20b', label: 'GPT-OSS 20B (Local)' },
-    { value: 'gemma3:27b', label: 'Gemma 3 27B (Local)' },
-    { value: 'gemma3:12b', label: 'Gemma 3 12B (Local)' },
-    { value: 'gemma3:4b', label: 'Gemma 3 4B (Local)' },
-    { value: 'gemma3:1b', label: 'Gemma 3 1B (Local)' },
-    { value: 'deepseek-r1:8b', label: 'DeepSeek-R1 8B (Local)' },
-    { value: 'qwen3-coder:30b', label: 'Qwen3-Coder 30B (Local)' },
-    { value: 'qwen3:30b', label: 'Qwen3 30B (Local)' },
-    { value: 'qwen3:8b', label: 'Qwen3 8B (Local)' },
-    { value: 'qwen3:4b', label: 'Qwen3 4B (Local)' },
-];
-
-const SCREEN_MODEL_OPTIONS: { value: ScreenProcessingProvider; label: string }[] = [
-    { value: 'openai', label: 'OpenAI' },
-    { value: 'google', label: 'Google Gemini' },
-];
-
-const DEFAULT_API_LLM_MODEL = API_LLM_MODELS[0]?.value ?? 'gpt-4.1-nano';
+const DEFAULT_API_TRANSCRIBE_MODEL = TRANSCRIBE_API_MODELS[0] ?? 'gpt-4o-mini-transcribe';
+const DEFAULT_LOCAL_TRANSCRIBE_MODEL = 'base';
+const DEFAULT_API_LLM_MODEL = API_LLM_MODELS[0] ?? 'gpt-4.1-nano';
 const DEFAULT_LOCAL_LLM_MODEL =
-    LOCAL_LLM_MODELS.find((option) => option.value === 'gpt-oss:20b')?.value ?? LOCAL_LLM_MODELS[0]?.value ?? 'gpt-oss:20b';
+    LOCAL_LLM_MODELS.find((value) => value === 'gpt-oss:20b') ?? LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
+const FAST_WHISPER_INSTALL_SIZE_HINT = '~4.3GB';
+const WARMUP_VISIBILITY_DELAY_MS = 1200;
+
+const OPENAI_TRANSCRIBE_SET = new Set<string>(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
+const GOOGLE_TRANSCRIBE_SET = new Set<string>(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
+const OPENAI_LLM_SET = new Set<string>(OPENAI_LLM_MODELS as readonly string[]);
+const GEMINI_LLM_SET = new Set<string>(GEMINI_LLM_MODELS as readonly string[]);
+
+const TRANSCRIPTION_MODE_OPTIONS: WithLabel[] = [
+    {value: 'api', label: 'API'},
+    {value: 'local', label: 'Local'},
+];
+
+const LLM_HOST_OPTIONS: WithLabel[] = [
+    {value: 'api', label: 'API'},
+    {value: 'local', label: 'Local'},
+];
+
+const SCREEN_MODEL_OPTIONS: WithLabel[] = [
+    {value: 'openai', label: 'OpenAI'},
+    {value: 'google', label: 'Google Gemini'},
+];
 
 export const AiSettings = () => {
-    const { settings, patchLocal } = useSettingsContext();
+    const {settings, patchLocal} = useSettingsContext();
+
+    const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey ?? '');
+    const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
+    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
+    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
+    const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
     const [transcriptionPrompt, setTranscriptionPrompt] = useState(settings.transcriptionPrompt ?? '');
     const [llmPrompt, setLlmPrompt] = useState(settings.llmPrompt ?? '');
-    const [screenPrompt, setScreenPrompt] = useState(settings.screenProcessingPrompt ?? '');
-    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 10000);
-    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 10000);
-    const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
-    const [message, setMessage] = useState<Message>(null);
+    const timeoutSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const promptSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const [localStatus, setLocalStatus] = useState<FastWhisperStatus | null>(null);
+    const [localAction, setLocalAction] = useState<LocalAction | null>(null);
+    const [localModelReady, setLocalModelReady] = useState<boolean | null>(null);
+    const [checkingLocalModel, setCheckingLocalModel] = useState(false);
+    const [downloadingLocalModel, setDownloadingLocalModel] = useState(false);
+    const [localModelError, setLocalModelError] = useState<string | null>(null);
+    const [localModelWarming, setLocalModelWarming] = useState(false);
+    const [localWarmupHydrated, setLocalWarmupHydrated] = useState(settings.transcriptionMode !== 'local');
+    const localWarmupDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const localWarmupPendingRef = useRef(false);
+    const [infoDialog, setInfoDialog] = useState<'transcribe' | 'llm' | null>(null);
+
+    const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
+    const [ollamaChecking, setOllamaChecking] = useState(false);
+    const [, setOllamaModels] = useState<string[]>([]);
+    const [ollamaModelDownloaded, setOllamaModelDownloaded] = useState<boolean | null>(null);
+    const [ollamaModelChecking, setOllamaModelChecking] = useState(false);
+    const [ollamaDownloading, setOllamaDownloading] = useState(false);
+    const [ollamaModelError, setOllamaModelError] = useState<string | null>(null);
+    const [ollamaModelWarming, setOllamaModelWarming] = useState(false);
+
+    const lastLocalWarmupRef = useRef<string | null>(null);
+    const localStatusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const showApiKeys = !(settings.transcriptionMode === 'local' && settings.llmHost === 'local');
 
     useEffect(() => {
+        setOpenaiKey(settings.openaiApiKey ?? '');
+        setGoogleKey(settings.googleApiKey ?? '');
+        setApiSttTimeout(settings.apiSttTimeoutMs ?? 30000);
+        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 30000);
+        setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
         setTranscriptionPrompt(settings.transcriptionPrompt ?? '');
         setLlmPrompt(settings.llmPrompt ?? '');
-        setScreenPrompt(settings.screenProcessingPrompt ?? '');
-        setApiSttTimeout(settings.apiSttTimeoutMs ?? 10000);
-        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 10000);
-        setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
-    }, [settings]);
+    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.googleApiKey, settings.openaiApiKey, settings.screenProcessingTimeoutMs, settings.transcriptionPrompt, settings.llmPrompt]);
 
-    const apiLlmModel = useMemo(
-        () => settings.apiLlmModel ?? settings.llmModel ?? DEFAULT_API_LLM_MODEL,
-        [settings.apiLlmModel, settings.llmModel],
-    );
-    const localLlmModel = useMemo(
-        () => settings.localLlmModel ?? settings.llmModel ?? DEFAULT_LOCAL_LLM_MODEL,
-        [settings.localLlmModel, settings.llmModel],
-    );
-    const apiHostSelected = settings.llmHost !== 'local';
-
-    const showMessage = (text: string, tone: MessageTone = 'success') => {
-        setMessage({ text, tone });
-        setTimeout(() => {
-            setMessage((prev) => (prev?.text === text ? null : prev));
-        }, 3200);
+    const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
+        if (tone === 'success') return;
+        toast[tone](text);
     };
+
+    const saveOpenAi = useCallback(async (value: string) => {
+        const key = value.trim();
+        try {
+            await window.api.settings.setOpenaiApiKey(key);
+            patchLocal({openaiApiKey: key});
+            logger.info('settings', 'OpenAI API key saved');
+        } catch (error) {
+            logger.error('settings', 'Failed to save OpenAI API key', {error});
+            showMessage('Failed to save OpenAI key', 'error');
+        }
+    }, [patchLocal]);
+
+    const saveGoogle = useCallback(async (value: string) => {
+        const key = value.trim();
+        try {
+            await window.api.settings.setGoogleApiKey(key);
+            patchLocal({googleApiKey: key});
+            logger.info('settings', 'Google API key saved');
+        } catch (error) {
+            logger.error('settings', 'Failed to save Google API key', {error});
+            showMessage('Failed to save Google key', 'error');
+        }
+    }, [patchLocal]);
 
     const requireOpenAi = () => {
         const has = Boolean(settings.openaiApiKey && settings.openaiApiKey.trim().length > 0);
@@ -137,164 +182,431 @@ export const AiSettings = () => {
         return has;
     };
 
-    const handleTranscriptionModeChange = async (mode: TranscriptionMode) => {
-        if (mode === 'api' && !requireOpenAi()) {
+    useEffect(() => {
+        if (openAiSaveTimeout.current) {
+            clearTimeout(openAiSaveTimeout.current);
+            openAiSaveTimeout.current = null;
+        }
+
+        const trimmed = openaiKey.trim();
+        const current = settings.openaiApiKey ?? '';
+
+        if (trimmed === current) {
             return;
         }
-        if (mode === 'local' && settings.streamMode === 'stream') {
-            showMessage('Disable Google stream before switching to local transcription', 'error');
+
+        openAiSaveTimeout.current = setTimeout(() => {
+            void saveOpenAi(trimmed);
+        }, 500);
+        return () => {
+            if (openAiSaveTimeout.current) {
+                clearTimeout(openAiSaveTimeout.current);
+                openAiSaveTimeout.current = null;
+            }
+        };
+    }, [openaiKey, saveOpenAi, settings.openaiApiKey]);
+
+    useEffect(() => {
+        if (googleSaveTimeout.current) {
+            clearTimeout(googleSaveTimeout.current);
+            googleSaveTimeout.current = null;
+        }
+        const trimmed = googleKey.trim();
+        const current = settings.googleApiKey ?? '';
+
+        if (trimmed === current) {
             return;
+        }
+
+        googleSaveTimeout.current = setTimeout(() => {
+            void saveGoogle(trimmed);
+        }, 500);
+        return () => {
+            if (googleSaveTimeout.current) {
+                clearTimeout(googleSaveTimeout.current);
+                googleSaveTimeout.current = null;
+            }
+        };
+    }, [googleKey, saveGoogle, settings.googleApiKey]);
+
+    const refreshLocalStatus = useCallback(async (checkHealth = true) => {
+        if (!window.api?.localSpeech) return;
+        try {
+            const status = checkHealth
+                ? await window.api.localSpeech.checkHealth()
+                : await window.api.localSpeech.getStatus();
+            setLocalStatus(status);
+        } catch (error) {
+            logger.error('settings', 'Failed to fetch local speech status', {error});
+        }
+    }, []);
+
+    useEffect(() => {
+        let unlisten: UnlistenFn | null = null;
+        let mounted = true;
+
+        void refreshLocalStatus(true);
+
+        (async () => {
+            try {
+                unlisten = await listen<FastWhisperStatus>('local-speech:status', (event) => {
+                    if (!mounted) return;
+                    // Debounce rapid status updates to avoid flickering UI
+                    if (localStatusDebounceRef.current) {
+                        clearTimeout(localStatusDebounceRef.current);
+                        localStatusDebounceRef.current = null;
+                    }
+                    const next = event.payload;
+                    localStatusDebounceRef.current = setTimeout(() => {
+                        if (!mounted) return;
+                        setLocalStatus(next);
+                    }, 150);
+                });
+            } catch (error) {
+                logger.error('settings', 'Failed to subscribe to local speech status', {error});
+            }
+        })();
+
+        const handleVisibility = () => {
+            if (!document.hidden) {
+                void refreshLocalStatus(true);
+            }
+        };
+        window.addEventListener('focus', handleVisibility);
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            mounted = false;
+            if (localStatusDebounceRef.current) {
+                clearTimeout(localStatusDebounceRef.current);
+                localStatusDebounceRef.current = null;
+            }
+            if (unlisten) {
+                void unlisten();
+            }
+            window.removeEventListener('focus', handleVisibility);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [refreshLocalStatus]);
+
+    useEffect(() => {
+        if (settings.transcriptionMode !== 'local') {
+            setLocalModelReady(null);
+            setLocalModelError(null);
+            setCheckingLocalModel(false);
+            setLocalModelWarming(false);
+            setLocalWarmupHydrated(true);
+            lastLocalWarmupRef.current = null;
+            return;
+        }
+        const model = normalizeLocalWhisperModel(settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL);
+        if (!model || !localStatus?.installed || !localStatus.running) {
+            setLocalModelReady(null);
+            setLocalModelError(null);
+            setCheckingLocalModel(false);
+            setLocalModelWarming(false);
+            setLocalWarmupHydrated(false);
+            lastLocalWarmupRef.current = null;
+            return;
+        }
+        setLocalModelWarming(false);
+        setLocalWarmupHydrated(false);
+        localWarmupPendingRef.current = false;
+        const unsubscribe = subscribeToLocalModelWarmup((models) => {
+            const target = models.has(model);
+            if (localWarmupDebounceRef.current) {
+                clearTimeout(localWarmupDebounceRef.current);
+                localWarmupDebounceRef.current = null;
+            }
+
+            if (target) {
+                localWarmupPendingRef.current = true;
+                localWarmupDebounceRef.current = setTimeout(() => {
+                    if (localWarmupPendingRef.current) {
+                        setLocalModelWarming(true);
+                        setLocalWarmupHydrated(true);
+                    }
+                    localWarmupDebounceRef.current = null;
+                }, WARMUP_VISIBILITY_DELAY_MS);
+            } else {
+                localWarmupPendingRef.current = false;
+                setLocalModelWarming(false);
+                setLocalWarmupHydrated(true);
+            }
+        });
+        return () => {
+            if (localWarmupDebounceRef.current) {
+                clearTimeout(localWarmupDebounceRef.current);
+                localWarmupDebounceRef.current = null;
+            }
+            localWarmupPendingRef.current = false;
+            unsubscribe();
+        };
+    }, [settings.transcriptionMode, settings.localWhisperModel, localStatus?.installed, localStatus?.running]);
+
+    useEffect(() => {
+        if (settings.transcriptionMode !== 'local') {
+            setLocalModelReady(null);
+            setLocalModelError(null);
+            setCheckingLocalModel(false);
+            lastLocalWarmupRef.current = null;
+            return;
+        }
+        const model = normalizeLocalWhisperModel(settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL);
+        if (!model || !localStatus?.installed || !localStatus.running) {
+            setLocalModelReady(null);
+            setLocalModelError(null);
+            setCheckingLocalModel(false);
+            lastLocalWarmupRef.current = null;
+            return;
+        }
+        let cancelled = false;
+        setCheckingLocalModel(true);
+        setLocalModelError(null);
+        checkLocalModelDownloaded(model, {force: true})
+            .then((downloaded) => {
+                if (cancelled) return;
+                setLocalModelReady(downloaded);
+                if (downloaded && !localModelWarming && lastLocalWarmupRef.current !== model) {
+                    lastLocalWarmupRef.current = model;
+                    return warmupLocalSpeechModel(model).catch((error) => {
+                        lastLocalWarmupRef.current = null;
+                        setLocalModelError(error instanceof Error ? error.message : 'Failed to warmup model');
+                    });
+                }
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                setLocalModelError(error instanceof Error ? error.message : 'Failed to check model');
+                setLocalModelReady(false);
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setCheckingLocalModel(false);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        settings.transcriptionMode,
+        settings.localWhisperModel,
+        localStatus?.installed,
+        localStatus?.running,
+        localModelWarming,
+    ]);
+
+    useEffect(() => {
+        if (settings.llmHost !== 'local') {
+            setOllamaInstalled(null);
+            setOllamaModels([]);
+            setOllamaModelDownloaded(null);
+            setOllamaModelError(null);
+            setOllamaModelWarming(false);
+            setOllamaChecking(false);
+            setOllamaModelChecking(false);
+            setOllamaDownloading(false);
+            return;
+        }
+
+        let cancelled = false;
+
+        const refreshOllamaState = async (forceModels = false) => {
+            setOllamaModelError(null);
+            setOllamaChecking(true);
+            setOllamaModelChecking(true);
+            try {
+                const installed = await checkOllamaInstalled();
+                if (cancelled) return;
+                setOllamaInstalled(installed);
+                if (!installed) {
+                    setOllamaModels([]);
+                    setOllamaModelDownloaded(false);
+                    return;
+                }
+                const models = await listInstalledOllamaModels({force: forceModels});
+                if (cancelled) return;
+                setOllamaModels(models);
+                const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
+                setOllamaModelDownloaded(normalized ? models.includes(normalized) : false);
+            } catch (error) {
+                if (cancelled) return;
+                logger.error('settings', 'Failed to refresh Ollama status', {error});
+                setOllamaModelError(error instanceof Error ? error.message : 'Failed to refresh Ollama status');
+                setOllamaModelDownloaded(false);
+            } finally {
+                if (!cancelled) {
+                    setOllamaChecking(false);
+                    setOllamaModelChecking(false);
+                }
+            }
+        };
+
+        void refreshOllamaState(true);
+
+        const handleVisibility = () => {
+            if (!cancelled && !document.hidden) {
+                void refreshOllamaState(true);
+            }
+        };
+        window.addEventListener('focus', handleVisibility);
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        const unsubscribeDownload = subscribeToOllamaDownloads((models) => {
+            const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
+            setOllamaDownloading(models.has(normalized));
+        });
+        const unsubscribeWarmup = subscribeToOllamaWarmup((models) => {
+            const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
+            setOllamaModelWarming(models.has(normalized));
+        });
+
+        return () => {
+            cancelled = true;
+            unsubscribeDownload();
+            unsubscribeWarmup();
+            window.removeEventListener('focus', handleVisibility);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [settings.llmHost, settings.localLlmModel]);
+
+    const handleLocalAction = async (action: LocalAction, fn: () => Promise<FastWhisperStatus>) => {
+        if (!window.api?.localSpeech) {
+            showMessage('Local speech bridge unavailable', 'error');
+            return;
+        }
+        setLocalAction(action);
+        try {
+            const status = await fn();
+            setLocalStatus(status);
+        } catch (error) {
+            logger.error('settings', `Local speech action failed (${action})`, {error});
+            showMessage(`Failed to ${action}`, 'error');
+        } finally {
+            setLocalAction(null);
+        }
+    };
+
+    const handleTranscriptionModeChange = async (mode: TranscriptionMode) => {
+        let targetModel = mode === 'local'
+            ? (settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL)
+            : (settings.transcriptionModel ?? DEFAULT_API_TRANSCRIBE_MODEL);
+        if (mode === 'api' && !isTranscribeAllowed(targetModel)) {
+            const fallback = apiTranscribeOptions.find((value) => isTranscribeAllowed(value));
+            if (!fallback) {
+                showMessage('No API models available', 'error');
+                return;
+            }
+            targetModel = fallback;
         }
         try {
             await window.api.settings.setTranscriptionMode(mode);
-            patchLocal({ transcriptionMode: mode });
-            showMessage(`Transcription mode switched to ${mode.toUpperCase()}`);
+            if (mode === 'local') {
+                patchLocal({transcriptionMode: mode, localWhisperModel: targetModel as any});
+            } else {
+                patchLocal({transcriptionMode: mode, transcriptionModel: targetModel});
+            }
         } catch (error) {
-            logger.error('settings', 'Failed to set transcription mode', { error });
+            logger.error('settings', 'Failed to set transcription mode', {error});
             showMessage('Failed to update transcription mode', 'error');
         }
     };
 
-    const handleStreamModeChange = async (mode: 'base' | 'stream') => {
-        if (mode === 'stream') {
-            if (settings.transcriptionMode === 'local') {
-                showMessage('Stream mode requires API transcription', 'error');
-                return;
-            }
-            if (!requireGoogle()) return;
-        }
-        try {
-            await window.api.settings.setStreamMode(mode);
-            patchLocal({ streamMode: mode });
-            emitSettingsChange('streamMode', mode);
-            showMessage(`Stream mode changed to ${mode}`);
-        } catch (error) {
-            logger.error('settings', 'Failed to set stream mode', { error });
-            showMessage('Failed to update stream mode', 'error');
-        }
-    };
-
-    const handleLlmHostChange = async (host: LlmHost) => {
-        if (host === 'api' && !requireOpenAi() && !requireGoogle()) {
-            return;
-        }
-        const targetModel = host === 'local'
-            ? (settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL)
-            : (settings.apiLlmModel ?? DEFAULT_API_LLM_MODEL);
-        try {
-            await window.api.settings.setLlmHost(host);
-            if (host === 'local') {
-                patchLocal({ llmHost: host, llmModel: targetModel, localLlmModel: targetModel });
-            } else {
-                patchLocal({ llmHost: host, llmModel: targetModel, apiLlmModel: targetModel });
-            }
-            showMessage(`LLM host set to ${host.toUpperCase()}`);
-        } catch (error) {
-            logger.error('settings', 'Failed to set LLM host', { error });
-            showMessage('Failed to update LLM host', 'error');
-        }
-    };
-
     const handleTranscriptionModelChange = async (model: string) => {
-        if (!requireOpenAi()) {
+        if (settings.transcriptionMode === 'api' && !isTranscribeAllowed(model)) {
+            showMessage('Model is unavailable without the required API key', 'error');
             return;
+        }
+        if (settings.transcriptionMode === 'api') {
+            if (GOOGLE_TRANSCRIBE_SET.has(model) && !hasGoogleKey) {
+                showMessage('Google API key is missing, requests may fail', 'error');
+            }
+            if (OPENAI_TRANSCRIBE_SET.has(model) && !hasOpenAiKey) {
+                showMessage('OpenAI API key is missing, requests may fail', 'error');
+            }
         }
         try {
             await window.api.settings.setTranscriptionModel(model);
-            patchLocal({ transcriptionModel: model });
-            showMessage(`Transcription model set to ${model}`);
+            patchLocal({transcriptionModel: model});
         } catch (error) {
-            logger.error('settings', 'Failed to set transcription model', { error });
+            logger.error('settings', 'Failed to set transcription model', {error});
             showMessage('Failed to update transcription model', 'error');
         }
     };
 
     const handleLocalWhisperChange = async (model: string) => {
+        const normalized = normalizeLocalWhisperModel(model) || DEFAULT_LOCAL_TRANSCRIBE_MODEL;
         try {
-            await window.api.settings.setLocalWhisperModel(model as any);
-            patchLocal({ localWhisperModel: model as any });
-            showMessage(`Local Whisper model set to ${model}`);
+            await window.api.settings.setLocalWhisperModel(normalized as any);
+            patchLocal({localWhisperModel: normalized as any});
         } catch (error) {
-            logger.error('settings', 'Failed to set local whisper model', { error });
+            logger.error('settings', 'Failed to set local whisper model', {error});
             showMessage('Failed to update local whisper model', 'error');
         }
     };
 
-    const handleLocalDeviceChange = async (device: 'cpu' | 'gpu') => {
+    const handleLlmHostChange = async (host: LlmHost) => {
+        let targetModel = host === 'local'
+            ? (settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL)
+            : (settings.apiLlmModel ?? DEFAULT_API_LLM_MODEL);
+        if (host === 'api' && !isLlmAllowed(targetModel)) {
+            const fallback = apiLlmOptions.find((value) => isLlmAllowed(value));
+            if (!fallback) {
+                showMessage('No API LLM models available', 'error');
+                return;
+            }
+            targetModel = fallback;
+        }
         try {
-            await window.api.settings.setLocalDevice(device);
-            patchLocal({ localDevice: device });
-            showMessage(`Local device set to ${device.toUpperCase()}`);
+            await window.api.settings.setLlmHost(host);
+            if (host === 'local') {
+                patchLocal({llmHost: host, llmModel: targetModel, localLlmModel: targetModel});
+            } else {
+                patchLocal({llmHost: host, llmModel: targetModel, apiLlmModel: targetModel});
+            }
         } catch (error) {
-            logger.error('settings', 'Failed to set local device', { error });
-            showMessage('Failed to update local device', 'error');
+            logger.error('settings', 'Failed to set LLM host', {error});
+            showMessage('Failed to update LLM host', 'error');
         }
     };
 
     const handleApiLlmModelChange = async (model: string) => {
-        const needsOpenAi = model.startsWith('gpt');
-        const needsGoogle = model.startsWith('gemini');
-        if (needsOpenAi && !requireOpenAi()) return;
-        if (needsGoogle && !requireGoogle()) return;
+        if (settings.llmHost === 'api' && !isLlmAllowed(model)) {
+            showMessage('Model is unavailable without the required API key', 'error');
+            return;
+        }
+        const needsOpenAi = OPENAI_LLM_SET.has(model);
+        const needsGoogle = GEMINI_LLM_SET.has(model);
+        if (needsOpenAi && !hasOpenAiKey) {
+            showMessage('OpenAI API key is missing, requests may fail', 'error');
+        }
+        if (needsGoogle && !hasGoogleKey) {
+            showMessage('Google API key is missing, requests may fail', 'error');
+        }
         try {
-            await window.api.settings.setLlmModel(model);
+            await window.api.settings.setLlmModel(model, 'api');
             const isApiHost = settings.llmHost !== 'local';
             patchLocal({
                 llmModel: isApiHost ? model : settings.llmModel,
                 apiLlmModel: model,
             });
-            showMessage(`LLM model set to ${model}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set LLM model', { error });
+            logger.error('settings', 'Failed to set LLM model', {error});
             showMessage('Failed to update LLM model', 'error');
         }
     };
 
     const handleLocalLlmModelChange = async (model: string) => {
         try {
-            await window.api.settings.setLlmModel(model);
+            await window.api.settings.setLlmModel(model, 'local');
             const isLocalHost = settings.llmHost === 'local';
             patchLocal({
                 llmModel: isLocalHost ? model : settings.llmModel,
                 localLlmModel: model,
             });
-            showMessage(`Local LLM model set to ${model}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set local LLM model', { error });
+            logger.error('settings', 'Failed to set local LLM model', {error});
             showMessage('Failed to update local LLM model', 'error');
-        }
-    };
-
-    const handleTranscriptionPromptSave = async () => {
-        try {
-            await window.api.settings.setTranscriptionPrompt(transcriptionPrompt.trim());
-            patchLocal({ transcriptionPrompt: transcriptionPrompt.trim() });
-            showMessage('Transcription prompt saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save transcription prompt', { error });
-            showMessage('Failed to save transcription prompt', 'error');
-        }
-    };
-
-    const handleLlmPromptSave = async () => {
-        try {
-            await window.api.settings.setLlmPrompt(llmPrompt.trim());
-            patchLocal({ llmPrompt: llmPrompt.trim() });
-            showMessage('LLM prompt saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save LLM prompt', { error });
-            showMessage('Failed to save LLM prompt', 'error');
-        }
-    };
-
-    const handleScreenPromptSave = async () => {
-        try {
-            await window.api.settings.setScreenProcessingPrompt(screenPrompt.trim());
-            patchLocal({ screenProcessingPrompt: screenPrompt.trim() });
-            showMessage('Screen processing prompt saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save screen prompt', { error });
-            showMessage('Failed to save screen prompt', 'error');
         }
     };
 
@@ -303,213 +615,843 @@ export const AiSettings = () => {
         if (provider === 'google' && !requireGoogle()) return;
         try {
             await window.api.settings.setScreenProcessingModel(provider);
-            patchLocal({ screenProcessingModel: provider });
-            showMessage(`Screen processing model set to ${provider}`);
+            patchLocal({screenProcessingModel: provider});
         } catch (error) {
-            logger.error('settings', 'Failed to set screen processing model', { error });
+            logger.error('settings', 'Failed to set screen processing model', {error});
             showMessage('Failed to update screen processing model', 'error');
         }
     };
 
-    const saveTimeouts = async () => {
+    const handleLocalModelDownload = async () => {
+        if (settings.transcriptionMode !== 'local') return;
+        const model = normalizeLocalWhisperModel(settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL);
+        if (!model) return;
+        if (!localStatus?.installed || !localStatus.running) {
+            setLocalModelError('Start the local speech server first.');
+            return;
+        }
+        setLocalModelError(null);
+        setDownloadingLocalModel(true);
         try {
-            await Promise.all([
-                window.api.settings.setApiSttTimeoutMs(apiSttTimeout),
-                window.api.settings.setApiLlmTimeoutMs(apiLlmTimeout),
-                window.api.settings.setScreenProcessingTimeoutMs(screenTimeout),
-            ]);
-            patchLocal({
-                apiSttTimeoutMs: apiSttTimeout,
-                apiLlmTimeoutMs: apiLlmTimeout,
-                screenProcessingTimeoutMs: screenTimeout,
-            });
-            showMessage('Timeout values saved');
-        } catch (error) {
-            logger.error('settings', 'Failed to save timeout values', { error });
-            showMessage('Failed to save timeouts', 'error');
+            await downloadLocalSpeechModel(model);
+            const downloaded = await checkLocalModelDownloaded(model, {force: true});
+            setLocalModelReady(downloaded);
+            try {
+                await warmupLocalSpeechModel(model);
+            } catch (error) {
+                logger.error('settings', 'Warmup failed after download', {error});
+                setLocalModelError('Model ready but warmup failed. Try again.');
+            }
+            showMessage('Local model ready');
+        } catch (error: any) {
+            const detail = error?.response?.data?.detail;
+            setLocalModelError(detail || (error instanceof Error ? error.message : 'Failed to download model'));
+        } finally {
+            setDownloadingLocalModel(false);
         }
     };
 
+    const handleOllamaDownload = async () => {
+        if (settings.llmHost !== 'local') return;
+        const model = settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL;
+        setOllamaModelError(null);
+        setOllamaDownloading(true);
+        try {
+            await downloadOllamaModel(model);
+            const models = await listInstalledOllamaModels({force: true});
+            setOllamaModels(models);
+            setOllamaModelDownloaded(models.includes(normalizeOllamaModelName(model)));
+            try {
+                await warmupOllamaModel(model);
+            } catch (error) {
+                logger.error('settings', 'Ollama warmup failed', {error});
+                setOllamaModelError('Model ready but warmup failed.');
+            }
+            showMessage('LLM model ready');
+        } catch (error) {
+            logger.error('settings', 'Failed to download Ollama model', {error});
+            setOllamaModelError(error instanceof Error ? error.message : 'Failed to download model');
+        } finally {
+            setOllamaDownloading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (
+            settings.apiSttTimeoutMs === apiSttTimeout &&
+            settings.apiLlmTimeoutMs === apiLlmTimeout &&
+            settings.screenProcessingTimeoutMs === screenTimeout
+        ) {
+            return;
+        }
+        if (timeoutSaveRef.current) {
+            clearTimeout(timeoutSaveRef.current);
+            timeoutSaveRef.current = null;
+        }
+        timeoutSaveRef.current = setTimeout(() => {
+            void (async () => {
+                try {
+                    await Promise.all([
+                        window.api.settings.setApiSttTimeoutMs(apiSttTimeout),
+                        window.api.settings.setApiLlmTimeoutMs(apiLlmTimeout),
+                        window.api.settings.setScreenProcessingTimeoutMs(screenTimeout),
+                    ]);
+                    patchLocal({
+                        apiSttTimeoutMs: apiSttTimeout,
+                        apiLlmTimeoutMs: apiLlmTimeout,
+                        screenProcessingTimeoutMs: screenTimeout,
+                    });
+                } catch (error) {
+                    logger.error('settings', 'Failed to save timeout values', {error});
+                    showMessage('Failed to save timeouts', 'error');
+                }
+            })();
+        }, 500);
+        return () => {
+            if (timeoutSaveRef.current) {
+                clearTimeout(timeoutSaveRef.current);
+                timeoutSaveRef.current = null;
+            }
+        };
+    }, [
+        apiSttTimeout,
+        apiLlmTimeout,
+        screenTimeout,
+        settings.apiSttTimeoutMs,
+        settings.apiLlmTimeoutMs,
+        settings.screenProcessingTimeoutMs,
+        patchLocal,
+    ]);
+    useEffect(() => {
+        if (
+            transcriptionPrompt === (settings.transcriptionPrompt ?? '') &&
+            llmPrompt === (settings.llmPrompt ?? '')
+        ) {
+            return;
+        }
+        if (promptSaveRef.current) {
+            clearTimeout(promptSaveRef.current);
+            promptSaveRef.current = null;
+        }
+        promptSaveRef.current = setTimeout(() => {
+            void (async () => {
+                try {
+                    await Promise.all([
+                        window.api.settings.setTranscriptionPrompt(transcriptionPrompt ?? ''),
+                        window.api.settings.setLlmPrompt(llmPrompt ?? ''),
+                    ]);
+                    patchLocal({
+                        transcriptionPrompt: transcriptionPrompt ?? '',
+                        llmPrompt: llmPrompt ?? '',
+                    });
+                } catch (error) {
+                    logger.error('settings', 'Failed to save prompts', {error});
+                    showMessage('Failed to save prompts', 'error');
+                }
+            })();
+        }, 500);
+        return () => {
+            if (promptSaveRef.current) {
+                clearTimeout(promptSaveRef.current);
+                promptSaveRef.current = null;
+            }
+        };
+    }, [transcriptionPrompt, llmPrompt, patchLocal, settings.llmPrompt, settings.transcriptionPrompt]);
+    const hasOpenAiKey = Boolean(settings.openaiApiKey?.trim());
+    const hasGoogleKey = Boolean(settings.googleApiKey?.trim());
+
+    const isTranscribeAllowed = useCallback((_model: string) => true, []);
+
+    const isLlmAllowed = useCallback((_model: string) => true, []);
+
+    const apiTranscribeOptions = useMemo(() => {
+        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
+        return models;
+    }, []);
+
+    const apiLlmOptions = useMemo(() => {
+        const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
+        return models;
+    }, []);
+
+    const apiTranscribeModel = settings.transcriptionModel ?? DEFAULT_API_TRANSCRIBE_MODEL;
+    const localTranscribeModel = settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL;
+    const apiLlmModel = settings.apiLlmModel ?? settings.llmModel ?? DEFAULT_API_LLM_MODEL;
+    const localLlmModel = settings.localLlmModel ?? settings.llmModel ?? DEFAULT_LOCAL_LLM_MODEL;
+
+    const transcribeOptions = useMemo(() => {
+        if (settings.transcriptionMode === 'local') {
+            return LOCAL_TRANSCRIBE_MODELS.map((model) => ({value: model, label: formatTranscribeLabel(model)}));
+        }
+        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
+        return models.map((model) => {
+            return {
+                value: model,
+                label: formatTranscribeLabel(model),
+                disabled: false,
+            };
+        });
+    }, [settings.transcriptionMode, hasGoogleKey, hasOpenAiKey]);
+
+    const llmOptions = useMemo(() => {
+        if (settings.llmHost === 'local') {
+            return LOCAL_LLM_MODELS.map((model) => ({value: model, label: formatLlmLabel(model)}));
+        }
+        const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
+        return models.map((model) => {
+            return {
+                value: model,
+                label: formatLlmLabel(model),
+                disabled: false,
+            };
+        });
+    }, [settings.llmHost, hasGoogleKey, hasOpenAiKey]);
+
+    const screenModelOptions = useMemo(() => SCREEN_MODEL_OPTIONS.map((option) => ({
+        ...option,
+        disabled: option.value === 'openai' ? !hasOpenAiKey : !hasGoogleKey,
+        description: option.value === 'openai'
+            ? (!hasOpenAiKey ? 'Requires OpenAI key' : undefined)
+            : (!hasGoogleKey ? 'Requires Google AI key' : undefined),
+    })), [hasGoogleKey, hasOpenAiKey]);
+
+    const transcribeUnavailable =
+        settings.transcriptionMode === 'local' && (!localStatus?.installed || !localStatus.running);
+
+    const selectedLocalMetadata = getLocalWhisperMetadata(localTranscribeModel);
+    const selectedLocalLlmLabel = formatLlmLabel(localLlmModel);
+    const localPhase = (localStatus?.phase || '').toLowerCase();
+    const localBusyPhase = ['installing', 'starting', 'stopping', 'reinstalling'].includes(localPhase);
+    const localPrimaryAction: LocalAction = !localStatus?.installed
+        ? 'install'
+        : localStatus.running
+            ? 'restart'
+            : 'start';
+    const localPrimaryLabel = !localStatus?.installed
+        ? `Install (${FAST_WHISPER_INSTALL_SIZE_HINT})`
+        : localStatus.running
+            ? 'Restart'
+            : 'Start';
+    const localPrimaryDisabled = !!localAction || localBusyPhase;
+    const localBusyLabel =
+        localPhase === 'installing'
+            ? 'Installing...'
+            : localPhase === 'starting'
+                ? 'Starting...'
+                : localPhase === 'reinstalling'
+                    ? 'Reinstalling...'
+                    : 'Processing...';
+    const localLogLineRaw =
+        (localStatus as any)?.log_line ??
+        localStatus?.logLine ??
+        '';
+    const localLogLine =
+        localLogLineRaw && localLogLineRaw.length > 180
+            ? `...${localLogLineRaw.slice(-180)}`
+            : localLogLineRaw;
+    const localMessage =
+        localStatus?.running && !localBusyPhase
+            ? ''
+            : localBusyPhase && localLogLine
+                ? localLogLine
+                : (localStatus?.phase === 'idle' ? '' : localStatus?.message || 'Checking server status...');
+
+    useEffect(() => {
+        if (settings.transcriptionMode !== 'api') return;
+        if (!transcribeOptions.length) return;
+        const currentAllowed = isTranscribeAllowed(apiTranscribeModel);
+        if (currentAllowed) return;
+        const fallback = transcribeOptions.find((option) => {
+            const optionMeta = option as typeof option & { disabled?: boolean };
+            return !optionMeta.disabled;
+        });
+        if (fallback) {
+            void handleTranscriptionModelChange(fallback.value);
+        }
+    }, [settings.transcriptionMode, apiTranscribeModel, transcribeOptions, isTranscribeAllowed]);
+
+    useEffect(() => {
+        if (settings.llmHost !== 'api') return;
+        if (!llmOptions.length) return;
+        const currentAllowed = isLlmAllowed(apiLlmModel);
+        if (currentAllowed) return;
+        const fallback = llmOptions.find((option) => {
+            const optionMeta = option as typeof option & { disabled?: boolean };
+            return !optionMeta.disabled;
+        });
+        if (fallback) {
+            void handleApiLlmModelChange(fallback.value);
+        }
+    }, [settings.llmHost, apiLlmModel, llmOptions, isLlmAllowed]);
+
     return (
         <div className="ai-settings">
-            <SettingsToast message={message} />
-
             <section className="settings-card card">
-                <h3 className="settings-card__title">Modes</h3>
-                <div className="ai-settings__grid">
+                <h3 className="settings-card__title">Modes & Models</h3>
+                <div className="ai-settings__grid ai-settings__grid--models">
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription</label>
-                        <CustomSelect
-                            value={settings.transcriptionMode ?? 'api'}
-                            options={TRANSCRIPTION_MODE_OPTIONS}
-                            onChange={(val) => handleTranscriptionModeChange(val as TranscriptionMode)}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <TextField
+                                select
+                                size="small"
+                                label={'Transcription Mode'}
+                                value={settings.transcriptionMode ?? 'api'}
+                                onChange={(event) => handleTranscriptionModeChange(event.target.value as TranscriptionMode)}
+                                fullWidth
+                            >
+                                {TRANSCRIPTION_MODE_OPTIONS.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            {settings.transcriptionMode === 'local' ? (
+                                <IconButton
+                                    size="small"
+                                    className="ai-settings__select-icon"
+                                    aria-label="Local transcription info"
+                                    onClick={() => setInfoDialog('transcribe')}
+                                >
+                                    <InfoOutlinedIcon fontSize="small"/>
+                                </IconButton>
+                            ) : null}
+                        </div>
+                        {settings.transcriptionMode === 'local' ? (
+                            <Box className="ai-settings__local-server" mt={-.8}>
+                                {localStatus?.running && !localBusyPhase ? (
+                                    <Box
+                                        sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            borderRadius: 2,
+                                            border: '0',
+                                            backgroundColor: 'rgba(16,185,129,0.08)',
+                                            px: 1.5,
+                                            py: 1,
+                                            gap: 1,
+                                        }}
+                                    >
+                                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                            <CheckCircleIcon fontSize="small" color="success"/>
+                                            <Typography fontWeight={700} color="success.main">
+                                                Running
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5}}>
+                                            <IconButton
+                                                size="small"
+                                                color="success"
+                                                disabled={!!localAction}
+                                                onClick={() => void handleLocalAction('restart', () => window.api.localSpeech.restart())}
+                                            >
+                                                {localAction === 'restart' ? (
+                                                    <CircularProgress size={16} sx={{color: 'success.main'}}/>
+                                                ) : (
+                                                    <RestartAltIcon fontSize="small"/>
+                                                )}
+                                            </IconButton>
+                                            <IconButton
+                                                size="small"
+                                                disabled={!!localAction}
+                                                onClick={() => void handleLocalAction('stop', () => window.api.localSpeech.stop())}
+                                                sx={{
+                                                    color: localAction ? 'text.disabled' : 'text.primary',
+                                                    '&:hover': {
+                                                        color: 'error.main',
+                                                        backgroundColor: 'rgba(239,68,68,0.12)'
+                                                    },
+                                                }}
+                                            >
+                                                {localAction === 'stop' ? (
+                                                    <CircularProgress size={16} sx={{color: 'error.main'}}/>
+                                                ) : (
+                                                    <StopCircleIcon fontSize="small"/>
+                                                )}
+                                            </IconButton>
+                                        </Box>
+                                    </Box>
+                                ) : localStatus?.installed && !localBusyPhase ? (
+                                    <Box
+                                        sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            borderRadius: 2,
+                                            border: '0',
+                                            backgroundColor: 'rgba(107,114,128,0.08)',
+                                            px: 1.5,
+                                            py: 1,
+                                            gap: 1,
+                                        }}
+                                    >
+                                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                            <StopCircleIcon fontSize="small" sx={{color: 'text.secondary'}}/>
+                                            <Typography fontWeight={700} color="text.secondary">
+                                                Stopped
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                            <IconButton
+                                                size="small"
+                                                color="primary"
+                                                disabled={!!localAction}
+                                                onClick={() => void handleLocalAction('start', () => window.api.localSpeech.start())}
+                                            >
+                                                {localAction === 'start' ? (
+                                                    <CircularProgress size={16} color="inherit"/>
+                                                ) : (
+                                                    <PlayArrowIcon fontSize="small"/>
+                                                )}
+                                            </IconButton>
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                color="warning"
+                                                disabled={!!localAction}
+                                                onClick={() => void handleLocalAction('reinstall', () => window.api.localSpeech.reinstall())}
+                                            >
+                                                Reinstall
+                                            </Button>
+                                        </Box>
+                                    </Box>
+                                ) : (
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        color={localStatus?.running ? 'success' : 'primary'}
+                                        disabled={localPrimaryDisabled}
+                                        onClick={() => {
+                                            if (localPrimaryDisabled) {
+                                                return;
+                                            }
+                                            const action = localPrimaryAction;
+                                            const fn = action === 'install'
+                                                ? () => window.api.localSpeech.install()
+                                                : action === 'start'
+                                                    ? () => window.api.localSpeech.start()
+                                                    : action === 'restart'
+                                                        ? () => window.api.localSpeech.restart()
+                                                        : () => window.api.localSpeech.reinstall();
+                                            void handleLocalAction(action, fn);
+                                        }}
+                                    >
+                                        {localAction || localBusyPhase ?
+                                            <CircularProgress size={16} color="inherit"/> : null}
+                                        {localAction || localBusyPhase ? localBusyLabel : localPrimaryLabel}
+                                    </Button>
+                                )}
+                                {localMessage ? (
+                                    <div className="ai-settings__hint">
+                                        {localMessage}
+                                    </div>
+                                ) : null}
+                            </Box>
+                        ) : null}
                     </div>
+
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM</label>
-                        <CustomSelect
-                            value={settings.llmHost ?? 'api'}
-                            options={LLM_HOST_OPTIONS}
-                            onChange={(val) => handleLlmHostChange(val as LlmHost)}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="Transcription model"
+                                value={settings.transcriptionMode === 'local' ? localTranscribeModel : apiTranscribeModel}
+                                onChange={(event) => {
+                                    const val = event.target.value;
+                                    if (settings.transcriptionMode === 'local') {
+                                        void handleLocalWhisperChange(val);
+                                    } else {
+                                        void handleTranscriptionModelChange(val);
+                                    }
+                                }}
+                                disabled={settings.transcriptionMode === 'local' && transcribeUnavailable}
+                            >
+                                {transcribeOptions.map((option) => {
+                                    const optionMeta = option as typeof option & {
+                                        disabled?: boolean;
+                                        description?: string;
+                                    };
+                                    const optionDisabled = Boolean(optionMeta.disabled);
+                                    const optionDescription = optionMeta.description;
+                                    return (
+                                        <MenuItem
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={optionDisabled}
+                                            sx={optionDisabled ? {opacity: 0.6} : undefined}
+                                        >
+                                            <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                                <span>{option.label}</span>
+                                                {optionDescription ? (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {optionDescription}
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
+                            </TextField>
+                            {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === true ? (
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
+                            ) : null}
+                            {settings.transcriptionMode === 'local' && !localModelWarming && localModelReady === false && !checkingLocalModel ? (
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
+                            ) : null}
+                        </div>
+                        {settings.transcriptionMode === 'local' ? (
+                            <div className="ai-settings__status-block -mt-2">
+                                {transcribeUnavailable ? (
+                                    <Typography variant="body2" mt={-1.1} ml={.2} color="warning.main">
+                                        Install and start the local server to use local transcription.
+                                    </Typography>
+                                ) : null}
+                                {!transcribeUnavailable && localWarmupHydrated && localModelWarming && !checkingLocalModel ? (
+                                    <Typography variant="body2" color="warning.main"
+                                                sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                        <CircularProgress size={16} thickness={5} sx={{color: 'warning.main'}}/>
+                                        {selectedLocalMetadata
+                                            ? `${selectedLocalMetadata.label} is warming up. Recording is temporarily disabled.`
+                                            : 'Model is warming up. Recording is temporarily disabled.'}
+                                    </Typography>
+                                ) : null}
+                                {!transcribeUnavailable && !checkingLocalModel && localModelReady === false ? (
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        color="primary"
+                                        onClick={handleLocalModelDownload}
+                                        disabled={downloadingLocalModel}
+                                        startIcon={downloadingLocalModel ?
+                                            <CircularProgress size={14} color="inherit"/> : undefined}
+                                        sx={{mt: 0.5}}
+                                    >
+                                        {selectedLocalMetadata ? `Download ${selectedLocalMetadata.label}` : 'Download model'}
+                                    </Button>
+                                ) : null}
+                                {/* Warmup is automatic now; no manual button needed */}
+                                {localModelError ? (
+                                    <Typography variant="body2" color="error" sx={{mt: 0.5}}>
+                                        {localModelError}
+                                    </Typography>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
+
                     <div className="settings-field">
-                        <label className="settings-field__label">Stream mode</label>
-                        <CustomSelect
-                            value={settings.streamMode ?? 'base'}
-                            options={STREAM_MODE_OPTIONS}
-                            onChange={(val) => handleStreamModeChange(val as 'base' | 'stream')}
-                        />
+                        <div className="ai-settings__select-wrapper">
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="LLM Mode"
+                                value={settings.llmHost ?? 'api'}
+                                onChange={(event) => handleLlmHostChange(event.target.value as LlmHost)}
+                            >
+                                {LLM_HOST_OPTIONS.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            {settings.llmHost === 'local' ? (
+                                <IconButton
+                                    size="small"
+                                    className="ai-settings__select-icon"
+                                    aria-label="Local LLM info"
+                                    onClick={() => setInfoDialog('llm')}
+                                >
+                                    <InfoOutlinedIcon fontSize="small"/>
+                                </IconButton>
+                            ) : null}
+                        </div>
                     </div>
+
+                    <div className="settings-field">
+                        <div className="ai-settings__select-wrapper">
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="LLM model"
+                                value={settings.llmHost === 'local' ? localLlmModel : apiLlmModel}
+                                onChange={(event) => {
+                                    const val = event.target.value;
+                                    if (settings.llmHost === 'local') {
+                                        void handleLocalLlmModelChange(val);
+                                    } else {
+                                        void handleApiLlmModelChange(val);
+                                    }
+                                }}
+                                disabled={settings.llmHost === 'local' && (ollamaChecking || !ollamaInstalled)}
+                            >
+                                {llmOptions.map((option) => {
+                                    const optionMeta = option as typeof option & {
+                                        disabled?: boolean;
+                                        description?: string;
+                                    };
+                                    const optionDisabled = Boolean(optionMeta.disabled);
+                                    const optionDescription = optionMeta.description;
+                                    return (
+                                        <MenuItem
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={optionDisabled}
+                                            sx={optionDisabled ? {opacity: 0.6} : undefined}
+                                        >
+                                            <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                                <span>{option.label}</span>
+                                                {optionDescription ? (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {optionDescription}
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
+                            </TextField>
+                            {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === true ? (
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--success">Ready</span>
+                            ) : null}
+                            {settings.llmHost === 'local' && !ollamaModelWarming && ollamaModelDownloaded === false && !ollamaModelChecking ? (
+                                <span
+                                    className="ai-settings__select-status ai-settings__select-status--warning">Download</span>
+                            ) : null}
+                        </div>
+                        {settings.llmHost === 'local' ? (
+                            <Box sx={{mt: -.4}} className="ai-settings__status-block">
+                                {!ollamaChecking && ollamaInstalled === false ? (
+                                    <Typography variant="body2" color="warning.main">
+                                        Install Ollama CLI to enable local LLMs.
+                                    </Typography>
+                                ) : null}
+                                {ollamaInstalled && !ollamaModelChecking && ollamaModelWarming ? (
+                                    <Typography variant="body2" color="warning.main"
+                                                sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                        <CircularProgress size={16} thickness={5} sx={{color: 'warning.main'}}/>
+                                        {selectedLocalLlmLabel} is warming up.
+                                    </Typography>
+                                ) : null}
+                                {ollamaInstalled && !ollamaModelChecking && ollamaModelDownloaded === false ? (
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        color="primary"
+                                        onClick={handleOllamaDownload}
+                                        disabled={ollamaDownloading}
+                                        startIcon={ollamaDownloading ?
+                                            <CircularProgress size={14} color="inherit"/> : undefined}
+                                    >
+                                        Download {selectedLocalLlmLabel}
+                                    </Button>
+                                ) : null}
+                                {ollamaModelError ? (
+                                    <Typography variant="body2" color="error" sx={{mt: 0.5}}>
+                                        {ollamaModelError}
+                                    </Typography>
+                                ) : null}
+                            </Box>
+                        ) : null}
+                    </div>
+
+                    {hasOpenAiKey || hasGoogleKey ? (
+                        <div className="settings-field">
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="Screen processing"
+                                value={settings.screenProcessingModel ?? 'openai'}
+                                onChange={(event) => handleScreenProviderChange(event.target.value as ScreenProcessingProvider)}
+                            >
+                                {screenModelOptions.map((option) => {
+                                    const optionMeta = option as typeof option & {
+                                        disabled?: boolean;
+                                        description?: string;
+                                    };
+                                    const optionDisabled = Boolean(optionMeta.disabled);
+                                    const optionDescription = optionMeta.description;
+                                    return (
+                                        <MenuItem
+                                            key={option.value}
+                                            value={option.value}
+                                            disabled={optionDisabled}
+                                            sx={optionDisabled ? {opacity: 0.6} : undefined}
+                                        >
+                                            <Box sx={{display: 'flex', flexDirection: 'column', gap: 0.25}}>
+                                                <span>{option.label}</span>
+                                                {optionDescription ? (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {optionDescription}
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
+                            </TextField>
+                        </div>
+                    ) : ''}
+
                 </div>
             </section>
 
-            <section className="settings-card card">
-                <h3 className="settings-card__title">Models</h3>
-                <div className="ai-settings__grid">
-                    <div className="settings-field">
-                        <label className="settings-field__label">API transcription</label>
-                        <CustomSelect
-                            value={settings.transcriptionModel ?? 'gpt-4o-mini-transcribe'}
-                            options={TRANSCRIPTION_MODEL_OPTIONS}
-                            disabled={settings.transcriptionMode === 'local'}
-                            onChange={handleTranscriptionModelChange}
-                        />
+            {showApiKeys ? (
+                <section className="settings-card card">
+                    <h3 className="settings-card__title">API Keys</h3>
+                    <div className="ai-settings__grid">
+                        <div className="settings-field">
+                            <TextField
+                                label="OpenAI"
+                                type="password"
+                                size="small"
+                                value={openaiKey}
+                                placeholder="Enter your OpenAI API key"
+                                onChange={(event) => setOpenaiKey(event.target.value)}
+                                fullWidth
+                            />
+                        </div>
+                        <div className="settings-field">
+                            <TextField
+                                label="Google AI"
+                                type="password"
+                                size="small"
+                                value={googleKey}
+                                placeholder="Enter your Google API key"
+                                onChange={(event) => setGoogleKey(event.target.value)}
+                                fullWidth
+                            />
+                        </div>
                     </div>
-
-                    {settings.transcriptionMode === 'local' ? (
-                        <div className="settings-field">
-                            <label className="settings-field__label">Local Whisper model</label>
-                            <CustomSelect
-                                value={settings.localWhisperModel ?? 'base'}
-                                options={LOCAL_WHISPER_OPTIONS}
-                                onChange={handleLocalWhisperChange}
-                            />
-                        </div>
-                    ) : null}
-
-                    {settings.transcriptionMode === 'local' ? (
-                        <div className="settings-field">
-                            <label className="settings-field__label">Local device</label>
-                            <CustomSelect
-                                value={settings.localDevice ?? 'cpu'}
-                                options={LOCAL_DEVICE_OPTIONS}
-                                onChange={(val) => handleLocalDeviceChange(val as 'cpu' | 'gpu')}
-                            />
-                        </div>
-                    ) : null}
-
-                    {apiHostSelected ? (
-                        <div className="settings-field">
-                            <label className="settings-field__label">API LLM model</label>
-                            <CustomSelect
-                                value={apiLlmModel}
-                                options={API_LLM_MODELS}
-                                onChange={handleApiLlmModelChange}
-                            />
-                        </div>
-                    ) : (
-                        <div className="settings-field">
-                            <label className="settings-field__label">Local LLM model</label>
-                            <CustomSelect
-                                value={localLlmModel}
-                                options={LOCAL_LLM_MODELS}
-                                onChange={handleLocalLlmModelChange}
-                            />
-                        </div>
-                    )}
-
-                    <div className="settings-field">
-                        <label className="settings-field__label">Screen processing</label>
-                        <CustomSelect
-                            value={settings.screenProcessingModel ?? 'openai'}
-                            options={SCREEN_MODEL_OPTIONS}
-                            onChange={(val) => handleScreenProviderChange(val as ScreenProcessingProvider)}
-                        />
-                    </div>
-                </div>
-            </section>
+                </section>
+            ) : null}
 
             <section className="settings-card card">
                 <h3 className="settings-card__title">Prompts</h3>
-                <div className="ai-settings__grid ai-settings__grid--prompts">
+                <div className="ai-settings__grid">
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription prompt</label>
                         <TextField
-                            multiline
-                            minRows={4}
+                            label="Transcription prompt"
                             value={transcriptionPrompt}
                             onChange={(event) => setTranscriptionPrompt(event.target.value)}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            placeholder="Optional: appended to transcription requests"
                         />
-                        <button type="button" className="btn btn-sm" onClick={handleTranscriptionPromptSave}>
-                            Save prompt
-                        </button>
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM system prompt</label>
                         <TextField
-                            multiline
-                            minRows={4}
+                            label="LLM prompt"
                             value={llmPrompt}
                             onChange={(event) => setLlmPrompt(event.target.value)}
-                        />
-                        <button type="button" className="btn btn-sm" onClick={handleLlmPromptSave}>
-                            Save prompt
-                        </button>
-                    </div>
-                    <div className="settings-field">
-                        <label className="settings-field__label">Screen processing prompt</label>
-                        <TextField
+                            fullWidth
                             multiline
-                            minRows={4}
-                            value={screenPrompt}
-                            onChange={(event) => setScreenPrompt(event.target.value)}
+                            minRows={3}
+                            placeholder="Optional: system message for the LLM"
                         />
-                        <button type="button" className="btn btn-sm" onClick={handleScreenPromptSave}>
-                            Save prompt
-                        </button>
                     </div>
                 </div>
             </section>
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">API timeouts (ms)</h3>
                 <div className="ai-settings__grid ai-settings__grid--timeouts">
                     <div className="settings-field">
-                        <label className="settings-field__label">Transcription</label>
                         <TextField
+                            label="Transcription"
                             type="number"
                             value={apiSttTimeout}
-                            size={'small'}
+                            size="small"
                             onChange={(event) => setApiSttTimeout(Number(event.target.value))}
-                            inputProps={{ min: 1000, max: 600000, step: 500 }}
+                            inputProps={{min: 1000, max: 600000, step: 500}}
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">LLM</label>
                         <TextField
+                            label="LLM"
                             type="number"
                             value={apiLlmTimeout}
-                            size={'small'}
+                            size="small"
                             onChange={(event) => setApiLlmTimeout(Number(event.target.value))}
-                            inputProps={{ min: 1000, max: 600000, step: 500 }}
+                            inputProps={{min: 1000, max: 600000, step: 500}}
                         />
                     </div>
                     <div className="settings-field">
-                        <label className="settings-field__label">Screen processing</label>
                         <TextField
+                            label="Screen processing"
                             type="number"
-                            size={'small'}
+                            size="small"
                             value={screenTimeout}
                             onChange={(event) => setScreenTimeout(Number(event.target.value))}
-                            inputProps={{ min: 1000, max: 600000, step: 500 }}
+                            inputProps={{min: 1000, max: 600000, step: 500}}
                         />
                     </div>
                 </div>
-                <button type="button" className="btn btn-sm" onClick={saveTimeouts}>
-                    Save timeouts
-                </button>
             </section>
+            <Dialog
+                open={infoDialog === 'transcribe'}
+                onClose={() => setInfoDialog(null)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Local transcription</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" gutterBottom>
+                        Whisper is fastest and most accurate on NVIDIA GPUs (RTX/GTX). CPU mode works, but Medium/Large
+                        models will run significantly slower without a discrete GPU.
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                        Approximate download sizes:
+                    </Typography>
+                    <Typography variant="body2" component="div">
+                        • Tiny — ~75&nbsp;MB<br/>
+                        • Base — ~141&nbsp;MB<br/>
+                        • Small — ~463&nbsp;MB<br/>
+                        • Medium — ~1.4&nbsp;GB<br/>
+                        • Large v3 — ~3&nbsp;GB
+                    </Typography>
+                    <Typography variant="body2" sx={{mt: 2}}>
+                        Audio never leaves your machine, so make sure you have enough free disk space and let the
+                        download finish before starting a recording.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setInfoDialog(null)}>Got it</Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={infoDialog === 'llm'}
+                onClose={() => setInfoDialog(null)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Local LLM</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" gutterBottom>
+                        Smaller local models already weigh 5–7&nbsp;GB, while meaningful ones easily reach 20–40&nbsp;GB
+                        and require a powerful GPU with plenty of VRAM.
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                        Generation speed scales with your GPU. On weak hardware or CPU-only setups responses will be
+                        slow and may lock up the system.
+                    </Typography>
+                    <Typography variant="body2">
+                        If you are unsure about your PC, prefer API keys (OpenAI / Gemini). They are easier to configure
+                        and provide predictable latency without heavy downloads.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setInfoDialog(null)}>Got it</Button>
+                </DialogActions>
+            </Dialog>
         </div>
     );
 };

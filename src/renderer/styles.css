@@ -79,6 +79,10 @@
     @apply text-sm text-gray-400;
 }
 
+:root {
+    --answer-font-size: 14px;
+}
+
 /* Custom window controls */
 .window-controls {
     @apply flex items-center gap-2;
@@ -86,10 +90,12 @@
 
 /* Window dragging */
 .drag-region {
+    /*noinspection CssUnknownProperty*/
     -webkit-app-region: drag;
 }
 
 .no-drag {
+    /*noinspection CssUnknownProperty*/
     -webkit-app-region: no-drag;
 }
 
@@ -171,6 +177,7 @@ button:focus-visible {
     @apply bg-red-900 text-red-300 border border-red-700;
 }
 
+/*noinspection CssUnusedSymbol*/
 .status-badge.sending {
     @apply bg-purple-900 text-purple-300 border border-purple-700;
 }
@@ -249,11 +256,6 @@ button:focus-visible {
     border-bottom-color: #ffffff20;
 }
 
-/* Settings sub-tabs */
-.settings-tabs-container {
-    @apply mb-4;
-}
-
 .settings-tabs {
     @apply flex gap-1;
     background: transparent;
@@ -279,14 +281,6 @@ button:focus-visible {
     border-bottom-color: #ffffff20;
 }
 
-.settings-panel-content {
-    @apply transition-opacity duration-200;
-}
-
-.settings-panel-content.hidden {
-    display: none;
-}
-
 .content-area {
     @apply transition-opacity duration-200;
 }
@@ -295,33 +289,8 @@ button:focus-visible {
     display: none;
 }
 
-.settings-panel {
-    @apply space-y-4;
-}
-
-.settings-section {
-
-}
-
 .settings-title {
     @apply text-lg font-semibold text-gray-200 mb-1;
-}
-
-.input-group {
-    @apply flex gap-2;
-    min-width: 0; /* Allow flex items to shrink below their content size */
-}
-
-/* Ensure refresh button doesn't overflow */
-.input-group .btn-sm {
-    flex-shrink: 0; /* Prevent button from shrinking */
-    white-space: nowrap; /* Prevent text wrapping */
-    min-width: fit-content; /* Ensure button maintains its natural width */
-}
-
-/* Specific styles for device selection input group */
-#microphoneSection .input-group {
-    align-items: stretch; /* Ensure elements align properly */
 }
 
 .btn-sm {
@@ -332,120 +301,6 @@ button:focus-visible {
     @apply bg-red-600 hover:bg-red-700;
 }
 
-.opacity-control {
-    @apply flex items-center gap-4;
-}
-
-/* Checkbox styles */
-.checkbox-control {
-    @apply flex items-center gap-2;
-}
-
-.checkbox-label {
-    @apply flex items-center gap-2 cursor-pointer;
-}
-
-.checkbox-input {
-    @apply w-4 h-4 rounded cursor-pointer;
-    background: #0001;
-    border: 1px solid #ffffff35;
-    appearance: none;
-    position: relative;
-    transition: all 0.3s var(--ease-out);
-}
-
-.checkbox-input:hover:not(:checked) {
-    border-color: #ffffff35;
-    background: #0003;
-}
-
-.checkbox-input:checked::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 12px;
-    font-weight: bold;
-    line-height: 1;
-}
-
-.checkbox-text {
-    @apply text-gray-200 text-sm;
-}
-
-.opacity-slider {
-    @apply flex-1 h-2 rounded-lg appearance-none cursor-pointer;
-    background: #fff1;
-    border: 1px solid #ffffff02;
-    transition: all 0.3s var(--ease-out);
-}
-
-.opacity-slider:hover {
-    border-color: #ffffff15;
-    background: #fff2;
-}
-
-.opacity-slider:focus {
-    border-color: #ffffff20;
-    background: #fff2;
-}
-
-.opacity-slider::-webkit-slider-thumb {
-    @apply appearance-none w-4 h-4 rounded-full cursor-pointer;
-    background: #e5e7eb;
-    border: 1px solid #d1d5db;
-    transition: all 0.3s var(--ease-out);
-}
-
-.opacity-slider::-webkit-slider-thumb:hover {
-    background: #f9fafb;
-    border-color: #e5e7eb;
-}
-
-.opacity-slider::-moz-range-thumb {
-    @apply w-4 h-4 rounded-full cursor-pointer border-0;
-    background: #e5e7eb;
-    transition: all 0.3s var(--ease-out);
-}
-
-.opacity-slider::-moz-range-thumb:hover {
-    background: #f9fafb;
-    border-color: #e5e7eb;
-    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
-}
-
-.opacity-value {
-    @apply text-sm text-gray-300 font-medium min-w-[3rem];
-}
-
-.durations-control {
-    @apply space-y-4;
-}
-
-.durations-list {
-    @apply space-y-2;
-}
-
-.duration-item {
-    @apply flex items-center justify-between rounded-md gap-2;
-    max-width: 185px;
-    width: 100%;
-}
-
-.duration-value {
-    @apply text-gray-200 font-medium;
-}
-
-.duration-input-group {
-    @apply flex gap-2 min-w-[250px] w-min;
-}
-
-/* Notifications */
-.notification {
-    @apply shadow-lg;
-}
 
 /* Send last container animation */
 .send-last-container {
@@ -819,6 +674,7 @@ body {
 }
 
 /* Logo animation styles */
+/*noinspection CssUnusedSymbol*/
 #main-logo {
     opacity: 0;
     transform: scale(0);
@@ -826,12 +682,14 @@ body {
     transition: opacity 0.8s ease-in-out, transform 0.8s ease-in-out, filter 0.8s ease-in-out, z-index 0s;
 }
 
+/*noinspection CssUnusedSymbol*/
 #main-logo.logo-fade-in {
     opacity: 1;
     transform: scale(1);
     filter: blur(0);
 }
 
+/*noinspection CssUnusedSymbol*/
 #main-logo.logo-final-state {
     opacity: 0.005;
     transform: scale(1);
@@ -839,7 +697,7 @@ body {
     z-index: -1;
 }
 
-/* Для экранов менее 600px */
+/* For screens under 600px */
 @media (max-width: 600px) {
     #main-logo.logo-final-state {
         opacity: 0.008;

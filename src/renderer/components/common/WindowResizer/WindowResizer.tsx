@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef} from 'react';
 import './WindowResizer.scss';
 
 type Edge =
@@ -21,14 +21,14 @@ const EDGE_CONFIG: Array<{
     className: string;
     cursor: string;
 }> = [
-    { edge: 'top', className: 'resize-handle resize-handle--top', cursor: 'ns-resize' },
-    { edge: 'bottom', className: 'resize-handle resize-handle--bottom', cursor: 'ns-resize' },
-    { edge: 'left', className: 'resize-handle resize-handle--left', cursor: 'ew-resize' },
-    { edge: 'right', className: 'resize-handle resize-handle--right', cursor: 'ew-resize' },
-    { edge: 'top-left', className: 'resize-handle resize-handle--top-left', cursor: 'nwse-resize' },
-    { edge: 'top-right', className: 'resize-handle resize-handle--top-right', cursor: 'nesw-resize' },
-    { edge: 'bottom-left', className: 'resize-handle resize-handle--bottom-left', cursor: 'nesw-resize' },
-    { edge: 'bottom-right', className: 'resize-handle resize-handle--bottom-right', cursor: 'nwse-resize' },
+    {edge: 'top', className: 'resize-handle resize-handle--top', cursor: 'ns-resize'},
+    {edge: 'bottom', className: 'resize-handle resize-handle--bottom', cursor: 'ns-resize'},
+    {edge: 'left', className: 'resize-handle resize-handle--left', cursor: 'ew-resize'},
+    {edge: 'right', className: 'resize-handle resize-handle--right', cursor: 'ew-resize'},
+    {edge: 'top-left', className: 'resize-handle resize-handle--top-left', cursor: 'nwse-resize'},
+    {edge: 'top-right', className: 'resize-handle resize-handle--top-right', cursor: 'nesw-resize'},
+    {edge: 'bottom-left', className: 'resize-handle resize-handle--bottom-left', cursor: 'nesw-resize'},
+    {edge: 'bottom-right', className: 'resize-handle resize-handle--bottom-right', cursor: 'nwse-resize'},
 ];
 
 type ResizeState = {
@@ -60,7 +60,7 @@ export const WindowResizer = () => {
     }, []);
 
     const computeBounds = useCallback((edge: Edge, startBounds: Bounds, dx: number, dy: number): Bounds => {
-        let { x, y, width, height } = startBounds;
+        let {x, y, width, height} = startBounds;
 
         const adjustWidthFromLeft = edge.includes('left');
         const adjustWidthFromRight = edge.includes('right');
@@ -106,9 +106,10 @@ export const WindowResizer = () => {
     }, []);
 
     useEffect(() => {
-        if (!isWindows) return () => {};
+        if (!isWindows) return () => {
+        };
 
-        const handleMouseMove = (event: MouseEvent) => {
+        const handleMouseMove = (event: globalThis.MouseEvent) => {
             const state = stateRef.current;
             if (!state || !state.startBounds) return;
 
@@ -133,7 +134,7 @@ export const WindowResizer = () => {
         };
     }, [computeBounds, requestBoundsUpdate, stopResizing]);
 
-    const handleMouseDown = useCallback((edge: Edge) => async (event: React.MouseEvent<HTMLDivElement>) => {
+    const handleMouseDown = useCallback((edge: Edge) => async (event: ReactMouseEvent<HTMLDivElement>) => {
         event.preventDefault();
         event.stopPropagation();
         if (!isWindows) return;
@@ -159,25 +160,21 @@ export const WindowResizer = () => {
         }
     }, [stopResizing]);
 
-    const handles = useMemo(() => EDGE_CONFIG.map((config) => (
-        <div
-            key={config.edge}
-            className={config.className}
-            role="presentation"
-            onMouseDown={handleMouseDown(config.edge)}
-            style={{ cursor: config.cursor }}
-        />
-    )), [handleMouseDown]);
-
     if (!isWindows) {
         return null;
     }
 
     return (
         <div className="window-resize-handles" aria-hidden>
-            {handles}
+            {EDGE_CONFIG.map((config) => (
+                <div
+                    key={config.edge}
+                    className={config.className}
+                    role="presentation"
+                    onMouseDown={handleMouseDown(config.edge)}
+                    style={{cursor: config.cursor}}
+                />
+            ))}
         </div>
     );
 };
-
-export default WindowResizer;

@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {showAnswer, showError, showText} from '../ui/outputs';
 import {setStatus} from '../ui/status';
 import {setProcessing, state} from '../state/appState';
@@ -30,7 +32,7 @@ export class ScreenshotController {
     async start(): Promise<void> {
         if (state.isProcessing) return;
 
-        const cancelToken: CancelToken = { cancelled: false };
+        const cancelToken: CancelToken = {cancelled: false};
         this.cancelToken = cancelToken;
 
         setProcessing(true);
@@ -80,7 +82,7 @@ export class ScreenshotController {
                 showAnswer('No insights returned.');
             }
             setStatus('Done', 'ready');
-            logger.info('screenshot', 'Screenshot analysis completed', { answerLength: result.answer?.length || 0 });
+            logger.info('screenshot', 'Screenshot analysis completed', {answerLength: result.answer?.length || 0});
         } catch (error) {
             if (cancelToken.cancelled) {
                 logger.info('screenshot', 'Screenshot analysis cancelled', {
@@ -89,7 +91,7 @@ export class ScreenshotController {
                 return;
             }
             const message = error instanceof Error ? error.message : String(error);
-            logger.error('screenshot', 'Screenshot analysis failed', { error: message });
+            logger.error('screenshot', 'Screenshot analysis failed', {error: message});
             setStatus('Error', 'error');
             showError(message);
         } finally {

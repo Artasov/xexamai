@@ -1,6 +1,7 @@
 ﻿import {setRecording, state} from '../state/appState';
 import {setStatus} from './status';
 import {logger} from '../utils/logger';
+import {ensureTranscriptionReady} from '../utils/transcriptionGuards';
 
 type ControlsInitArgs = {
     onRecordToggle: (shouldRecord: boolean) => Promise<void> | void;
@@ -80,7 +81,7 @@ export function updateDurations(durations: number[], onDurationChange?: (sec: nu
             b.textContent = `${sec}s`;
             b.dataset['sec'] = String(sec);
             b.addEventListener('click', () => {
-                logger.info('ui', 'Duration button clicked', { duration: sec });
+                logger.info('ui', 'Duration button clicked', {duration: sec});
                 setStatus(`Sending last ${sec}s...`, 'sending');
                 onDurationChange?.(sec);
             });
@@ -121,7 +122,7 @@ function initTextInput(onTextSend?: (text: string) => Promise<void> | void) {
         const text = textInput.value.trim();
         if (!text) return;
 
-        logger.info('ui', 'Send text button clicked', { textLength: text.length });
+        logger.info('ui', 'Send text button clicked', {textLength: text.length});
         await onTextSend(text);
     });
 
@@ -129,7 +130,6 @@ function initTextInput(onTextSend?: (text: string) => Promise<void> | void) {
 }
 
 export function initControls({onRecordToggle, durations, onDurationChange, onTextSend}: ControlsInitArgs) {
-    const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
     const btnRecord = document.getElementById('btnRecord') as HTMLButtonElement | null;
     const sendLastContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
 
@@ -147,7 +147,14 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
         }
 
         const shouldStart = !state.isRecording;
-        logger.info('ui', 'Record button clicked', { shouldStart });
+        if (shouldStart) {
+            const ready = await ensureTranscriptionReady();
+            if (!ready) {
+                updateButtonsState();
+                return;
+            }
+        }
+        logger.info('ui', 'Record button clicked', {shouldStart});
         setRecording(shouldStart);
         btnRecord.disabled = true;
         let startedSuccessfully = false;
@@ -171,11 +178,7 @@ export function initControls({onRecordToggle, durations, onDurationChange, onTex
         btnRecord.dataset['state'] = shouldStart ? 'rec' : 'idle';
         if (shouldStart) {
             try {
-                const s = await window.api.settings.get();
-                if ((s.streamMode || 'base') !== 'stream') {
-                    setStatus('Recording...', 'recording');
-                }
-                // In stream mode, renderer will set a more specific status
+                setStatus('Recording...', 'recording');
             } catch {
                 setStatus('Recording...', 'recording');
             }

@@ -1,4 +1,4 @@
-import {createTheme, ThemeOptions} from '@mui/material/styles';
+import {alpha, createTheme, ThemeOptions} from '@mui/material/styles';
 
 const palette = {
     mode: 'dark' as const,
@@ -21,6 +21,30 @@ const palette = {
     divider: 'rgba(148, 163, 184, 0.18)',
 };
 
+const menuScrollbar = {
+    scrollbarWidth: 'thin' as const,
+    scrollbarColor: `${palette.primary.main} rgba(139, 92, 246, 0.18)`,
+    '&::-webkit-scrollbar': {
+        width: '10px',
+    },
+    '&::-webkit-scrollbar-track': {
+        background: 'linear-gradient(180deg, rgba(12,17,27,0.95), rgba(12,17,27,0.75))',
+        borderRadius: '9999px',
+        boxShadow: 'inset 0 0 0 1px rgba(139, 92, 246, 0.12)',
+    },
+    '&::-webkit-scrollbar-thumb': {
+        background: 'linear-gradient(180deg, #a78bfa, #8b5cf6) !important',
+        borderRadius: '9999px',
+        border: '2px solid rgba(12, 17, 27, 0.9) !important',
+        boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.12) !important',
+        transition: 'background 200ms ease, box-shadow 200ms ease',
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+        background: 'linear-gradient(180deg, #c4b5fd, #8b5cf6) !important',
+        boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.2), 0 0 6px rgba(139, 92, 246, 0.18) !important',
+    },
+};
+
 const components: ThemeOptions['components'] = {
     MuiCssBaseline: {
         styleOverrides: {
@@ -40,9 +64,9 @@ const components: ThemeOptions['components'] = {
                 boxShadow: '0 30px 90px rgba(4, 6, 12, 0.6)',
                 backdropFilter: 'none',
                 backgroundColor: '#0005',
-            },
-            paperScrollPaper: {
-                maxHeight: '90vh',
+                '&.MuiDialog-paperScrollPaper': {
+                    maxHeight: '90vh',
+                },
             },
         },
         defaultProps: {
@@ -208,6 +232,80 @@ const components: ThemeOptions['components'] = {
         defaultProps: {
             variant: 'outlined',
             fullWidth: true,
+        },
+    },
+    MuiMenu: {
+        defaultProps: {
+            disablePortal: false,
+            slotProps: {
+                backdrop: {
+                    invisible: true,
+                    sx: {
+                        backgroundColor: 'transparent',
+                        backdropFilter: 'none',
+                    },
+                },
+            },
+        },
+        styleOverrides: {
+            paper: {
+                borderRadius: '16px',
+                marginTop: '8px',
+                border: `1px solid ${alpha(palette.primary.main, 0.35)}`,
+                backgroundColor: 'transparent !important',
+                backdropFilter: 'blur(18px) saturate(160%)',
+                color: '#e2e8f0',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.45)',
+                overflow: 'hidden',
+                maxHeight: '60vh',
+                ...menuScrollbar,
+            },
+            list: {
+                paddingTop: '8px',
+                paddingBottom: '8px',
+                backgroundColor: 'transparent',
+                overflowY: 'auto',
+                maxHeight: 'inherit',
+                ...menuScrollbar,
+                '& .MuiMenuItem-root': {
+                    borderRadius: '10px',
+                    margin: '4px 8px',
+                    fontWeight: 500,
+                    fontSize: '0.94rem',
+                    color: '#e2e8f0',
+                    transition: 'background-color 150ms ease, color 150ms ease',
+                    '&:hover': {
+                        backgroundColor: alpha(palette.primary.main, 0.08),
+                    },
+                    '&.Mui-selected': {
+                        backgroundColor: alpha(palette.primary.main, 0.12),
+                        color: '#f8fafc',
+                        '&:hover': {
+                            backgroundColor: alpha(palette.primary.main, 0.18),
+                        },
+                    },
+                },
+            },
+        },
+    },
+    MuiMenuList: {
+        styleOverrides: {
+            root: {
+                ...menuScrollbar,
+            },
+        },
+    },
+    MuiPaper: {
+        styleOverrides: {
+            root: {
+                backgroundImage: 'none',
+                '&.MuiMenu-paper, &.MuiPopover-paper': {
+                    ...menuScrollbar,
+                    backgroundColor: 'transparent !important',
+                    backdropFilter: 'blur(18px) saturate(160%)',
+                    borderColor: alpha(palette.primary.main, 0.35),
+                },
+            },
         },
     },
 };

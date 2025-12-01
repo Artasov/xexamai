@@ -11,7 +11,7 @@ export class GoogleStreamingService {
     private processor: ScriptProcessorNode | null = null;
     private source: MediaStreamAudioSourceNode | null = null;
 
-    async start(stream: MediaStream, options: StreamOptions = {}): Promise<void> {
+    async start(stream: MediaStream, _options: StreamOptions = {}): Promise<void> {
         await this.stop();
 
         let settings;

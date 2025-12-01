@@ -1,44 +1,43 @@
-import { useEffect, useState } from 'react';
-import { useSettingsContext } from '../SettingsView/SettingsView';
-import type { AudioDevice } from '../../../types';
-import { logger } from '../../../utils/logger';
-import { emitSettingsChange } from '../../../utils/settingsEvents';
-import CustomSelect from '../../common/CustomSelect/CustomSelect';
-import { SettingsToast } from '../shared/SettingsToast/SettingsToast';
+// noinspection XmlDeprecatedElement
+
+import {useEffect, useState} from 'react';
+import {MenuItem, TextField} from '@mui/material';
+import {toast} from 'react-toastify';
+import {useSettingsContext} from '../SettingsView/SettingsView';
+import type {AudioDeviceInfo} from '@shared/ipc';
+import {logger} from '../../../utils/logger';
+import {emitSettingsChange} from '../../../utils/settingsEvents';
 import './AudioSettings.scss';
 
-const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system'; label: string }[] = [
-    { value: 'microphone', label: 'Microphone' },
-    { value: 'system', label: 'System audio' },
+const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system' | 'mixed'; label: string }[] = [
+    {value: 'microphone', label: 'Microphone'},
+    {value: 'system', label: 'System audio'},
+    {value: 'mixed', label: 'Mic + System'},
 ];
 
 type MessageTone = 'success' | 'error';
-type Message = { text: string; tone: MessageTone } | null;
 
 export const AudioSettings = () => {
-    const { settings, patchLocal } = useSettingsContext();
-    const [devices, setDevices] = useState<AudioDevice[]>([]);
+    const {settings, patchLocal} = useSettingsContext();
+    const [devices, setDevices] = useState<AudioDeviceInfo[]>([]);
     const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState<Message>(null);
 
     useEffect(() => {
         void loadDevices();
     }, []);
 
     const showMessage = (text: string, tone: MessageTone = 'success') => {
-        setMessage({ text, tone });
-        setTimeout(() => {
-            setMessage((prev) => (prev?.text === text ? null : prev));
-        }, 2800);
+        if (tone === 'success') return;
+        toast[tone](text);
     };
 
     const loadDevices = async () => {
         setLoading(true);
         try {
-            const list = await window.api.settings.getAudioDevices();
+            const list = await window.api.audio.listDevices();
             setDevices(list);
         } catch (error) {
-            logger.error('settings', 'Failed to load audio devices', { error });
+            logger.error('settings', 'Failed to load audio devices', {error});
             setDevices([]);
             showMessage('Failed to load audio devices', 'error');
         } finally {
@@ -46,14 +45,13 @@ export const AudioSettings = () => {
         }
     };
 
-    const handleInputTypeChange = async (type: 'microphone' | 'system') => {
+    const handleInputTypeChange = async (type: 'microphone' | 'system' | 'mixed') => {
         try {
             await window.api.settings.setAudioInputType(type);
-            patchLocal({ audioInputType: type });
+            patchLocal({audioInputType: type});
             emitSettingsChange('audioInputType', type);
-            showMessage(`Audio input switched to ${type}`);
         } catch (error) {
-            logger.error('settings', 'Failed to set audio input type', { error });
+            logger.error('settings', 'Failed to set audio input type', {error});
             showMessage('Failed to update audio input type', 'error');
         }
     };
@@ -61,45 +59,74 @@ export const AudioSettings = () => {
     const handleDeviceChange = async (deviceId: string) => {
         try {
             await window.api.settings.setAudioInputDevice(deviceId);
-            patchLocal({ audioInputDeviceId: deviceId });
-            showMessage('Audio input device saved');
+            patchLocal({audioInputDeviceId: deviceId});
         } catch (error) {
-            logger.error('settings', 'Failed to set audio input device', { error });
+            logger.error('settings', 'Failed to set audio input device', {error});
             showMessage('Failed to update audio input device', 'error');
         }
     };
 
+    const deviceOptions = [{value: '', label: 'Default device'}, ...devices.map((device) => ({
+        value: device.id,
+        label: device.name
+    }))];
     const currentDeviceId = settings.audioInputDeviceId ?? '';
+    const renderDeviceLabel = (value: string) => {
+        if (!value) return 'Default device';
+        return deviceOptions.find((option) => option.value === value)?.label ?? 'Default device';
+    };
 
     return (
         <div className="audio-settings">
-            <SettingsToast message={message} />
-
             <section className="settings-card card">
                 <h3 className="settings-card__title">Audio input</h3>
                 <div className="settings-field">
-                    <label className="settings-field__label">Input type</label>
-                    <CustomSelect
-                        value={settings.audioInputType ?? 'microphone'}
-                        options={AUDIO_INPUT_TYPES}
-                        onChange={(val) => handleInputTypeChange(val as 'microphone' | 'system')}
-                    />
+                    <TextField
+                        select
+                        size="small"
+                        label="Input type"
+                        value={settings.audioInputType ?? 'mixed'}
+                        onChange={(event) => handleInputTypeChange(event.target.value as 'microphone' | 'system' | 'mixed')}
+                        fullWidth
+                    >
+                        {AUDIO_INPUT_TYPES.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>
+                                {option.label}
+                            </MenuItem>
+                        ))}
+                    </TextField>
                 </div>
 
-                <div className="settings-field">
-                    <label className="settings-field__label">Device</label>
-                    <CustomSelect
-                        value={currentDeviceId}
-                        options={[{ value: '', label: 'Default device' }, ...devices.map((device) => ({ value: device.deviceId, label: device.label }))]}
-                        disabled={settings.audioInputType === 'system'}
-                        onChange={handleDeviceChange}
-                    />
-                    <div className="audio-settings__actions">
-                        <button type="button" className="btn btn-sm" onClick={loadDevices} disabled={loading}>
-                            Refresh devices
-                        </button>
+                {settings.audioInputType === 'system' ? null : (
+                    <div className="settings-field">
+                        <TextField
+                            select
+                            size="small"
+                            label="Device"
+                            value={currentDeviceId}
+                            onChange={(event) => handleDeviceChange(event.target.value)}
+                            fullWidth
+                            slotProps={{
+                                select: {
+                                    displayEmpty: true,
+                                    renderValue: (value) => renderDeviceLabel((value as string) ?? ''),
+                                },
+                                inputLabel: {shrink: true},
+                            }}
+                        >
+                            {deviceOptions.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                        <div className="audio-settings__actions">
+                            <button type="button" className="btn btn-sm" onClick={loadDevices} disabled={loading}>
+                                Refresh devices
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
             </section>
         </div>
     );

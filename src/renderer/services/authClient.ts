@@ -1,5 +1,5 @@
 import axios, {AxiosRequestConfig} from 'axios';
-import {resolveAuthApiBaseUrl} from '../../shared/appUrls';
+import {resolveAuthApiBaseUrl} from '@shared/appUrls';
 import {logger} from '../utils/logger';
 
 export type AuthTokens = {
@@ -71,6 +71,10 @@ export class AuthError extends Error {
 
 const AUTH_STORAGE_KEY = 'xexamai.auth.tokens';
 const DEFAULT_BASE_URL = resolveAuthApiBaseUrl();
+const JSON_HEADERS: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+};
 
 type TokenResponsePayload = {
     access?: unknown;
@@ -83,14 +87,14 @@ function readStorage(): AuthTokens | null {
     try {
         const raw = window.localStorage?.getItem(AUTH_STORAGE_KEY);
         if (!raw) return null;
-        const parsed = JSON.parse(raw) as AuthTokens;
-        if (!parsed || typeof parsed.access !== 'string') return null;
+        const parsed = JSON.parse(raw) as Partial<AuthTokens> | null;
+        if (!parsed?.access) return null;
         return {
             access: parsed.access,
             refresh: typeof parsed.refresh === 'string' ? parsed.refresh : null,
         };
     } catch (error) {
-        logger.warn('auth', 'Failed to read tokens from storage', { error });
+        logger.warn('auth', 'Failed to read tokens from storage', {error});
         return null;
     }
 }
@@ -110,7 +114,7 @@ function writeStorage(tokens: AuthTokens | null): void {
             }),
         );
     } catch (error) {
-        logger.warn('auth', 'Failed to write tokens to storage', { error });
+        logger.warn('auth', 'Failed to write tokens to storage', {error});
     }
 }
 
@@ -186,13 +190,29 @@ export class AuthClient {
         this.tokens = readStorage();
     }
 
+    private buildHeaders(baseHeaders?: AxiosRequestConfig['headers'], accessToken?: string): Record<string, string> {
+        const headers: Record<string, string> = {...JSON_HEADERS};
+        const provided = baseHeaders as Record<string, unknown> | undefined;
+        if (provided) {
+            for (const [key, value] of Object.entries(provided)) {
+                if (typeof value === 'string') {
+                    headers[key] = value;
+                }
+            }
+        }
+        if (accessToken) {
+            headers.Authorization = `Bearer ${accessToken}`;
+        }
+        return headers;
+    }
+
     public initializeFromStorage(): AuthTokens | null {
         this.tokens = readStorage();
         return this.tokens;
     }
 
     public getTokens(): AuthTokens | null {
-        return this.tokens ? { ...this.tokens } : null;
+        return this.tokens ? {...this.tokens} : null;
     }
 
     public hasTokens(): boolean {
@@ -210,11 +230,8 @@ export class AuthClient {
 
     public async login(email: string, password: string): Promise<AuthUser> {
         try {
-            const { data } = await axios.post(`${this.baseUrl}/auth/login/`, { email, password }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                },
+            const {data} = await axios.post(`${this.baseUrl}/auth/login/`, {email, password}, {
+                headers: {...JSON_HEADERS},
             });
             const tokens = this.parseTokenResponse(data);
             this.updateTokens(tokens);
@@ -233,11 +250,25 @@ export class AuthClient {
     }
 
     public async getCurrentUser(includeTiersAndFeatures: boolean = false): Promise<AuthUser> {
-        const url = includeTiersAndFeatures ? '/me/?tiers_and_features=1' : '/me/';
-        return this.authenticatedRequest<AuthUser>({
-            url,
-            method: 'GET',
-        });
+        const path = includeTiersAndFeatures ? '/me/?tiers_and_features=1' : '/me/';
+        const label = `GET ${path}`;
+
+        logger.info('auth', `${label} → start`);
+        try {
+            const user = await this.authenticatedRequest<AuthUser>({
+                url: path,
+                method: 'GET',
+            });
+            logger.info('auth', `${label} → success`, user);
+            return user;
+        } catch (error) {
+            const normalized = normalizeError(error);
+            logger.error('auth', `${label} → error`, {
+                status: normalized.status,
+                message: normalized.message,
+            });
+            throw normalized;
+        }
     }
 
     public async refreshAccessToken(): Promise<string | null> {
@@ -253,11 +284,8 @@ export class AuthClient {
 
         this.refreshPromise = (async () => {
             try {
-                const { data } = await axios.post(`${this.baseUrl}/auth/refresh/`, { refresh: refreshToken }, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                    },
+                const {data} = await axios.post(`${this.baseUrl}/auth/refresh/`, {refresh: refreshToken}, {
+                    headers: {...JSON_HEADERS},
                 });
 
                 const tokens = this.parseTokenResponse(data);
@@ -302,34 +330,17 @@ export class AuthClient {
             throw new AuthError('Missing access token in response');
         }
 
-        const next: AuthTokens = {
+        return {
             access: data.access,
             refresh: typeof data.refresh === 'string' && data.refresh.length
                 ? data.refresh
                 : this.tokens?.refresh ?? null,
         };
-
-        return next;
     }
 
     private async authenticatedRequest<T>(config: AxiosRequestConfig, allowRetry: boolean = true): Promise<T> {
-        const baseConfig: AxiosRequestConfig = { ...config };
-        const headers: Record<string, string> = {
-            Accept: 'application/json',
-        };
-
-        const providedHeaders = baseConfig.headers as Record<string, string> | undefined;
-        if (providedHeaders) {
-            for (const [key, value] of Object.entries(providedHeaders)) {
-                if (typeof value === 'string') {
-                    headers[key] = value;
-                }
-            }
-        }
-
-        if (this.tokens?.access) {
-            headers.Authorization = `Bearer ${this.tokens.access}`;
-        }
+        const baseConfig: AxiosRequestConfig = {...config};
+        const headers = this.buildHeaders(baseConfig.headers, this.tokens?.access || undefined);
 
         const finalConfig: AxiosRequestConfig = {
             ...baseConfig,

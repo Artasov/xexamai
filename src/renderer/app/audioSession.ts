@@ -1,16 +1,8 @@
+// noinspection JSUnusedGlobalSymbols
+
 import {audioSessionState} from './audioSession/internalState';
-import {
-    startRecording,
-    stopRecording,
-    getLastSecondsFloats,
-    recordFromStream,
-    updateVisualizerBars,
-    rebuildRecorderWithStream,
-    rebuildAudioGraph,
-    getSystemAudioStream,
-} from './audioSession/recorder';
+import {getLastSecondsFloats, startRecording, stopRecording, updateVisualizerBars,} from './audioSession/recorder';
 import {switchAudioInput} from './audioSession/audioInput';
-import {registerPersistentSystemTrack, clonePersistentSystemTrack} from './audioSession/systemTrack';
 import type {SwitchAudioResult, SwitchOptions} from './audioSession/types';
 import type {PcmRingBuffer} from '../audio/pcmRingBuffer';
 import type {AudioRingBuffer} from '../audio/ringBuffer';
@@ -20,21 +12,15 @@ export {
     startRecording,
     stopRecording,
     getLastSecondsFloats,
-    recordFromStream,
     updateVisualizerBars,
     switchAudioInput,
-    registerPersistentSystemTrack,
-    clonePersistentSystemTrack,
-    rebuildRecorderWithStream,
-    rebuildAudioGraph,
-    getSystemAudioStream,
 };
 
-export function getAudioInputType(): 'microphone' | 'system' {
+export function getAudioInputType(): 'microphone' | 'system' | 'mixed' {
     return audioSessionState.currentAudioInputType;
 }
 
-export function setAudioInputType(type: 'microphone' | 'system'): void {
+export function setAudioInputType(type: 'microphone' | 'system' | 'mixed'): void {
     audioSessionState.currentAudioInputType = type;
 }
 

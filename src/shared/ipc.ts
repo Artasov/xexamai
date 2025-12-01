@@ -1,3 +1,5 @@
+// noinspection JSUnusedGlobalSymbols
+
 export type SttProcessRequest = {
     audio: Buffer | Uint8Array | ArrayBuffer | { type?: 'Buffer'; data?: number[] };
     mime: string;
@@ -20,7 +22,7 @@ export type TranscriptionMode = 'api' | 'local';
 
 export type LlmHost = 'api' | 'local';
 
-export type LocalDevice = 'cpu' | 'gpu';
+export type LocalDevice = 'auto' | 'cpu' | 'cuda' | 'metal' | 'gpu';
 
 export type ScreenProcessingProvider = 'openai' | 'google';
 
@@ -37,7 +39,7 @@ export type AppSettings = {
     windowHeight?: number;
     windowScale?: number;
     audioInputDeviceId?: string;
-    audioInputType?: 'microphone' | 'system';
+    audioInputType?: 'microphone' | 'system' | 'mixed';
     transcriptionModel?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
@@ -52,7 +54,6 @@ export type AppSettings = {
     apiLlmTimeoutMs?: number;
     screenProcessingTimeoutMs?: number;
     googleApiKey?: string;
-    streamMode?: 'base' | 'stream';
     streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
     screenProcessingPrompt?: string;
@@ -77,7 +78,6 @@ export const DefaultSettings: AppSettings = {
     localLlmModel: 'gpt-oss:20b',
     localWhisperModel: 'base',
     localDevice: 'cpu',
-    streamMode: 'base',
     streamSendHotkey: '~',
     screenProcessingModel: 'openai',
     screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
@@ -122,7 +122,6 @@ export const IPCChannels = {
     GetAudioDevices: 'settings:get:audio-devices',
     OpenConfigFolder: 'settings:open-config-folder',
     SetGoogleApiKey: 'settings:set:google-api-key',
-    SetStreamMode: 'settings:set:stream-mode',
     SetStreamSendHotkey: 'settings:set:stream-send-hotkey',
     AuthStartOAuth: 'auth:start-oauth',
     AuthConsumeDeepLinks: 'auth:consume-deep-links',
@@ -193,6 +192,14 @@ export type AudioDevice = {
     kind: 'audioinput' | 'audiooutput';
 };
 
+export type AudioDeviceInfo = {
+    id: string;
+    name: string;
+    kind: 'mic' | 'system' | 'other';
+    channels: number;
+    sample_rate: number;
+};
+
 export type LogEntry = {
     timestamp: string;
     level: 'info' | 'warn' | 'error' | 'debug';
@@ -210,22 +217,25 @@ export type AuthTokensPayload = {
 
 export type AuthDeepLinkPayload =
     | {
-        kind: 'success';
-        provider: AuthProvider | string;
-        tokens: AuthTokensPayload;
-        user?: Record<string, unknown> | null;
-    }
+    kind: 'success';
+    provider: AuthProvider | string;
+    tokens: AuthTokensPayload;
+    user?: Record<string, unknown> | null;
+}
     | {
-        kind: 'error';
-        provider: AuthProvider | string;
-        error: string;
-    };
+    kind: 'error';
+    provider: AuthProvider | string;
+    error: string;
+};
 
 export type AssistantAPI = {
     assistant: {
         processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
         processAudioStream: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
-        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
+        transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | {
+            ok: false;
+            error: string
+        }>;
         askChat: (args: AskChatRequest) => Promise<void>;
         stopStream: (args: StopStreamRequest) => Promise<void>;
         onStreamTranscript: (cb: (e: unknown, payload: { requestId?: string; delta: string }) => void) => void;
@@ -253,10 +263,10 @@ export type AssistantAPI = {
         setDurationHotkeys: (map: Record<number, string>) => Promise<void>;
         setAudioInputDevice: (deviceId: string) => Promise<void>;
         setToggleInputHotkey: (key: string) => Promise<void>;
-        setAudioInputType: (type: 'microphone' | 'system') => Promise<void>;
+        setAudioInputType: (type: 'microphone' | 'system' | 'mixed') => Promise<void>;
         setTranscriptionModel: (model: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
-        setLlmModel: (model: string) => Promise<void>;
+        setLlmModel: (model: string, host?: 'api' | 'local') => Promise<void>;
         setLlmPrompt: (prompt: string) => Promise<void>;
         setTranscriptionMode: (mode: TranscriptionMode) => Promise<void>;
         setLlmHost: (host: LlmHost) => Promise<void>;
@@ -271,7 +281,6 @@ export type AssistantAPI = {
         setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
         setWelcomeModalDismissed: (dismissed: boolean) => Promise<void>;
         setGoogleApiKey: (key: string) => Promise<void>;
-        setStreamMode: (mode: 'base' | 'stream') => Promise<void>;
         setStreamSendHotkey: (key: string) => Promise<void>;
         setWindowScale: (scale: number) => Promise<void>;
         setHideApp: (hideApp: boolean) => Promise<void>;
@@ -291,7 +300,12 @@ export type AssistantAPI = {
         process: (payload: ScreenProcessRequest) => Promise<ScreenProcessResponse>;
     };
     google: {
-        startLive: (opts: { apiKey: string; response: 'TEXT' | 'AUDIO'; transcribeInput?: boolean; transcribeOutput?: boolean }) => Promise<void>;
+        startLive: (opts: {
+            apiKey: string;
+            response: 'TEXT' | 'AUDIO';
+            transcribeInput?: boolean;
+            transcribeOutput?: boolean
+        }) => Promise<void>;
         sendAudioChunk: (params: { data: string; mime: string }) => void;
         stopLive: () => void;
         onMessage: (cb: (message: any) => void) => void;
@@ -305,5 +319,38 @@ export type AssistantAPI = {
     media: {
         getPrimaryDisplaySourceId: () => Promise<string | null>;
     };
+    localSpeech: {
+        getStatus: () => Promise<FastWhisperStatus>;
+        checkHealth: () => Promise<FastWhisperStatus>;
+        install: () => Promise<FastWhisperStatus>;
+        start: () => Promise<FastWhisperStatus>;
+        restart: () => Promise<FastWhisperStatus>;
+        reinstall: () => Promise<FastWhisperStatus>;
+        stop: () => Promise<FastWhisperStatus>;
+        checkModelDownloaded: (model: string) => Promise<boolean>;
+    };
+    ollama: {
+        checkInstalled: () => Promise<boolean>;
+        listModels: () => Promise<string[]>;
+        pullModel: (model: string) => Promise<void>;
+        warmupModel: (model: string) => Promise<void>;
+    };
+    audio: {
+        listDevices: () => Promise<AudioDeviceInfo[]>;
+        startCapture: (source: 'mic' | 'system' | 'mixed', deviceId?: string) => Promise<void>;
+        stopCapture: () => Promise<void>;
+    };
     log: (entry: LogEntry) => Promise<void>;
+};
+
+export type FastWhisperStatus = {
+    installed: boolean;
+    running: boolean;
+    phase: string;
+    message: string;
+    error?: string | null;
+    lastAction?: string | null;
+    lastSuccessAt?: number | null;
+    logLine?: string | null;
+    updatedAt: number;
 };

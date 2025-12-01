@@ -1,5 +1,5 @@
-// Простой логгер для renderer процесса
-// Отправляет логи в main процесс через IPC
+// Simple logger for the renderer process
+// Sends logs to the main process via IPC
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -21,17 +21,20 @@ class RendererLogger {
             data
         };
 
-        // Отправляем в main процесс через IPC
-        if (window.api?.log) {
-            window.api.log(entry);
+        // Send to the main process via IPC
+        const hasBridgeLogger = Boolean(window.api?.log);
+        if (hasBridgeLogger) {
+            void window.api.log(entry);
         }
 
-        // Также выводим в консоль для разработки
-        const consoleMethod = level === 'error' ? console.error : 
-                             level === 'warn' ? console.warn : 
-                             level === 'debug' ? console.debug : console.log;
-        
-        consoleMethod(`[${category}] ${message}`, data || '');
+        // Also print to console during development
+        if (!hasBridgeLogger) {
+            const consoleMethod = level === 'error' ? console.error :
+                level === 'warn' ? console.warn :
+                    level === 'debug' ? console.debug : console.log;
+
+            consoleMethod(`[${category}] ${message}`, data || '');
+        }
     }
 
     public info(category: string, message: string, data?: any): void {

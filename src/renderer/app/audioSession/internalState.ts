@@ -2,7 +2,7 @@ import {AudioRingBuffer} from '../../audio/ringBuffer';
 import {AudioVisualizer} from '../../audio/visualizer';
 import {PcmRingBuffer} from '../../audio/pcmRingBuffer';
 
-export type AudioInputType = 'microphone' | 'system';
+export type AudioInputType = 'microphone' | 'system' | 'mixed';
 
 export interface AudioSessionState {
     media: MediaRecorder | null;
@@ -18,6 +18,7 @@ export interface AudioSessionState {
     pcmRing: PcmRingBuffer | null;
     currentAudioInputType: AudioInputType;
     persistentSystemAudioTrack: MediaStreamTrack | null;
+    rmsLevel: number;
 }
 
 export const audioSessionState: AudioSessionState = {
@@ -32,6 +33,7 @@ export const audioSessionState: AudioSessionState = {
     srcNode: null,
     scriptNode: null,
     pcmRing: null,
-    currentAudioInputType: 'microphone',
+    currentAudioInputType: 'mixed',
     persistentSystemAudioTrack: null,
+    rmsLevel: 0,
 };

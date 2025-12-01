@@ -1,10 +1,12 @@
 import {useEffect, useRef, useState} from 'react';
-import {TextField} from '@mui/material';
-import { initializeRenderer } from './renderer';
-import { setStatus } from './ui/status';
-import { SettingsView } from './components/settings/SettingsView/SettingsView';
-import { WindowResizer } from './components/common/WindowResizer/WindowResizer';
-import {ThemeProvider, CssBaseline} from '@mui/material';
+import {CssBaseline, TextField, ThemeProvider} from '@mui/material';
+import {initializeRenderer} from './renderer';
+import {setStatus} from './ui/status';
+import {SettingsView} from './components/settings/SettingsView/SettingsView';
+import {WindowResizer} from './components/common/WindowResizer/WindowResizer';
+import {ToastContainer} from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import './styles/toast.sass';
 import {AuthProvider, useAuth} from './auth';
 import {LoginView} from './components/auth/LoginView/LoginView';
 import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
@@ -28,30 +30,30 @@ function AuthenticatedApp() {
 
     return (
         <div className="app-grid disable-tap-select relative fc h-screen min-w-[330px] text-gray-100">
-            <WindowResizer />
+            <WindowResizer/>
             <div
                 className="rainbow pointer-events-none"
-                style={{ position: 'absolute', width: '500px', height: '500px' }}
+                style={{position: 'absolute', width: '500px', height: '500px'}}
             />
 
             <div
                 className="logo-container pointer-events-none fccc"
-                style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2 }}
+                style={{width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2}}
             >
-                <img id="main-logo" alt="xexamai" style={{ width: '70vmin' }} />
+                <img id="main-logo" alt="xexamai" style={{width: '70vmin'}}/>
             </div>
 
             <header className="app-header frbc px-3 py-2 text-gray-100 drag-region">
                 <div className="frsc gap-3">
-                    <div className="relative" style={{ width: '32px', height: '32px' }}>
+                    <div className="relative" style={{width: '32px', height: '32px'}}>
                         <img
                             id="header-logo"
                             alt="xexamai"
-                            style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2 }}
+                            style={{width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2}}
                         />
                         <div
                             className="rainbow"
-                            style={{ position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)' }}
+                            style={{position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)'}}
                         />
                     </div>
                     <h1 className="text-lg font-semibold">xexamai</h1>
@@ -59,11 +61,11 @@ function AuthenticatedApp() {
                         Ready
                     </div>
                 </div>
-                <div className="no-drag" />
+                <div className="no-drag"/>
                 <div className="window-controls no-drag -mr-1">
                     <button id="closeBtn" className="close mr-[11px]" type="button">
                         <svg width="12" height="12" viewBox="0 0 12 12">
-                            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none"/>
                         </svg>
                     </button>
                 </div>
@@ -101,7 +103,7 @@ function AuthenticatedApp() {
                         <div className="card h-min flex-grow md:max-w-[320px] min-w-[305px]">
                             <div id="send-last-container" className="send-last-container">
                                 <div className="label mb-2">Send the last:</div>
-                                <div id="durations" className="flex flex-wrap gap-2" />
+                                <div id="durations" className="flex flex-wrap gap-2"/>
                             </div>
 
                             <div className="mt-2 flex items-center gap-4">
@@ -114,16 +116,16 @@ function AuthenticatedApp() {
                                         src="img/icons/mic.png"
                                         alt="MIC"
                                         className="h-5 w-5"
-                                        style={{ filter: 'invert(1)', opacity: '80%' }}
+                                        style={{filter: 'invert(1)', opacity: '80%'}}
                                     />
                                 </button>
-                                <div id="waveform-container" className="flex-1" />
+                                <div id="waveform-container" className="flex-1"/>
                                 <button
                                     id="btnScreenshot"
                                     type="button"
                                     className="btn btn-secondary"
                                 >
-                                    <img src="img/icons/image.png" alt="Screenshot" className="h-5 w-5 invert" />
+                                    <img src="img/icons/image.png" alt="Screenshot" className="h-5 w-5 invert"/>
                                 </button>
                             </div>
 
@@ -181,12 +183,12 @@ function AuthenticatedApp() {
                                         Send
                                     </button>
                                 </div>
-                                </div>
+                            </div>
                         </div>
 
                         <div className="card flex flex-grow flex-col overflow-y-auto">
                             <div className="label mb-1">Recognized</div>
-                            <div id="textOut" />
+                            <div id="textOut"/>
                             <div className="mt-4 mb-1 flex items-center gap-2">
                                 <div className="label">Reply</div>
                                 <button
@@ -197,22 +199,22 @@ function AuthenticatedApp() {
                                     Stop
                                 </button>
                             </div>
-                            <div id="answerOut" className="min-h-[1rem] overflow-auto" />
+                            <div id="answerOut" className="min-h-[1rem] overflow-auto"/>
                         </div>
                     </section>
                 </div>
 
                 <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'settings'}>
-                    <SettingsView />
+                    <SettingsView/>
                 </div>
                 <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'profile'}>
-                    <ProfileView />
+                    <ProfileView/>
                 </div>
             </main>
 
             <footer
                 className="pointer-events-none absolute bottom-2 left-0 right-0 flex items-end justify-between px-3 text-[9px] font-light opacity-40"
-                style={{ fontWeight: 300 }}
+                style={{fontWeight: 300}}
             >
                 <div className="pointer-events-auto space-x-1 text-gray-300">
                     <span className="opacity-70">by Nikita Artasov</span>
@@ -226,7 +228,7 @@ function AuthenticatedApp() {
                     </a>
                 </div>
                 <div className="pointer-events-auto">
-                    <BetaFeedbackWidget />
+                    <BetaFeedbackWidget/>
                 </div>
             </footer>
         </div>
@@ -234,29 +236,39 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
-    const { status, isAuthenticated, user } = useAuth();
+    const {status, isAuthenticated, user} = useAuth();
 
     useEffect(() => {
         setCurrentUser(user);
     }, [user]);
 
     if (status === 'initializing' || status === 'checking') {
-        return <LoadingScreen message={status === 'checking' ? 'Restoring session…' : 'Launching…'} />;
+        return <LoadingScreen message={status === 'checking' ? 'Restoring session…' : 'Launching…'}/>;
     }
 
     if (!isAuthenticated) {
-        return <LoginView />;
+        return <LoginView/>;
     }
 
-    return <AuthenticatedApp />;
+    return <AuthenticatedApp/>;
 }
 
 export function App() {
     return (
         <ThemeProvider theme={muiTheme}>
-            <CssBaseline />
+            <CssBaseline/>
             <AuthProvider>
-                <AppContent />
+                <AppContent/>
+                <ToastContainer
+                    position="top-center"
+                    style={{marginTop: 49}}
+                    autoClose={3200}
+                    newestOnTop
+                    pauseOnFocusLoss={false}
+                    pauseOnHover
+                    theme="dark"
+                    closeOnClick
+                />
             </AuthProvider>
         </ThemeProvider>
     );

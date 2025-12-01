@@ -18,6 +18,10 @@ permissions:
 
 env:
   NODE_VERSION: 20
+  AWS_DEFAULT_REGION: ru-1
+  AWS_S3_FORCE_PATH_STYLE: true
+  S3_BUCKET: 324718a4-2cc5dd7a-917b-4e82-87c5-b9d5f8de16ba
+  S3_ENDPOINT: https://s3.twcstorage.ru
 
 jobs:
   quality:
@@ -57,6 +61,10 @@ jobs:
           - macos-latest
           - ubuntu-latest
 
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -94,33 +102,67 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:linux
+      
+      - name: Upload artifacts to S3
+        if: success()
+        shell: bash
+        env:
+          VERSION: ${{ github.ref_name }}
+          MATRIX_OS: ${{ matrix.os }}
+        run: |
+          set -euo pipefail
+          if ! command -v aws >/dev/null 2>&1; then
+            python3 -m pip install --user awscli
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
 
-      - name: Upload Windows artifacts
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: xexamai-windows
-          path: |
-            release/*.exe
-          if-no-files-found: warn
+          aws configure set default.s3.addressing_style path
 
-      - name: Upload macOS artifacts
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: xexamai-macos
-          path: |
-            release/*.dmg
-          if-no-files-found: warn
+          SRC="release"
 
-      - name: Upload Linux artifacts
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: xexamai-linux
-          path: |
-            release/*.deb
-          if-no-files-found: warn
+          if [ ! -d "${SRC}" ]; then
+            echo "Source directory ${SRC} not found, nothing to upload."
+            exit 1
+          fi
+
+          UPLOAD_DIR="$(pwd)/release-filtered"
+          rm -rf "${UPLOAD_DIR}"
+          mkdir -p "${UPLOAD_DIR}"
+
+          case "${MATRIX_OS}" in
+            windows-latest)
+              TARGET="windows"
+              FIND_EXPR=(-type f -name "*.exe")
+              ;;
+            macos-latest)
+              TARGET="macos"
+              FIND_EXPR=(-type f -name "*.dmg")
+              ;;
+            ubuntu-latest)
+              TARGET="linux"
+              FIND_EXPR=(-type f -name "*.deb")
+              ;;
+            *)
+              echo "Unknown OS matrix value during filtering: ${MATRIX_OS}"
+              exit 1
+              ;;
+          esac
+
+          FOUND=0
+          while IFS= read -r -d '' artifact; do
+            cp "${artifact}" "${UPLOAD_DIR}/"
+            FOUND=1
+          done < <(find "${SRC}" "${FIND_EXPR[@]}" -print0)
+
+          if [ "${FOUND}" -eq 0 ]; then
+            echo "No artifacts matching the upload criteria were found in ${SRC}"
+            exit 1
+          fi
+
+          aws s3 cp "${UPLOAD_DIR}" "s3://${S3_BUCKET}/xexamai/${VERSION}/${TARGET}/" \
+            --recursive \
+            --endpoint-url "${S3_ENDPOINT}" \
+            --acl private
 
   release:
     name: Publish Release
@@ -129,47 +171,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: Generate release notes
+      - name: Generate release notes with S3 links
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          S3_BUCKET: ${{ env.S3_BUCKET }}
+          S3_ENDPOINT: ${{ env.S3_ENDPOINT }}
         run: |
           VERSION="${{ github.ref_name }}"
+          BASE_URL="${S3_ENDPOINT}/${S3_BUCKET}/xexamai/${VERSION}"
+
           echo "✨ Meet **XEXAMAI** — your AI interview assistant" > release-body.md
           echo "" >> release-body.md
-          echo "## Installation Guide" >> release-body.md
+          echo "## Download links" >> release-body.md
           echo "" >> release-body.md
           echo "### Windows" >> release-body.md
-          echo "1. Download \`XEXAMAI-Setup-__VERSION__.exe\` from the assets list below." >> release-body.md
-          echo "2. Run the installer and follow the prompts." >> release-body.md
-          echo "3. Launch XEXAMAI from the Start Menu after installation." >> release-body.md
+          echo "- 64-bit / 32-bit installer: ${BASE_URL}/windows/" >> release-body.md
           echo "" >> release-body.md
           echo "### macOS" >> release-body.md
-          echo "1. Download the DMG that matches your Mac (\`XEXAMAI-__VERSION__-x64.dmg\` for Intel, \`XEXAMAI-__VERSION__-arm64.dmg\` for Apple Silicon)." >> release-body.md
-          echo "2. Open the DMG and drag \`XEXAMAI.app\` into \`Applications\`." >> release-body.md
-          echo "3. On first launch macOS may warn about an unidentified developer – right-click the app, choose **Open**, then confirm." >> release-body.md
+          echo "- DMG images: ${BASE_URL}/macos/" >> release-body.md
           echo "" >> release-body.md
           echo "### Linux (Debian/Ubuntu)" >> release-body.md
-          echo "1. Download \`XEXAMAI-__VERSION__-amd64.deb\`." >> release-body.md
-          echo "2. Install with \`sudo apt install ./XEXAMAI-__VERSION__-amd64.deb\`." >> release-body.md
-          echo "3. Start XEXAMAI from your application menu." >> release-body.md
+          echo "- DEB packages: ${BASE_URL}/linux/" >> release-body.md
           echo "" >> release-body.md
           echo "---" >> release-body.md
           echo "## Changes" >> release-body.md
           gh api repos/${{ github.repository }}/releases/generate-notes -F tag_name="$VERSION" -F target_commitish="${{ github.sha }}" --jq '.body' >> release-body.md
-          sed -i "s/__VERSION__/${VERSION}/g" release-body.md
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/**/*.deb
-            dist/**/*.dmg
-            dist/**/*.exe
           body_path: release-body.md
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}

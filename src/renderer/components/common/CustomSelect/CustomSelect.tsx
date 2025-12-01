@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
+import type {KeyboardEvent} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 import './CustomSelect.scss';
 
 type ClassValue = string | undefined | null | false | Record<string, boolean>;
+
 function classNames(...values: ClassValue[]): string {
     const tokens: string[] = [];
     for (const value of values) {
@@ -35,19 +36,26 @@ type CustomSelectProps = {
     className?: string;
 };
 
+// noinspection JSUnusedGlobalSymbols
 export const CustomSelect = ({
-    value,
-    options,
-    placeholder = 'Select…',
-    disabled = false,
-    onChange,
-    className,
-}: CustomSelectProps) => {
+                                 value,
+                                 options,
+                                 placeholder = 'Select',
+                                 disabled = false,
+                                 onChange,
+                                 className,
+                             }: CustomSelectProps) => {
     const [open, setOpen] = useState(false);
+    const [renderDropdown, setRenderDropdown] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLUListElement>(null);
-    const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+    const [dropdownStyle, setDropdownStyle] = useState<{
+        top: number;
+        left: number;
+        width: number;
+        maxHeight: number
+    } | null>(null);
 
     const selected = useMemo(
         () => options.find((option) => option.value === value) ?? null,
@@ -114,7 +122,7 @@ export const CustomSelect = ({
             ) {
                 return prev;
             }
-            return { top, left, width, maxHeight };
+            return {top, left, width, maxHeight};
         });
     }, []);
 
@@ -155,6 +163,17 @@ export const CustomSelect = ({
         };
     }, [open, disabled, updatePosition]);
 
+    useEffect(() => {
+        if (open) {
+            setRenderDropdown(true);
+            return;
+        }
+        if (renderDropdown) {
+            const timeout = setTimeout(() => setRenderDropdown(false), 160);
+            return () => clearTimeout(timeout);
+        }
+    }, [open, renderDropdown]);
+
     const handleToggle = () => {
         if (disabled) return;
         setOpen((prev) => !prev);
@@ -175,11 +194,14 @@ export const CustomSelect = ({
         buttonRef.current?.focus();
     };
 
-    const dropdown = open && dropdownStyle && !disabled ? createPortal(
+    const dropdown = renderDropdown && dropdownStyle && !disabled ? createPortal(
         <div className="custom-select__dropdown-container">
             <ul
                 ref={dropdownRef}
-                className="custom-select__dropdown custom-dropdown-scrollbar"
+                className={classNames('custom-select__dropdown custom-dropdown-scrollbar', {
+                    'custom-select__dropdown--open': open && !disabled,
+                    'custom-select__dropdown--closing': !open,
+                })}
                 role="listbox"
                 style={{
                     top: dropdownStyle.top,
@@ -230,17 +252,13 @@ export const CustomSelect = ({
                     aria-expanded={open}
                     disabled={disabled}
                 >
-                    <span className={classNames('custom-select__label', { 'custom-select__placeholder': !selected })}>
+                    <span className={classNames('custom-select__label', {'custom-select__placeholder': !selected})}>
                         {selected ? selected.label : placeholder}
                     </span>
-                    <span className="custom-select__chevron" aria-hidden>
-                        ▾
-                    </span>
+                    <span className="custom-select__chevron" aria-hidden/>
                 </button>
             </div>
             {dropdown}
         </>
     );
 };
-
-export default CustomSelect;

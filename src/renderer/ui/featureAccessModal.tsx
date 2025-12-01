@@ -1,20 +1,10 @@
 import {useEffect, useState} from 'react';
-import {createRoot, Root} from 'react-dom/client';
-import {
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    Link,
-    Stack,
-    Typography,
-} from '@mui/material';
+import {Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, Typography,} from '@mui/material';
 import {ThemeProvider} from '@mui/material/styles';
 import {muiTheme} from '../mui/config.mui';
 import {checkFeatureAccess as checkFeatureAccessUtil, getCurrentUser} from '../utils/featureAccess';
 import {getActiveTier, getMinTierForFeature} from '../utils/features';
+import {createPortalRoot} from './portalRoot';
 
 type FeatureAccessDialogProps = {
     open: boolean;
@@ -62,9 +52,15 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                     </Typography>
 
                     {activeTierInfo && (
-                        <Box sx={{p: 2, borderRadius: 2, backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)'}}>
+                        <Box sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
                             <Stack spacing={1.5}>
-                                <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+                                <Typography variant="caption" color="text.secondary"
+                                            sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
                                     Your current status
                                 </Typography>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -88,9 +84,15 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                     )}
 
                     {minTierInfo && (
-                        <Box sx={{p: 2, borderRadius: 2, backgroundColor: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)'}}>
+                        <Box sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            border: '1px solid rgba(139, 92, 246, 0.2)'
+                        }}>
                             <Stack spacing={1.5}>
-                                <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+                                <Typography variant="caption" color="text.secondary"
+                                            sx={{textTransform: 'uppercase', letterSpacing: '0.5px'}}>
                                     Required for {featureLabel}
                                 </Typography>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -110,7 +112,8 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                                     </Typography>
                                 </Stack>
                                 {minTierInfo.tier.description && (
-                                    <Typography variant="caption" color="text.secondary" sx={{mt: 0.5, fontStyle: 'italic'}}>
+                                    <Typography variant="caption" color="text.secondary"
+                                                sx={{mt: 0.5, fontStyle: 'italic'}}>
                                         {minTierInfo.tier.description}
                                     </Typography>
                                 )}
@@ -147,17 +150,13 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
     );
 }
 
-let featureModalContainer: HTMLDivElement | null = null;
-let featureModalRoot: Root | null = null;
 let featureModalCloseTimer: number | null = null;
 let featureModalOpen = false;
 let currentFeatureCode: 'screen_processing' | 'history' | 'promt_presets' = 'screen_processing';
+const featurePortal = createPortalRoot();
 
 function ensureFeatureModalRoot(): void {
-    if (featureModalRoot && featureModalContainer) return;
-    featureModalContainer = document.createElement('div');
-    document.body.appendChild(featureModalContainer);
-    featureModalRoot = createRoot(featureModalContainer);
+    featurePortal.ensure();
 }
 
 function destroyFeatureModalRoot(): void {
@@ -165,27 +164,20 @@ function destroyFeatureModalRoot(): void {
         window.clearTimeout(featureModalCloseTimer);
         featureModalCloseTimer = null;
     }
-    if (featureModalRoot) {
-        featureModalRoot.unmount();
-        featureModalRoot = null;
-    }
-    if (featureModalContainer) {
-        featureModalContainer.remove();
-        featureModalContainer = null;
-    }
+    featurePortal.destroy();
 }
 
 function renderFeatureModal(open: boolean) {
-    if (!featureModalRoot || !featureModalContainer) return;
-    featureModalRoot.render(
+    if (!featurePortal.isReady()) return;
+    featurePortal.render(
         <ThemeProvider theme={muiTheme}>
-            <FeatureAccessDialog open={open} onClose={handleFeatureModalClose} featureCode={currentFeatureCode} />
+            <FeatureAccessDialog open={open} onClose={handleFeatureModalClose} featureCode={currentFeatureCode}/>
         </ThemeProvider>,
     );
 }
 
 function handleFeatureModalClose() {
-    if (!featureModalRoot) return;
+    if (!featureModalOpen) return;
     featureModalOpen = false;
     renderFeatureModal(false);
     if (featureModalCloseTimer !== null) {

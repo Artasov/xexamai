@@ -1,6 +1,8 @@
+// noinspection JSUnusedGlobalSymbols
+
 export type AppState = {
     isRecording: boolean;
-    isProcessing: boolean; // блокировка во время распознавания и ответа
+    isProcessing: boolean; // lock UI while transcription/response runs
     durationSec: number; // capture window in seconds
     mime: string;
 };
@@ -23,4 +25,3 @@ export function setRecording(v: boolean) {
 export function setProcessing(v: boolean) {
     state.isProcessing = v;
 }
-
