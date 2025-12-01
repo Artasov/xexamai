@@ -49,7 +49,7 @@ jobs:
         run: npm run build:renderer
 
   package:
-    name: Package ${{ matrix.os }}
+    name: Package Tauri (${{ matrix.os }})
     needs: quality
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
@@ -75,33 +75,45 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows artifacts
-        if: matrix.os == 'windows-latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:win -- --x64 --ia32
+      - name: Build renderer bundle
+        run: npm run build:renderer
 
-      - name: Remove per-arch installers
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path "release" -Filter "*-ia32.exe" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
-          Get-ChildItem -Path "release" -Filter "*-x64.exe" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Build macOS artifacts
+      - name: Cleanup macOS disk images
         if: matrix.os == 'macos-latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:mac
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for volume in /Volumes/XEXAMAI /Volumes/XEXAMAI* /Volumes/dmg.*; do
+            if [ -d "$volume" ]; then
+              hdiutil detach "$volume" || hdiutil detach -force "$volume" || true
+            fi
+          done
+          rm -rf src-tauri/target/release/bundle/dmg
 
-      - name: Build Linux artifacts
-        if: matrix.os == 'ubuntu-latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:linux
+      - name: Build desktop apps with Tauri
+        uses: tauri-apps/tauri-action@v0
+        with:
+          tauriScript: npm run tauri
+          args: --verbose
       
       - name: Upload artifacts to S3
         if: success()
@@ -118,7 +130,7 @@ jobs:
 
           aws configure set default.s3.addressing_style path
 
-          SRC="release"
+          SRC="src-tauri/target/release/bundle"
 
           if [ ! -d "${SRC}" ]; then
             echo "Source directory ${SRC} not found, nothing to upload."
@@ -132,7 +144,7 @@ jobs:
           case "${MATRIX_OS}" in
             windows-latest)
               TARGET="windows"
-              FIND_EXPR=(-type f -name "*.exe")
+              FIND_EXPR=(-type f \( -name "*.exe" -o -name "*.msi" \))
               ;;
             macos-latest)
               TARGET="macos"
@@ -140,7 +152,7 @@ jobs:
               ;;
             ubuntu-latest)
               TARGET="linux"
-              FIND_EXPR=(-type f -name "*.deb")
+              FIND_EXPR=(-type f \( -name "*.AppImage" -o -name "*.deb" \))
               ;;
             *)
               echo "Unknown OS matrix value during filtering: ${MATRIX_OS}"
