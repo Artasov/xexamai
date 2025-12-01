@@ -64,7 +64,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                 >
                     {!success ? (
                         <Typography variant="body2" color="text.secondary" mt={1}>
-                            Xexamai is currently in beta — unexpected behaviour is possible. Please share anything that
+                            XEXAMAI is currently in beta — unexpected behaviour is possible. Please share anything that
                             feels off so we can fix it quickly.
                         </Typography>
                     ) : null}
