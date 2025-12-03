@@ -13,6 +13,7 @@ mod transcription;
 mod types;
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use auth::AuthQueue;
 use config::ConfigState;
@@ -232,6 +233,52 @@ async fn audio_stop_capture(manager: State<'_, Arc<AudioManager>>) -> Result<(),
     manager.stop().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn ollama_http_request(
+    url: String,
+    method: String,
+    headers: serde_json::Value,
+    body: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs.unwrap_or(600)))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut request = match method.as_str() {
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        _ => return Err(format!("Unsupported method: {}", method)),
+    };
+
+    // Добавляем заголовки
+    if let serde_json::Value::Object(map) = headers {
+        for (key, value) in map {
+            if let Some(val_str) = value.as_str() {
+                request = request.header(&key, val_str);
+            }
+        }
+    }
+
+    // Добавляем тело запроса
+    if let Some(body_str) = body {
+        request = request.body(body_str);
+    }
+
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    let text = response.text().await.map_err(|e| e.to_string())?;
+
+    if !status.is_success() {
+        return Err(format!("HTTP {}: {}", status.as_u16(), text));
+    }
+
+    Ok(text)
+}
+
 fn handle_config_effects(
     app: &AppHandle,
     config: &AppConfig,
@@ -391,6 +438,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(url) = args.into_iter().find(|arg| arg.starts_with("xexamai://")) {
                 if let Some(state) = app.try_state::<Arc<AuthQueue>>() {
@@ -443,6 +491,7 @@ fn main() {
             config_reset,
             config_path,
             open_config_folder,
+            ollama_http_request,
             auth_consume_pending,
             auth_start_oauth,
             local_speech_get_status,

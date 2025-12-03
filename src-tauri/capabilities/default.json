@@ -26,6 +26,17 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "shell:allow-open",
-    "deep-link:default"
+    "deep-link:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "http://localhost:11434/**"
+        },
+        {
+          "url": "http://127.0.0.1:11434/**"
+        }
+      ]
+    }
   ]
 }

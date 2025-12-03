@@ -16,7 +16,7 @@ import {
     OPENAI_TRANSCRIBE_MODELS,
 } from '@shared/constants';
 import {logRequest, previewText} from './nativeAssistant.helpers';
-import {fetchWithTimeout} from './nativeAssistant.network';
+import {fetchWithTimeout, ollamaAxios} from './nativeAssistant.network';
 
 type StreamEventPayloads = {
     transcript: { requestId?: string; delta: string };
@@ -520,28 +520,14 @@ async function chatWithOllama(
     logRequest('llm:ollama', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
     let logged = false;
     try {
-        const response = await fetchWithTimeout(
-            'http://localhost:11434/v1/chat/completions',
-            {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    model: resolvedModel,
-                    messages,
-                }),
-                signal,
-            },
-            Math.max(settings.apiLlmTimeoutMs || 0, 600_000)
-        );
-        const data = await response.json().catch(async () => ({text: await response.text()}));
-        if (!response.ok) {
-            logRequest('llm:ollama', 'error', {status: response.status, data});
-            logged = true;
-            const message = typeof data === 'string'
-                ? data
-                : data?.error?.message || 'Local LLM request failed';
-            throw new Error(message);
-        }
+        const response = await ollamaAxios.post('/v1/chat/completions', {
+            model: resolvedModel,
+            messages,
+        }, {
+            timeout: Math.max(settings.apiLlmTimeoutMs || 0, 600_000),
+            signal,
+        });
+        const data = response.data;
         const message = (data as any)?.message?.content;
         let content;
         if (Array.isArray(message)) {
@@ -563,16 +549,26 @@ async function chatWithOllama(
             responsePreview: previewText(content),
         });
         return content;
-    } catch (error) {
-        const aborted = signal?.aborted || (error instanceof DOMException && error.name === 'AbortError');
+    } catch (error: any) {
+        const aborted = signal?.aborted || (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED');
         if (!aborted && !logged) {
+            const errorData = error?.response?.data || error?.response || {};
             logRequest('llm:ollama', 'error', {
                 model: resolvedModel,
+                status: error?.response?.status,
+                data: errorData,
                 promptPreview: previewText(prompt),
                 error: error instanceof Error ? error.message : String(error),
             });
+            logged = true;
         }
-        throw error;
+        if (aborted) {
+            throw error;
+        }
+        const message = typeof error?.response?.data === 'string'
+            ? error.response.data
+            : error?.response?.data?.error?.message || error?.message || 'Local LLM request failed';
+        throw new Error(message);
     }
 }
 
@@ -600,10 +596,15 @@ async function streamOllamaChatCompletion(
         },
         Math.max(settings.apiLlmTimeoutMs || 0, 600_000)
     );
-    if (!response.ok || !response.body) {
+    if (!response.ok) {
         logRequest('llm:ollama:stream', 'error', {requestId, status: response.status});
-        const text = await response.text();
-        throw new Error(text || 'Local LLM streaming failed');
+        const text = await response.text().catch(() => '');
+        throw new Error(text || `Local LLM streaming failed (status: ${response.status})`);
+    }
+    
+    if (!response.body) {
+        logRequest('llm:ollama:stream', 'error', {requestId, status: response.status, error: 'No response body'});
+        throw new Error('Local LLM streaming failed: No response body');
     }
 
     const reader = response.body.getReader();
@@ -621,12 +622,16 @@ async function streamOllamaChatCompletion(
             if (!jsonLine) continue;
             try {
                 const json = JSON.parse(jsonLine);
-                const deltaRaw =
-                    json?.message?.content ||
+                // Поддерживаем оба формата:
+                // 1. OpenAI-совместимый: {choices: [{delta: {content: "..."}}]}
+                // 2. Ollama: {message: {content: "...", role: "assistant"}, done: false}
+                const deltaRaw = 
                     json?.choices?.[0]?.delta?.content ||
-                    json?.choices?.[0]?.message?.content;
+                    json?.message?.content;
                 let text = '';
-                if (Array.isArray(deltaRaw)) {
+                if (typeof deltaRaw === 'string') {
+                    text = deltaRaw;
+                } else if (Array.isArray(deltaRaw)) {
                     text = deltaRaw
                         .map((item: any) => {
                             if (typeof item === 'string') return item;
@@ -635,8 +640,6 @@ async function streamOllamaChatCompletion(
                             return '';
                         })
                         .join('');
-                } else if (typeof deltaRaw === 'string') {
-                    text = deltaRaw;
                 } else if (deltaRaw?.content) {
                     text = deltaRaw.content;
                 }
