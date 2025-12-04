@@ -444,14 +444,6 @@ export const AiSettings = () => {
 
         void refreshOllamaState(true);
 
-        const handleVisibility = () => {
-            if (!cancelled && !document.hidden) {
-                void refreshOllamaState(true);
-            }
-        };
-        window.addEventListener('focus', handleVisibility);
-        document.addEventListener('visibilitychange', handleVisibility);
-
         const unsubscribeDownload = subscribeToOllamaDownloads((models) => {
             const normalized = normalizeOllamaModelName(settings.localLlmModel ?? DEFAULT_LOCAL_LLM_MODEL);
             setOllamaDownloading(models.has(normalized));
@@ -465,8 +457,6 @@ export const AiSettings = () => {
             cancelled = true;
             unsubscribeDownload();
             unsubscribeWarmup();
-            window.removeEventListener('focus', handleVisibility);
-            document.removeEventListener('visibilitychange', handleVisibility);
         };
     }, [settings.llmHost, settings.localLlmModel]);
 

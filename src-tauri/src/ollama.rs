@@ -3,6 +3,9 @@ use std::io;
 use std::process::Stdio;
 use tokio::process::Command;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const LIST_JSON_FLAG: &str = "--json";
 
 fn normalize_model_name(model: &str) -> String {
@@ -10,12 +13,18 @@ fn normalize_model_name(model: &str) -> String {
 }
 
 async fn run_ollama_command(args: &[&str]) -> Result<std::process::Output> {
-    let output = Command::new("ollama")
-        .args(args)
+    let mut cmd = Command::new("ollama");
+    cmd.args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await;
+        .stderr(Stdio::piped());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let output = cmd.output().await;
 
     match output {
         Ok(result) => Ok(result),
@@ -32,13 +41,18 @@ async fn run_ollama_command(args: &[&str]) -> Result<std::process::Output> {
 }
 
 pub async fn check_installed() -> Result<bool> {
-    match Command::new("ollama")
-        .arg("--version")
+    let mut cmd = Command::new("ollama");
+    cmd.arg("--version")
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    match cmd.status().await {
         Ok(status) => Ok(status.success()),
         Err(error) => {
             if error.kind() == io::ErrorKind::NotFound {
