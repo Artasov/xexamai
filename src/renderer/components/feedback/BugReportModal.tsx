@@ -105,11 +105,12 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                 />
 
                                 <TextField
+                                    required
                                     id="bug-report-telegram"
-                                    label="Telegram (optional)"
+                                    label="Contact (Telegram or Email)"
                                     value={telegram}
                                     onChange={(event) => setTelegram(event.target.value)}
-                                    placeholder="@nickname if you prefer a reply in Telegram"
+                                    placeholder="Enter your Telegram (@username) or Email for follow-up"
                                 />
 
                                 <Stack spacing={1}>

@@ -3,7 +3,7 @@ import {ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState} from 'reac
 export type BugReportFormPayload = {
     subject: string;
     message: string;
-    telegram?: string;
+    telegram: string;
     files: File[];
 };
 
@@ -36,9 +36,9 @@ export function useBugReportState(open: boolean, onSubmit?: (payload: BugReportF
     }, [open]);
 
     const isSubmitDisabled = useMemo(() => {
-        if (!subject.trim() || !message.trim()) return true;
+        if (!subject.trim() || !message.trim() || !telegram.trim()) return true;
         return submitting;
-    }, [subject, message, submitting]);
+    }, [subject, message, telegram, submitting]);
 
     const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
         const nextFiles = Array.from(event.target.files ?? []).slice(0, 5);
@@ -60,7 +60,7 @@ export function useBugReportState(open: boolean, onSubmit?: (payload: BugReportF
         const payload: BugReportFormPayload = {
             subject: subject.trim(),
             message: message.trim(),
-            telegram: telegram.trim() || undefined,
+            telegram: telegram.trim(),
             files,
         };
 

@@ -250,7 +250,7 @@ export class AuthClient {
     }
 
     public async getCurrentUser(includeTiersAndFeatures: boolean = false): Promise<AuthUser> {
-        const path = includeTiersAndFeatures ? '/me/?tiers_and_features=XEXAMAI' : '/me/';
+        const path = includeTiersAndFeatures ? '/me/?tiers_and_features=XEXAI' : '/me/';
         const label = `GET ${path}`;
 
         logger.info('auth', `${label} → start`);

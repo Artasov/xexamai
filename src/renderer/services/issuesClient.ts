@@ -5,20 +5,18 @@ import {authClient} from './authClient';
 export type IssueReportPayload = {
     subject: string;
     message: string;
-    telegram?: string;
+    telegram: string;
     files: File[];
 };
 
 function buildMessage(payload: IssueReportPayload): string {
     const base = payload.message.trim();
-    if (!payload.telegram) {
-        return base;
-    }
     const contact = payload.telegram.trim();
     if (!contact.length) {
         return base;
     }
-    return `${base}\n\nTelegram: ${contact}`;
+    const contactLabel = contact.startsWith('@') ? 'Telegram' : contact.includes('@') ? 'Email' : 'Contact';
+    return `${base}\n\n${contactLabel}: ${contact}`;
 }
 
 export async function submitIssueReport(payload: IssueReportPayload): Promise<void> {
