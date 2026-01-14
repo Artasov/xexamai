@@ -32,7 +32,7 @@ pub const DEFAULT_TRANSCRIPTION_PROMPT: &str = "This is a technical interview co
 pub const DEFAULT_LLM_PROMPT: &str = "You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code";
 pub const DEFAULT_SCREEN_PROMPT: &str = "You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate's environment, tools, or work. Focus on actionable insights.";
 
-pub const SITE_BASE_URL: &str = "https://xldev.ru";
+pub const SITE_BASE_URL: &str = "https://xlartas.com";
 pub const OAUTH_APP_NAME: &str = "xexamai";
 pub const OAUTH_SCHEME: &str = "xexamai";
 // Shared install location hint for the local speech server so multiple apps reuse one copy.

@@ -124,7 +124,7 @@ function FeatureAccessDialog({open, onClose, featureCode}: FeatureAccessDialogPr
                     <Typography variant="body2" color="text.secondary">
                         Please{' '}
                         <Link
-                            href="https://xldev.ru/en/profile?tab=tokens"
+                            href="https://xlartas.com/en/profile?tab=tokens"
                             target="_blank"
                             rel="noopener noreferrer"
                             sx={{

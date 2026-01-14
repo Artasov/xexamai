@@ -13,7 +13,7 @@ export interface FormattedError {
     isUserFriendly: boolean;
 }
 
-const GUIDE_URL = 'https://xldev.ru/en/xexamai';
+const GUIDE_URL = 'https://xlartas.com/en/xexamai';
 
 // Error mappings to user-friendly messages
 const ERROR_MAPPINGS: Record<string, ErrorInfo> = {
