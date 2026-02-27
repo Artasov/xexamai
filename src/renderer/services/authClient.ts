@@ -172,7 +172,6 @@ function normalizeError(error: unknown): AuthError {
         const message = extractMessage(payload, fallback);
         return new AuthError(message || fallback, status, payload);
     }
-
     if (error instanceof Error) {
         return new AuthError(error.message);
     }

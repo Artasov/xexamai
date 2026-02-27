@@ -1,4 +1,5 @@
 import {MouseEvent, useEffect, useMemo, useState} from 'react';
+import {invoke} from '@tauri-apps/api/core';
 import {
     Box,
     Button,
@@ -80,9 +81,9 @@ const COMMUNITY_LINKS: CommunityLink[] = [
     },
 ];
 
-function openLink(url: string) {
+async function openLink(url: string) {
     try {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        await invoke('open_external_url', {url});
     } catch (error) {
         console.error('Failed to open link', {url, error});
     }
@@ -102,7 +103,7 @@ function CommunityTile({link}: { link: CommunityLink }) {
 
     const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
-        openLink(link.url);
+        void openLink(link.url);
     };
 
     return (
@@ -244,7 +245,7 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                     textAlign="center"
                     sx={{opacity: controlsVisible ? 1 : 0.4}}
                 >
-                    Controls unlock after 6 seconds — take a moment to explore all links.
+                    Controls unlock after 6 seconds - take a moment to explore all links.
                 </Typography>
             </DialogActions>
         </Dialog>

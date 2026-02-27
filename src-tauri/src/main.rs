@@ -88,6 +88,23 @@ async fn open_config_folder(
 }
 
 #[tauri::command]
+async fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let normalized = url.trim();
+    if normalized.is_empty() {
+        return Err("URL is empty".to_string());
+    }
+    if !(normalized.starts_with("https://") || normalized.starts_with("http://")) {
+        return Err("Only http(s) URLs are allowed".to_string());
+    }
+
+    app.opener()
+        .open_url(normalized.to_string(), None::<String>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn auth_consume_pending(
     queue: State<'_, Arc<AuthQueue>>,
 ) -> Result<Vec<AuthDeepLinkPayload>, String> {
@@ -491,6 +508,7 @@ fn main() {
             config_reset,
             config_path,
             open_config_folder,
+            open_external_url,
             ollama_http_request,
             auth_consume_pending,
             auth_start_oauth,

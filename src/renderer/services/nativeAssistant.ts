@@ -93,6 +93,8 @@ const OPENAI_BASE =
 const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
 const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
 
+const supportsCustomTemperature = (model: string): boolean => !model.toLowerCase().startsWith('gpt-5');
+
 function emit<K extends keyof StreamEventPayloads>(key: K, payload: StreamEventPayloads[K]) {
     const listeners = streamEvents[key];
     for (const listener of listeners) {
@@ -205,6 +207,66 @@ const extractSpeechText = (payload: any): string => {
         if (first?.text) return first.text;
     }
     return '';
+};
+
+const coerceStreamText = (value: any): string => {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+        return value
+            .map((item: any) => {
+                if (typeof item === 'string') return item;
+                if (typeof item?.text === 'string') return item.text;
+                if (typeof item?.content === 'string') return item.content;
+                if (typeof item?.delta === 'string') return item.delta;
+                return '';
+            })
+            .join('');
+    }
+    if (typeof value?.text === 'string') return value.text;
+    if (typeof value?.content === 'string') return value.content;
+    if (typeof value?.delta === 'string') return value.delta;
+    return '';
+};
+
+const extractOpenAiDelta = (payload: any): string => {
+    const deltaRaw =
+        payload?.choices?.[0]?.delta?.content ??
+        (payload?.type === 'response.output_text.delta' ? payload?.delta : undefined) ??
+        payload?.delta ??
+        payload?.output_text;
+    return coerceStreamText(deltaRaw);
+};
+
+const extractGeminiChunkText = (payload: any): string => {
+    const candidates = payload?.candidates;
+    if (Array.isArray(candidates) && candidates.length) {
+        const parts = candidates[0]?.content?.parts;
+        if (Array.isArray(parts)) {
+            const text = parts
+                .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
+                .filter(Boolean)
+                .join('');
+            if (text) return text;
+        }
+    }
+    return coerceStreamText(payload?.text) || extractSpeechText(payload);
+};
+
+const appendStreamingDelta = (current: string, nextChunk: string): { full: string; delta: string } => {
+    if (!nextChunk) {
+        return {full: current, delta: ''};
+    }
+    if (!current) {
+        return {full: nextChunk, delta: nextChunk};
+    }
+    if (nextChunk.startsWith(current)) {
+        const delta = nextChunk.slice(current.length);
+        return {full: current + delta, delta};
+    }
+    if (current.endsWith(nextChunk)) {
+        return {full: current, delta: ''};
+    }
+    return {full: current + nextChunk, delta: nextChunk};
 };
 
 async function transcribeWithLocal(
@@ -363,9 +425,9 @@ async function chatCompletion(
 ): Promise<string> {
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/chat/completions`;
-    const body = {
-        model: model || settings.llmModel || settings.apiLlmModel || DEFAULT_API_LLM,
-        temperature: 0.3,
+    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || DEFAULT_API_LLM;
+    const body: any = {
+        model: resolvedModel,
         messages: [
             {
                 role: 'system',
@@ -377,6 +439,9 @@ async function chatCompletion(
             },
         ].filter(Boolean),
     };
+    if (supportsCustomTemperature(resolvedModel)) {
+        body.temperature = 0.3;
+    }
     logRequest('llm:openai', 'start', {model: body.model, promptPreview: previewText(prompt)});
     let logged = false;
     try {
@@ -423,16 +488,7 @@ async function chatCompletion(
     }
 }
 
-async function chatWithGemini(
-    prompt: string,
-    settings: AppSettings,
-    model?: string,
-    signal?: AbortSignal
-): Promise<string> {
-    const accessToken = ensureGoogleKey(settings);
-    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${accessToken}`;
-    logRequest('llm:gemini', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
+const buildGeminiBody = (prompt: string, settings: AppSettings): any => {
     const body: any = {
         contents: [
             {
@@ -447,6 +503,20 @@ async function chatWithGemini(
             parts: [{text: settings.llmPrompt.trim()}],
         };
     }
+    return body;
+};
+
+async function chatWithGemini(
+    prompt: string,
+    settings: AppSettings,
+    model?: string,
+    signal?: AbortSignal
+): Promise<string> {
+    const accessToken = ensureGoogleKey(settings);
+    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${accessToken}`;
+    logRequest('llm:gemini', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
+    const body = buildGeminiBody(prompt, settings);
     let logged = false;
     try {
         const response = await fetchWithTimeout(
@@ -572,6 +642,92 @@ async function chatWithOllama(
     }
 }
 
+async function streamGeminiChatCompletion(
+    prompt: string,
+    requestId: string,
+    settings: AppSettings,
+    model: string,
+    controller: AbortController
+): Promise<void> {
+    const accessToken = ensureGoogleKey(settings);
+    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
+    const url =
+        `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:streamGenerateContent?alt=sse&key=${accessToken}`;
+    const body = buildGeminiBody(prompt, settings);
+
+    const response = await fetchWithTimeout(
+        url,
+        {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        },
+        settings.apiLlmTimeoutMs
+    );
+    if (!response.ok) {
+        const data = await response.json().catch(async () => ({text: await response.text()}));
+        const message = typeof data === 'string'
+            ? data
+            : data?.error?.message || `Gemini streaming failed (status: ${response.status})`;
+        throw new Error(message);
+    }
+
+    if (!response.body) {
+        throw new Error('Gemini streaming failed: No response body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let full = '';
+
+    const flushBuffer = () => {
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line || line === 'data: [DONE]' || line === '[DONE]' || line.startsWith('event:')) continue;
+            const jsonLine = line.startsWith('data:') ? line.slice(5).trim() : line;
+            if (!jsonLine) continue;
+            try {
+                const json = JSON.parse(jsonLine);
+                const chunk = extractGeminiChunkText(json);
+                const next = appendStreamingDelta(full, chunk);
+                full = next.full;
+                if (next.delta) {
+                    emit('delta', {requestId, delta: next.delta});
+                }
+            } catch (error) {
+                console.warn('[assistantBridge] failed to parse gemini chunk', error, jsonLine);
+            }
+        }
+    };
+
+    while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        flushBuffer();
+    }
+    buffer += decoder.decode();
+    flushBuffer();
+
+    if (!full.trim()) {
+        throw new Error('Gemini returned an empty response.');
+    }
+
+    emit('done', {requestId, full});
+    logRequest('llm:stream', 'ok', {
+        requestId,
+        host: 'api',
+        model: resolvedModel,
+        streaming: true,
+        promptPreview: previewText(prompt),
+        responsePreview: previewText(full),
+    });
+}
+
 async function streamOllamaChatCompletion(
     prompt: string,
     requestId: string,
@@ -601,7 +757,7 @@ async function streamOllamaChatCompletion(
         const text = await response.text().catch(() => '');
         throw new Error(text || `Local LLM streaming failed (status: ${response.status})`);
     }
-    
+
     if (!response.body) {
         logRequest('llm:ollama:stream', 'error', {requestId, status: response.status, error: 'No response body'});
         throw new Error('Local LLM streaming failed: No response body');
@@ -622,27 +778,11 @@ async function streamOllamaChatCompletion(
             if (!jsonLine) continue;
             try {
                 const json = JSON.parse(jsonLine);
-                // Поддерживаем оба формата:
-                // 1. OpenAI-совместимый: {choices: [{delta: {content: "..."}}]}
-                // 2. Ollama: {message: {content: "...", role: "assistant"}, done: false}
-                const deltaRaw = 
-                    json?.choices?.[0]?.delta?.content ||
-                    json?.message?.content;
-                let text = '';
-                if (typeof deltaRaw === 'string') {
-                    text = deltaRaw;
-                } else if (Array.isArray(deltaRaw)) {
-                    text = deltaRaw
-                        .map((item: any) => {
-                            if (typeof item === 'string') return item;
-                            if (item?.text) return item.text;
-                            if (item?.content) return item.content;
-                            return '';
-                        })
-                        .join('');
-                } else if (deltaRaw?.content) {
-                    text = deltaRaw.content;
-                }
+                const deltaRaw =
+                    json?.choices?.[0]?.delta?.content ??
+                    json?.message?.content ??
+                    json?.response;
+                const text = coerceStreamText(deltaRaw);
                 if (!text) continue;
                 full += text;
                 emit('delta', {requestId, delta: text});
@@ -658,6 +798,7 @@ async function streamOllamaChatCompletion(
         buffer += decoder.decode(value, {stream: true});
         flushBuffer();
     }
+    buffer += decoder.decode();
     flushBuffer();
     emit('done', {requestId, full});
     logRequest('llm:ollama:stream', 'ok', {
@@ -690,25 +831,32 @@ async function streamChatCompletion(
     }
 
     if (GEMINI_LLM_SET.has(model)) {
-        const full = await chatWithGemini(prompt, settings, model, controller.signal);
-        emit('delta', {requestId, delta: full});
-        emit('done', {requestId, full});
-        logRequest('llm:stream', 'ok', {
-            requestId,
-            host,
-            model,
-            streaming: false,
-            promptPreview: previewText(prompt),
-            responsePreview: previewText(full),
-        });
+        try {
+            await streamGeminiChatCompletion(prompt, requestId, settings, model, controller);
+        } catch (error) {
+            if (controller.signal.aborted) {
+                throw error;
+            }
+            const full = await chatWithGemini(prompt, settings, model, controller.signal);
+            emit('delta', {requestId, delta: full});
+            emit('done', {requestId, full});
+            logRequest('llm:stream', 'ok', {
+                requestId,
+                host,
+                model,
+                streaming: false,
+                fallback: 'gemini-non-stream',
+                promptPreview: previewText(prompt),
+                responsePreview: previewText(full),
+            });
+        }
         return;
     }
 
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/chat/completions`;
-    const body = {
+    const body: any = {
         model,
-        temperature: 0.3,
         stream: true,
         messages: [
             {
@@ -721,6 +869,9 @@ async function streamChatCompletion(
             },
         ].filter(Boolean),
     };
+    if (supportsCustomTemperature(model)) {
+        body.temperature = 0.3;
+    }
     const response = await fetchWithTimeout(
         url,
         {
@@ -749,36 +900,25 @@ async function streamChatCompletion(
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
         for (const part of parts) {
-            const trimmed = part.trim();
-            if (!trimmed || trimmed === 'data: [DONE]') continue;
-            const line = trimmed.startsWith('data:')
-                ? trimmed.slice(5).trim()
-                : trimmed;
-            if (!line) continue;
-            try {
-                const json = JSON.parse(line);
-                const delta = json?.choices?.[0]?.delta?.content;
-                if (!delta) continue;
-                let text = '';
-                if (Array.isArray(delta)) {
-                    text = delta
-                        .map((entry: any) => {
-                            if (typeof entry === 'string') return entry;
-                            if (entry?.text) return entry.text;
-                            if (entry?.content) return entry.content;
-                            return '';
-                        })
-                        .join('');
-                } else if (typeof delta === 'string') {
-                    text = delta;
-                } else if (delta?.content) {
-                    text = delta.content;
+            const lines = part.split('\n');
+            for (const rawLine of lines) {
+                const trimmed = rawLine.trim();
+                if (!trimmed || trimmed === 'data: [DONE]' || trimmed === '[DONE]' || trimmed.startsWith('event:')) {
+                    continue;
                 }
-                if (!text) continue;
-                full += text;
-                emit('delta', {requestId, delta: text});
-            } catch (error) {
-                console.warn('[assistantBridge] failed to parse chunk', error, line);
+                if (!trimmed.startsWith('data:')) continue;
+
+                const line = trimmed.slice(5).trim();
+                if (!line || line === '[DONE]') continue;
+                try {
+                    const json = JSON.parse(line);
+                    const text = extractOpenAiDelta(json);
+                    if (!text) continue;
+                    full += text;
+                    emit('delta', {requestId, delta: text});
+                } catch (error) {
+                    console.warn('[assistantBridge] failed to parse chunk', error, line);
+                }
             }
         }
     };
@@ -789,6 +929,7 @@ async function streamChatCompletion(
         buffer += decoder.decode(value, {stream: true});
         flushBuffer();
     }
+    buffer += decoder.decode();
     flushBuffer();
     emit('done', {requestId, full});
     logRequest('llm:stream', 'ok', {
@@ -1204,3 +1345,4 @@ export async function processScreenImage(
         };
     }
 }
+

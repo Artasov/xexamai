@@ -46,6 +46,9 @@ export const LOCAL_TRANSCRIBE_ALIASES = {
 } as const;
 
 export const OPENAI_LLM_MODELS = [
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-5-nano',
     'gpt-4.1-nano',
     'gpt-4.1-mini',
     'gpt-4o',
