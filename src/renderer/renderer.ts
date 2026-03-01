@@ -99,8 +99,7 @@ export async function initializeRenderer() {
 
     initStatus(document.getElementById('status') as HTMLDivElement | null);
     initOutputs({
-        text: document.getElementById('textOut') as HTMLDivElement | null,
-        answer: document.getElementById('answerOut') as HTMLDivElement | null,
+        chat: document.getElementById('chatOut') as HTMLDivElement | null,
     });
 
     const bridge = await awaitPreloadBridge();
@@ -136,6 +135,7 @@ export async function initializeRenderer() {
 
     const btnScreenshot = document.getElementById('btnScreenshot') as HTMLButtonElement | null;
     const btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
+    const btnClearHistory = document.getElementById('btnClearHistory') as HTMLButtonElement | null;
     registerStopButton(btnStop);
 
     if (btnScreenshot) {
@@ -150,13 +150,19 @@ export async function initializeRenderer() {
 
     if (btnStop) {
         btnStop.addEventListener('click', async () => {
-            if (await streamController.stopActiveStream()) {
+            if (await streamController.stopActiveOperation()) {
                 return;
             }
             if (screenshotController.cancelActive()) {
                 return;
             }
             hideStopButton();
+        });
+    }
+
+    if (btnClearHistory) {
+        btnClearHistory.addEventListener('click', () => {
+            streamController.clearConversationHistory();
         });
     }
 

@@ -161,6 +161,22 @@ function AuthenticatedApp() {
                                         </button>
                                     </div>
                                 </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <button
+                                        id="btnStopStream"
+                                        className="btn btn-secondary hidden !px-2 !py-1 text-xs"
+                                        type="button"
+                                    >
+                                        Stop
+                                    </button>
+                                    <button
+                                        id="btnClearHistory"
+                                        className="btn btn-secondary !px-2 !py-1 text-xs"
+                                        type="button"
+                                    >
+                                        Clear history
+                                    </button>
+                                </div>
                             </div>
 
                             <div id="streamResultsSection" className="mt-2 hidden">
@@ -187,19 +203,8 @@ function AuthenticatedApp() {
                         </div>
 
                         <div className="card flex flex-grow flex-col overflow-y-auto">
-                            <div className="label mb-1">Recognized</div>
-                            <div id="textOut"/>
-                            <div className="mt-4 mb-1 flex items-center gap-2">
-                                <div className="label">Reply</div>
-                                <button
-                                    id="btnStopStream"
-                                    className="btn btn-secondary hidden !px-1 !py-0 text-xs"
-                                    type="button"
-                                >
-                                    Stop
-                                </button>
-                            </div>
-                            <div id="answerOut" className="min-h-[1rem] overflow-auto"/>
+                            <div className="label mb-2">Conversation</div>
+                            <div id="chatOut" className="chat-history enable-tap-select-text flex-grow overflow-auto"/>
                         </div>
                     </section>
                 </div>

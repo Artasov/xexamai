@@ -158,6 +158,12 @@ export type TranscribeOnlyArgs = {
 export type AskChatRequest = {
     text: string;
     requestId?: string;
+    history?: ChatHistoryMessage[];
+};
+
+export type ChatHistoryMessage = {
+    role: 'user' | 'assistant';
+    content: string;
 };
 
 export type StopStreamRequest = {

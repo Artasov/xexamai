@@ -226,6 +226,123 @@ button:focus-visible {
     @apply bg-red-900 text-red-300 border border-red-700;
 }
 
+.chat-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-height: 0;
+}
+
+.chat-history,
+.chat-history * {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
+
+.chat-row {
+    display: flex;
+}
+
+.chat-row--user {
+    justify-content: flex-end;
+}
+
+.chat-row--assistant,
+.chat-row--error,
+.chat-row--system {
+    justify-content: flex-start;
+}
+
+.chat-message {
+    max-width: 92%;
+    border-radius: 12px;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #ffffff14;
+    color: #e5e7eb;
+    line-height: 1.35;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.chat-message--user {
+    background: #111827cc;
+    border-color: #374151;
+}
+
+.chat-message--assistant {
+    background: #151515cc;
+    border-color: #2f2f2f;
+}
+
+.chat-message--error {
+    background: #2b1111cc;
+    border-color: #7f1d1d;
+    color: #fecaca;
+}
+
+.chat-message--system {
+    background: #1f2937aa;
+    border-color: #374151;
+}
+
+.chat-message__content {
+    font-size: var(--answer-font-size, 14px);
+    line-height: 1.35;
+    white-space: pre-wrap;
+}
+
+.chat-markdown {
+    white-space: normal;
+}
+
+.chat-markdown > * {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.chat-markdown p {
+    margin: 0.08rem 0;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+    margin: 0.06rem 0 0.06rem 0.72rem;
+    padding-left: 0.62rem;
+}
+
+.chat-markdown li {
+    margin: 0.01rem 0;
+    line-height: 1.28;
+}
+
+.chat-markdown li > p {
+    margin: 0;
+    display: inline;
+}
+
+.chat-markdown ul ul,
+.chat-markdown ol ol,
+.chat-markdown ul ol,
+.chat-markdown ol ul {
+    margin-top: 0.02rem;
+    margin-bottom: 0.02rem;
+}
+
+.chat-markdown pre {
+    margin: 0.12rem 0;
+    padding: 0.45rem;
+    border: 1px solid #ffffff14;
+    border-radius: 8px;
+    background: #030712;
+    overflow-x: auto;
+}
+
+.chat-markdown code {
+    padding: 0.06rem 0.2rem;
+    border-radius: 4px;
+    background: #111827;
+}
+
 /* Tabs */
 .tabs-container {
     @apply mb-2;

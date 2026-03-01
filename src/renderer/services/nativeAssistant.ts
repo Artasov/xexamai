@@ -1,7 +1,9 @@
 import {invoke} from '@tauri-apps/api/core';
 import {
+    AskChatRequest,
     AppSettings,
     AssistantResponse,
+    ChatHistoryMessage,
     ProcessAudioArgs,
     ScreenProcessRequest,
     ScreenProcessResponse,
@@ -92,8 +94,21 @@ const OPENAI_BASE =
     'https://api.openai.com';
 const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
 const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
+const MAX_HISTORY_MESSAGES = 40;
 
 const supportsCustomTemperature = (model: string): boolean => !model.toLowerCase().startsWith('gpt-5');
+
+const normalizeChatHistory = (history?: ChatHistoryMessage[]): ChatHistoryMessage[] => {
+    if (!Array.isArray(history)) return [];
+    return history
+        .filter((item) => (
+            !!item &&
+            (item.role === 'user' || item.role === 'assistant') &&
+            typeof item.content === 'string' &&
+            item.content.trim().length > 0
+        ))
+        .slice(-MAX_HISTORY_MESSAGES);
+};
 
 function emit<K extends keyof StreamEventPayloads>(key: K, payload: StreamEventPayloads[K]) {
     const listeners = streamEvents[key];
@@ -421,23 +436,26 @@ async function chatCompletion(
     prompt: string,
     settings: AppSettings,
     model?: string,
+    history?: ChatHistoryMessage[],
     signal?: AbortSignal
 ): Promise<string> {
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/chat/completions`;
     const resolvedModel = model || settings.llmModel || settings.apiLlmModel || DEFAULT_API_LLM;
+    const systemPrompt = (settings.llmPrompt || '').trim();
+    const normalizedHistory = normalizeChatHistory(history);
+    const messages: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) {
+        messages.push({role: 'system', content: systemPrompt});
+    }
+    for (const item of normalizedHistory) {
+        messages.push({role: item.role, content: item.content});
+    }
+    messages.push({role: 'user', content: prompt});
+
     const body: any = {
         model: resolvedModel,
-        messages: [
-            {
-                role: 'system',
-                content: (settings.llmPrompt || '').trim() || undefined,
-            },
-            {
-                role: 'user',
-                content: prompt,
-            },
-        ].filter(Boolean),
+        messages,
     };
     if (supportsCustomTemperature(resolvedModel)) {
         body.temperature = 0.3;
@@ -488,14 +506,23 @@ async function chatCompletion(
     }
 }
 
-const buildGeminiBody = (prompt: string, settings: AppSettings): any => {
+const buildGeminiBody = (
+    prompt: string,
+    settings: AppSettings,
+    history?: ChatHistoryMessage[]
+): any => {
+    const normalizedHistory = normalizeChatHistory(history);
+    const contents = normalizedHistory.map((item) => ({
+        role: item.role === 'assistant' ? 'model' : 'user',
+        parts: [{text: item.content}],
+    }));
+    contents.push({
+        role: 'user',
+        parts: [{text: prompt || ''}],
+    });
+
     const body: any = {
-        contents: [
-            {
-                role: 'user',
-                parts: [{text: prompt || ''}],
-            },
-        ],
+        contents,
     };
     if (settings.llmPrompt?.trim()) {
         body.systemInstruction = {
@@ -510,13 +537,14 @@ async function chatWithGemini(
     prompt: string,
     settings: AppSettings,
     model?: string,
+    history?: ChatHistoryMessage[],
     signal?: AbortSignal
 ): Promise<string> {
     const accessToken = ensureGoogleKey(settings);
     const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${accessToken}`;
     logRequest('llm:gemini', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
-    const body = buildGeminiBody(prompt, settings);
+    const body = buildGeminiBody(prompt, settings, history);
     let logged = false;
     try {
         const response = await fetchWithTimeout(
@@ -579,12 +607,15 @@ async function chatWithOllama(
     prompt: string,
     settings: AppSettings,
     model?: string,
+    history?: ChatHistoryMessage[],
     signal?: AbortSignal
 ): Promise<string> {
     const resolvedModel = model || settings.localLlmModel || DEFAULT_LOCAL_LLM;
     const systemPrompt = (settings.llmPrompt || '').trim();
+    const normalizedHistory = normalizeChatHistory(history);
     const messages = [
         ...(systemPrompt ? [{role: 'system', content: systemPrompt}] : []),
+        ...normalizedHistory.map((item) => ({role: item.role, content: item.content})),
         {role: 'user', content: prompt},
     ];
     logRequest('llm:ollama', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
@@ -647,13 +678,14 @@ async function streamGeminiChatCompletion(
     requestId: string,
     settings: AppSettings,
     model: string,
+    history: ChatHistoryMessage[] | undefined,
     controller: AbortController
 ): Promise<void> {
     const accessToken = ensureGoogleKey(settings);
     const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
     const url =
         `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:streamGenerateContent?alt=sse&key=${accessToken}`;
-    const body = buildGeminiBody(prompt, settings);
+    const body = buildGeminiBody(prompt, settings, history);
 
     const response = await fetchWithTimeout(
         url,
@@ -732,12 +764,15 @@ async function streamOllamaChatCompletion(
     prompt: string,
     requestId: string,
     settings: AppSettings,
+    history: ChatHistoryMessage[] | undefined,
     controller: AbortController
 ): Promise<void> {
     const model = settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM;
     const systemPrompt = (settings.llmPrompt || '').trim();
+    const normalizedHistory = normalizeChatHistory(history);
     const messages = [
         ...(systemPrompt ? [{role: 'system', content: systemPrompt}] : []),
+        ...normalizedHistory.map((item) => ({role: item.role, content: item.content})),
         {role: 'user', content: prompt},
     ];
     logRequest('llm:ollama:stream', 'start', {requestId, model, promptPreview: previewText(prompt)});
@@ -814,6 +849,7 @@ async function streamChatCompletion(
     prompt: string,
     requestId: string,
     settings: AppSettings,
+    history: ChatHistoryMessage[] | undefined,
     controller: AbortController
 ): Promise<void> {
     const {host, model} = resolveLlmTarget(settings);
@@ -826,18 +862,18 @@ async function streamChatCompletion(
     });
 
     if (host === 'local') {
-        await streamOllamaChatCompletion(prompt, requestId, settings, controller);
+        await streamOllamaChatCompletion(prompt, requestId, settings, history, controller);
         return;
     }
 
     if (GEMINI_LLM_SET.has(model)) {
         try {
-            await streamGeminiChatCompletion(prompt, requestId, settings, model, controller);
+            await streamGeminiChatCompletion(prompt, requestId, settings, model, history, controller);
         } catch (error) {
             if (controller.signal.aborted) {
                 throw error;
             }
-            const full = await chatWithGemini(prompt, settings, model, controller.signal);
+            const full = await chatWithGemini(prompt, settings, model, history, controller.signal);
             emit('delta', {requestId, delta: full});
             emit('done', {requestId, full});
             logRequest('llm:stream', 'ok', {
@@ -855,19 +891,21 @@ async function streamChatCompletion(
 
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/chat/completions`;
+    const systemPrompt = (settings.llmPrompt || '').trim();
+    const normalizedHistory = normalizeChatHistory(history);
+    const messages: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) {
+        messages.push({role: 'system', content: systemPrompt});
+    }
+    for (const item of normalizedHistory) {
+        messages.push({role: item.role, content: item.content});
+    }
+    messages.push({role: 'user', content: prompt});
+
     const body: any = {
         model,
         stream: true,
-        messages: [
-            {
-                role: 'system',
-                content: (settings.llmPrompt || '').trim() || undefined,
-            },
-            {
-                role: 'user',
-                content: prompt,
-            },
-        ].filter(Boolean),
+        messages,
     };
     if (supportsCustomTemperature(model)) {
         body.temperature = 0.3;
@@ -1094,16 +1132,17 @@ export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promi
     });
 
     runWithActiveStream(requestId, (controller) =>
-        streamChatCompletion(text, requestId, settings, controller)
+        streamChatCompletion(text, requestId, settings, undefined, controller)
     );
     return {ok: true, text, answer: ''};
 }
 
-export async function assistantAskChat(args: { text: string; requestId?: string }) {
+export async function assistantAskChat(args: AskChatRequest) {
     const settings = await loadSettings();
     const requestId = args.requestId || crypto.randomUUID();
+    const history = normalizeChatHistory(args.history);
     runWithActiveStream(requestId, (controller) =>
-        streamChatCompletion(args.text, requestId, settings, controller)
+        streamChatCompletion(args.text, requestId, settings, history, controller)
     );
 }
 
