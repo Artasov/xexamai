@@ -20,7 +20,6 @@ async fn run_ollama_command(args: &[&str]) -> Result<std::process::Output> {
     
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     
@@ -48,7 +47,6 @@ pub async fn check_installed() -> Result<bool> {
     
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     
