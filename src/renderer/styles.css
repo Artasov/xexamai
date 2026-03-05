@@ -261,7 +261,7 @@ button:focus-visible {
     max-width: 92%;
     border-radius: 12px;
     padding: 0.6rem 0.8rem;
-    border: 1px solid #ffffff14;
+    border: none;
     color: #e5e7eb;
     line-height: 1.35;
     white-space: normal;
@@ -270,29 +270,45 @@ button:focus-visible {
 
 .chat-message--user {
     background: #111827cc;
-    border-color: #374151;
 }
 
 .chat-message--assistant {
     background: #151515cc;
-    border-color: #2f2f2f;
 }
 
 .chat-message--error {
     background: #2b1111cc;
-    border-color: #7f1d1d;
     color: #fecaca;
 }
 
 .chat-message--system {
     background: #1f2937aa;
-    border-color: #374151;
 }
 
 .chat-message__content {
     font-size: var(--answer-font-size, 14px);
     line-height: 1.35;
     white-space: pre-wrap;
+}
+
+.chat-message__actions {
+    margin-top: 0.4rem;
+    display: flex;
+    gap: 0.4rem;
+}
+
+.chat-retry-btn {
+    border: 1px solid #fca5a533;
+    background: #7f1d1d66;
+    color: #fecaca;
+    border-radius: 6px;
+    padding: 0.18rem 0.55rem;
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
+.chat-retry-btn:hover {
+    background: #991b1b88;
 }
 
 .chat-markdown {
@@ -345,6 +361,49 @@ button:focus-visible {
     padding: 0.06rem 0.2rem;
     border-radius: 4px;
     background: #111827;
+}
+
+.chat-sessions-panel {
+    margin-top: 0.55rem;
+    overflow: hidden;
+}
+
+.chat-sessions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 165px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.chat-session-item {
+    width: 100%;
+    text-align: left;
+    border: none;
+    border-radius: 8px;
+    padding: 0.35rem 0.45rem;
+    background: #0b0b0b88;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.chat-session-item.active {
+    background: #141414cc;
+}
+
+.chat-session-item__title {
+    color: #f3f4f6;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-session-item__meta {
+    color: #9ca3af;
+    font-size: 0.66rem;
+    margin-top: 0.1rem;
 }
 
 /* Tabs */

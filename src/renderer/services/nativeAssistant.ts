@@ -16,9 +16,13 @@ import {
     LOCAL_TRANSCRIBE_MODELS,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
+    WINKY_LLM_MODELS,
+    WINKY_TRANSCRIBE_MODELS,
 } from '@shared/constants';
 import {logRequest, previewText} from './nativeAssistant.helpers';
 import {fetchWithTimeout, ollamaAxios} from './nativeAssistant.network';
+import {getAuthApiBaseUrl, getSiteBaseUrl, getWsBaseUrl} from '@shared/appUrls';
+import {authClient} from './authClient';
 
 type StreamEventPayloads = {
     transcript: { requestId?: string; delta: string };
@@ -84,6 +88,8 @@ function runWithActiveStream(
 
 const GOOGLE_TRANSCRIBE_SET = new Set(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
 const GEMINI_LLM_SET = new Set(GEMINI_LLM_MODELS as readonly string[]);
+const WINKY_TRANSCRIBE_SET = new Set(WINKY_TRANSCRIBE_MODELS as readonly string[]);
+const WINKY_LLM_SET = new Set(WINKY_LLM_MODELS as readonly string[]);
 const DEFAULT_LOCAL_TRANSCRIBE = LOCAL_TRANSCRIBE_MODELS[0] ?? 'base';
 const DEFAULT_API_TRANSCRIBE = OPENAI_TRANSCRIBE_MODELS[0] ?? 'gpt-4o-mini-transcribe';
 const DEFAULT_API_LLM = OPENAI_LLM_MODELS[0] ?? 'gpt-4.1-nano';
@@ -95,6 +101,7 @@ const OPENAI_BASE =
 const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
 const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
 const MAX_HISTORY_MESSAGES = 40;
+const WINKY_CREDITS_TOPUP_PATH = '/profile/general?open_top_up=1';
 
 const supportsCustomTemperature = (model: string): boolean => !model.toLowerCase().startsWith('gpt-5');
 
@@ -139,6 +146,60 @@ function ensureGoogleKey(settings: AppSettings): string {
         throw new Error('Provide a Google AI API key first');
     }
     return key;
+}
+
+function ensureAccessToken(): string {
+    const token = authClient.getTokens()?.access?.trim();
+    if (!token) {
+        throw new Error('Sign in to use Winky models.');
+    }
+    return token;
+}
+
+function createCreditsError(message?: string): Error {
+    const topUpUrl = `${getSiteBaseUrl()}${WINKY_CREDITS_TOPUP_PATH}`;
+    const text = message?.trim() || `Not enough credits. Top up your balance: ${topUpUrl}`;
+    const error = new Error(text);
+    (error as any).code = 'not_enough_credits';
+    (error as any).status = 402;
+    return error;
+}
+
+function mapWinkyModelToLevel(model: string): 'low' | 'mid' | 'high' {
+    if (model === 'winky-high') return 'high';
+    if (model === 'winky-mid') return 'mid';
+    return 'low';
+}
+
+function getAudioFileNameByMime(mime: string): string {
+    const normalized = (mime || '').toLowerCase();
+    if (normalized.includes('wav')) return 'audio.wav';
+    if (normalized.includes('mp3') || normalized.includes('mpeg')) return 'audio.mp3';
+    if (normalized.includes('ogg')) return 'audio.ogg';
+    return 'audio.webm';
+}
+
+function buildWinkyPrompt(
+    prompt: string,
+    settings: AppSettings,
+    history?: ChatHistoryMessage[]
+): string {
+    const parts: string[] = [];
+    const systemPrompt = (settings.llmPrompt || '').trim();
+    if (systemPrompt) {
+        parts.push(systemPrompt);
+    }
+
+    const normalizedHistory = normalizeChatHistory(history);
+    if (normalizedHistory.length) {
+        const historyText = normalizedHistory
+            .map((item) => `${item.role === 'assistant' ? 'Assistant' : 'User'}: ${item.content}`)
+            .join('\n\n');
+        parts.push(`Conversation history:\n${historyText}`);
+    }
+
+    parts.push(prompt);
+    return parts.filter(Boolean).join('\n\n').trim();
 }
 
 const buildTranscriptionPrompt = (settings: AppSettings): string | undefined => {
@@ -506,6 +567,64 @@ async function chatCompletion(
     }
 }
 
+async function transcribeWithWinky(
+    buffer: ArrayBuffer,
+    mime: string,
+    settings: AppSettings
+): Promise<string> {
+    const accessToken = ensureAccessToken();
+    const url = `${getAuthApiBaseUrl()}/ai/transcribe/`;
+    const fileName = getAudioFileNameByMime(mime);
+    const blob = new Blob([buffer], {type: mime || 'audio/webm'});
+    const formData = new FormData();
+    formData.append('file', blob, fileName);
+
+    logRequest('transcribe:winky', 'start', {
+        model: settings.transcriptionModel || 'winky-transcribe',
+        mime,
+        fileName,
+        bufferSize: buffer.byteLength,
+    });
+
+    const response = await fetchWithTimeout(
+        url,
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+            body: formData,
+        },
+        settings.apiSttTimeoutMs
+    );
+
+    if (!response.ok) {
+        const data = await response.json().catch(async () => ({text: await response.text()}));
+        if (response.status === 402) {
+            throw createCreditsError(
+                typeof data === 'string'
+                    ? data
+                    : data?.error?.message || data?.detail || data?.message
+            );
+        }
+        const message = typeof data === 'string'
+            ? data
+            : data?.error?.message || data?.detail || data?.message || `Winky transcription failed (${response.status})`;
+        throw new Error(message);
+    }
+
+    const data = await response.json().catch(async () => ({text: await response.text()}));
+    const text = extractSpeechText(data)?.trim();
+    if (!text) {
+        throw new Error('Winky returned empty transcription.');
+    }
+
+    logRequest('transcribe:winky', 'ok', {
+        textPreview: previewText(text),
+    });
+    return text;
+}
+
 const buildGeminiBody = (
     prompt: string,
     settings: AppSettings,
@@ -671,6 +790,175 @@ async function chatWithOllama(
             : error?.response?.data?.error?.message || error?.message || 'Local LLM request failed';
         throw new Error(message);
     }
+}
+
+type WinkyWsEvent =
+    | { event: 'start'; chat_id?: string; user_message_id?: string; model_level?: string }
+    | { event: 'delta'; text?: string; chat_id?: string; message_id?: string; model_level?: string }
+    | { event: 'done'; chat_id?: string; message_id?: string; model_level?: string; credits?: string }
+    | { event: 'cancelled' }
+    | { event: 'error'; code?: string; message?: string };
+
+async function runWinkyLLMStream(
+    prompt: string,
+    settings: AppSettings,
+    model: string,
+    onChunk: (chunk: string) => void,
+    controller?: AbortController
+): Promise<string> {
+    const accessToken = ensureAccessToken();
+    const wsUrl = `${getWsBaseUrl()}/ws/ai/llm/?token=${encodeURIComponent(accessToken)}`;
+    const modelLevel = mapWinkyModelToLevel(model);
+    const timeoutMs = Math.max(settings.apiLlmTimeoutMs || 0, 10_000);
+
+    return new Promise<string>((resolve, reject) => {
+        let full = '';
+        let settled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        const ws = new WebSocket(wsUrl);
+
+        const cleanup = () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            try {
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            } catch {
+            }
+        };
+
+        const fail = (error: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(error);
+        };
+
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(full);
+        };
+
+        timeoutId = setTimeout(() => {
+            fail(new Error('Winky LLM request timed out.'));
+        }, timeoutMs);
+
+        const onAbort = () => {
+            try {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({action: 'cancel'}));
+                }
+            } catch {
+            }
+            const abortError = new DOMException('Aborted', 'AbortError');
+            fail(abortError as unknown as Error);
+        };
+
+        if (controller) {
+            if (controller.signal.aborted) {
+                onAbort();
+                return;
+            }
+            controller.signal.addEventListener('abort', onAbort, {once: true});
+        }
+
+        ws.onopen = () => {
+            try {
+                ws.send(JSON.stringify({
+                    action: 'generate',
+                    prompt,
+                    model_level: modelLevel,
+                }));
+            } catch (error) {
+                fail(error instanceof Error ? error : new Error(String(error)));
+            }
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(String(event.data || '{}')) as WinkyWsEvent;
+                if (!data || typeof data !== 'object') return;
+
+                if (data.event === 'delta') {
+                    const chunk = data.text || '';
+                    if (!chunk) return;
+                    full += chunk;
+                    onChunk(chunk);
+                    return;
+                }
+
+                if (data.event === 'done') {
+                    done();
+                    return;
+                }
+
+                if (data.event === 'cancelled') {
+                    fail(new DOMException('Cancelled', 'AbortError') as unknown as Error);
+                    return;
+                }
+
+                if (data.event === 'error') {
+                    const code = data.code || '';
+                    if (code === 'not_enough_credits' || code === '402') {
+                        fail(createCreditsError(data.message));
+                        return;
+                    }
+                    const error = new Error(data.message || 'Winky streaming request failed.');
+                    (error as any).code = code;
+                    fail(error);
+                    return;
+                }
+            } catch {
+            }
+        };
+
+        ws.onerror = () => {
+            fail(new Error('Winky streaming connection error.'));
+        };
+
+        ws.onclose = (event) => {
+            if (settled) return;
+            if (controller?.signal.aborted) {
+                fail(new DOMException('Aborted', 'AbortError') as unknown as Error);
+                return;
+            }
+            if (event.code === 1000) {
+                done();
+                return;
+            }
+            fail(new Error(event.reason || `Winky socket closed (${event.code})`));
+        };
+    });
+}
+
+async function chatWithWinky(
+    prompt: string,
+    settings: AppSettings,
+    model: string,
+    history?: ChatHistoryMessage[],
+    controller?: AbortController
+): Promise<string> {
+    const fullPrompt = buildWinkyPrompt(prompt, settings, history);
+    logRequest('llm:winky', 'start', {
+        model,
+        promptPreview: previewText(fullPrompt),
+    });
+    const full = await runWinkyLLMStream(fullPrompt, settings, model, () => {
+    }, controller);
+    if (!full.trim()) {
+        throw new Error('Winky returned an empty response.');
+    }
+    logRequest('llm:winky', 'ok', {
+        model,
+        promptPreview: previewText(fullPrompt),
+        responsePreview: previewText(full),
+    });
+    return full;
 }
 
 async function streamGeminiChatCompletion(
@@ -866,6 +1154,28 @@ async function streamChatCompletion(
         return;
     }
 
+    if (WINKY_LLM_SET.has(model)) {
+        const fullPrompt = buildWinkyPrompt(prompt, settings, history);
+        const full = await runWinkyLLMStream(
+            fullPrompt,
+            settings,
+            model,
+            (chunk) => emit('delta', {requestId, delta: chunk}),
+            controller
+        );
+        emit('done', {requestId, full});
+        logRequest('llm:stream', 'ok', {
+            requestId,
+            host,
+            model,
+            streaming: true,
+            provider: 'winky',
+            promptPreview: previewText(fullPrompt),
+            responsePreview: previewText(full),
+        });
+        return;
+    }
+
     if (GEMINI_LLM_SET.has(model)) {
         try {
             await streamGeminiChatCompletion(prompt, requestId, settings, model, history, controller);
@@ -1028,6 +1338,9 @@ async function transcribeAudioBuffer({
         if (transcriptionMode === 'local') {
             return transcribeWithLocal(buffer, mime, filename, settings);
         }
+        if (WINKY_TRANSCRIBE_SET.has(transcriptionModel)) {
+            return transcribeWithWinky(buffer, mime, settings);
+        }
         if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
             return transcribeWithGoogle(buffer, mime, settings, transcriptionModel);
         }
@@ -1068,6 +1381,8 @@ export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<Ass
     if (text) {
         if (llmHost === 'local') {
             answer = await chatWithOllama(text, settings, llmModel);
+        } else if (WINKY_LLM_SET.has(llmModel)) {
+            answer = await chatWithWinky(text, settings, llmModel);
         } else if (GEMINI_LLM_SET.has(llmModel)) {
             answer = await chatWithGemini(text, settings, llmModel);
         } else {
@@ -1195,7 +1510,7 @@ type ScreenPrompts = {
 const buildScreenPrompts = (settings: AppSettings): ScreenPrompts => {
     const prompt = (settings.screenProcessingPrompt || '').trim();
     const systemPrompt = prompt || 'You are an assistant that analyses screenshots.';
-    const userPrompt = prompt || 'Analyze the provided screenshot.';
+    const userPrompt = 'Analyze the provided screenshot and provide actionable insights.';
     return {systemPrompt, userPrompt};
 };
 
@@ -1211,10 +1526,40 @@ const normalizeBase64Image = (value: string): string => {
 async function processScreenWithOpenAi(
     payload: ScreenProcessRequest,
     settings: AppSettings,
-    prompts: ScreenPrompts
+    prompts: ScreenPrompts,
+    history: ChatHistoryMessage[]
 ): Promise<{ answer: string; model: string }> {
     const apiKey = ensureOpenAiKey(settings);
     const url = `${OPENAI_BASE}/v1/chat/completions`;
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [];
+
+    if (prompts.systemPrompt) {
+        messages.push({
+            role: 'system',
+            content: prompts.systemPrompt,
+        });
+    }
+
+    for (const item of history) {
+        messages.push({
+            role: item.role,
+            content: item.content,
+        });
+    }
+
+    messages.push({
+        role: 'user',
+        content: [
+            {type: 'text', text: prompts.userPrompt},
+            {
+                type: 'image_url',
+                image_url: {
+                    url: `data:${payload.mime || 'image/png'};base64,${payload.imageBase64}`,
+                },
+            },
+        ],
+    });
+
     const response = await fetchWithTimeout(
         url,
         {
@@ -1226,24 +1571,7 @@ async function processScreenWithOpenAi(
             body: JSON.stringify({
                 model: SCREEN_OPENAI_MODEL,
                 temperature: 0.2,
-                messages: [
-                    {
-                        role: 'system',
-                        content: prompts.systemPrompt,
-                    },
-                    {
-                        role: 'user',
-                        content: [
-                            {type: 'text', text: prompts.userPrompt},
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: `data:${payload.mime || 'image/png'};base64,${payload.imageBase64}`,
-                                },
-                            },
-                        ],
-                    },
-                ],
+                messages,
             }),
         },
         settings.screenProcessingTimeoutMs
@@ -1269,25 +1597,30 @@ async function processScreenWithOpenAi(
 async function processScreenWithGemini(
     payload: ScreenProcessRequest,
     settings: AppSettings,
-    prompts: ScreenPrompts
+    prompts: ScreenPrompts,
+    history: ChatHistoryMessage[]
 ): Promise<{ answer: string; model: string }> {
     const accessToken = ensureGoogleKey(settings);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCREEN_GEMINI_MODEL}:generateContent?key=${accessToken}`;
-    const body: any = {
-        contents: [
+    const contents: any[] = history.map((item) => ({
+        role: item.role === 'assistant' ? 'model' : 'user',
+        parts: [{text: item.content}],
+    }));
+    contents.push({
+        role: 'user',
+        parts: [
+            {text: prompts.userPrompt},
             {
-                role: 'user',
-                parts: [
-                    {text: prompts.userPrompt},
-                    {
-                        inline_data: {
-                            mime_type: payload.mime || 'image/png',
-                            data: payload.imageBase64,
-                        },
-                    },
-                ],
+                inline_data: {
+                    mime_type: payload.mime || 'image/png',
+                    data: payload.imageBase64,
+                },
             },
         ],
+    });
+
+    const body: any = {
+        contents,
         generationConfig: {temperature: 0.2},
     };
     if (prompts.systemPrompt) {
@@ -1340,8 +1673,13 @@ export async function processScreenImage(
     payload: ScreenProcessRequest
 ): Promise<ScreenProcessResponse> {
     const settings = await loadSettings();
+    const userText = (payload.userText || '').trim();
     const prompts = buildScreenPrompts(settings);
     const provider = settings.screenProcessingModel === 'google' ? 'google' : 'openai';
+    const history = normalizeChatHistory(payload.history);
+    const effectiveUserPrompt = userText
+        ? `${prompts.userPrompt}\n\nUser request: ${userText}`
+        : prompts.userPrompt;
     const normalizedPayload: ScreenProcessRequest = {
         ...payload,
         imageBase64: normalizeBase64Image(payload.imageBase64),
@@ -1353,13 +1691,19 @@ export async function processScreenImage(
         mime: payload.mime,
         width: payload.width,
         height: payload.height,
-        promptPreview: previewText(prompts.userPrompt),
+        historySize: history.length,
+        hasUserText: !!userText,
+        promptPreview: previewText(effectiveUserPrompt),
     });
 
     try {
+        const promptsWithUserText: ScreenPrompts = {
+            systemPrompt: prompts.systemPrompt,
+            userPrompt: effectiveUserPrompt,
+        };
         const {answer, model} = provider === 'google'
-            ? await processScreenWithGemini(normalizedPayload, settings, prompts)
-            : await processScreenWithOpenAi(normalizedPayload, settings, prompts);
+            ? await processScreenWithGemini(normalizedPayload, settings, promptsWithUserText, history)
+            : await processScreenWithOpenAi(normalizedPayload, settings, promptsWithUserText, history);
 
         logRequest('screen', 'ok', {
             provider,

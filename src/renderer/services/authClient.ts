@@ -182,11 +182,15 @@ function normalizeError(error: unknown): AuthError {
 export class AuthClient {
     private tokens: AuthTokens | null = null;
     private refreshPromise: Promise<string | null> | null = null;
-    private readonly baseUrl: string;
+    private baseUrl: string;
 
     constructor(baseUrl: string = DEFAULT_BASE_URL) {
         this.baseUrl = baseUrl.replace(/\/$/, '');
         this.tokens = readStorage();
+    }
+
+    public setBaseUrl(baseUrl: string): void {
+        this.baseUrl = baseUrl.replace(/\/$/, '');
     }
 
     private buildHeaders(baseHeaders?: AxiosRequestConfig['headers'], accessToken?: string): Record<string, string> {

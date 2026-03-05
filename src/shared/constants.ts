@@ -25,7 +25,12 @@ export const GOOGLE_TRANSCRIBE_MODELS = [
     'gemini-2.0-flash',
 ] as const;
 
+export const WINKY_TRANSCRIBE_MODELS = [
+    'winky-transcribe',
+] as const;
+
 export const TRANSCRIBE_API_MODELS = [
+    ...WINKY_TRANSCRIBE_MODELS,
     ...OPENAI_TRANSCRIBE_MODELS,
     ...GOOGLE_TRANSCRIBE_MODELS,
 ] as const;
@@ -69,7 +74,13 @@ export const GEMINI_LLM_MODELS = [
     'gemini-1.5-flash',
 ] as const;
 
-export const API_LLM_MODELS = [...OPENAI_LLM_MODELS, ...GEMINI_LLM_MODELS] as const;
+export const WINKY_LLM_MODELS = [
+    'winky-high',
+    'winky-mid',
+    'winky-low',
+] as const;
+
+export const API_LLM_MODELS = [...WINKY_LLM_MODELS, ...OPENAI_LLM_MODELS, ...GEMINI_LLM_MODELS] as const;
 
 export const LOCAL_LLM_MODELS = [
     'gpt-oss:120b',

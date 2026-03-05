@@ -3,15 +3,19 @@ import {
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_SIZE_HINTS,
     OPENAI_LLM_MODELS,
-    OPENAI_TRANSCRIBE_MODELS
+    OPENAI_TRANSCRIBE_MODELS,
+    WINKY_LLM_MODELS,
+    WINKY_TRANSCRIBE_MODELS,
 } from '@shared/constants';
 import {normalizeOllamaModelName} from '../../../services/ollama';
 import {getLocalWhisperMetadata} from '../../../services/localSpeechModels';
 
 const OPENAI_TRANSCRIBE_SET = new Set<string>(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
 const GOOGLE_TRANSCRIBE_SET = new Set<string>(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
+const WINKY_TRANSCRIBE_SET = new Set<string>(WINKY_TRANSCRIBE_MODELS as readonly string[]);
 const OPENAI_LLM_SET = new Set<string>(OPENAI_LLM_MODELS as readonly string[]);
 const GEMINI_LLM_SET = new Set<string>(GEMINI_LLM_MODELS as readonly string[]);
+const WINKY_LLM_SET = new Set<string>(WINKY_LLM_MODELS as readonly string[]);
 
 const toTitle = (value: string): string =>
     value
@@ -27,6 +31,9 @@ export const formatTranscribeLabel = (value: string): string => {
     if (metadata) {
         return `${metadata.label} (${metadata.size})`;
     }
+    if (WINKY_TRANSCRIBE_SET.has(value)) {
+        return 'Winky Transcribe';
+    }
     if (GOOGLE_TRANSCRIBE_SET.has(value)) {
         return `Google ${toTitle(value)}`;
     }
@@ -37,6 +44,9 @@ export const formatTranscribeLabel = (value: string): string => {
 };
 
 export const formatLlmLabel = (value: string): string => {
+    if (WINKY_LLM_SET.has(value)) {
+        return `Winky ${toTitle(value.replace(/^winky-/, ''))}`;
+    }
     if (GEMINI_LLM_SET.has(value)) {
         return `Google ${toTitle(value)}`;
     }

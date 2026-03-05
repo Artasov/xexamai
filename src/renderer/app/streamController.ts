@@ -1,6 +1,7 @@
 import {
     appendChatMessage,
-    clearChatHistory,
+    getActiveChatId,
+    getConversationContext,
     showError,
     updateChatMessage
 } from '../ui/outputs';
@@ -41,24 +42,13 @@ type StreamElements = {
 
 type ToggleSource = 'button' | 'hotkey';
 
-type ConversationMessage = {
-    role: 'user' | 'assistant';
-    content: string;
-};
-
-type ConversationTurn = {
-    user: string;
-    assistant: string;
-};
-
 type PendingConversation = {
+    chatId: string;
     requestId: string;
     userText: string;
     userMessageId: string;
     assistantMessageId: string;
 };
-
-const MAX_CONTEXT_TURNS = 20;
 
 export class StreamController {
     private googleStreamingService = new GoogleStreamingService();
@@ -82,7 +72,6 @@ export class StreamController {
     private streamModeInitialized = false;
     private googleStreamingActive = false;
     private operationInProgress = false;
-    private conversationHistory: ConversationTurn[] = [];
     private pendingConversation: PendingConversation | null = null;
     private cancelledRequestIds = new Set<string>();
 
@@ -374,6 +363,14 @@ export class StreamController {
         return this.stopActiveOperation();
     }
 
+    async retryFailedMessage(text: string): Promise<void> {
+        const normalized = text.trim();
+        if (!normalized || state.isProcessing) {
+            return;
+        }
+        await this.handleTextSend(normalized);
+    }
+
     async stopActiveOperation(): Promise<boolean> {
         const hasActive = this.operationInProgress || !!this.currentRequestId;
         if (!hasActive) {
@@ -398,7 +395,7 @@ export class StreamController {
             updateChatMessage(pending.assistantMessageId, {
                 text: partial ? `${partial}\n\n[Stopped]` : 'Stopped.',
                 pending: false,
-            });
+            }, {chatId: pending.chatId});
             this.pendingConversation = null;
         }
 
@@ -410,20 +407,6 @@ export class StreamController {
         hideStopButton();
         updateButtonsState();
         return true;
-    }
-
-    clearConversationHistory(): void {
-        void (async () => {
-            if (this.operationInProgress || this.currentRequestId) {
-                await this.stopActiveOperation();
-            }
-            this.conversationHistory = [];
-            this.pendingConversation = null;
-            this.streamAccumulator = '';
-            this.cancelledRequestIds.clear();
-            clearChatHistory();
-            setStatus('Ready', 'ready');
-        })();
     }
 
     async handleHotkeyToggleRequest(): Promise<void> {
@@ -558,8 +541,9 @@ export class StreamController {
         if (typeof opId === 'number' && opId !== this.activeOpId) {
             return false;
         }
-        const history = this.buildConversationContext();
-        this.pendingConversation = this.createPendingConversation(requestId, text);
+        const chatId = getActiveChatId();
+        const history = getConversationContext(chatId);
+        this.pendingConversation = this.createPendingConversation(chatId, requestId, text);
         this.currentRequestId = requestId;
         this.prepareStreamHandlers(requestId);
         showStopButton();
@@ -575,10 +559,11 @@ export class StreamController {
             if (!payload || (payload.requestId && payload.requestId !== requestId) || this.currentRequestId !== requestId) return;
             this.streamAccumulator += payload.delta || '';
             if (this.pendingConversation?.requestId === requestId) {
+                const pending = this.pendingConversation;
                 updateChatMessage(this.pendingConversation.assistantMessageId, {
                     text: this.streamAccumulator,
                     pending: true,
-                });
+                }, {chatId: pending.chatId});
             }
             setStatus('Responding...', 'processing');
             showStopButton();
@@ -593,10 +578,7 @@ export class StreamController {
                 updateChatMessage(pending.assistantMessageId, {
                     text: full,
                     pending: false,
-                });
-                if (!this.cancelledRequestIds.has(requestId) && pending.userText.trim() && full) {
-                    this.conversationHistory.push({user: pending.userText.trim(), assistant: full});
-                }
+                }, {chatId: pending.chatId});
                 this.pendingConversation = null;
             }
             this.cancelledRequestIds.delete(requestId);
@@ -622,13 +604,14 @@ export class StreamController {
                     updateChatMessage(pending.assistantMessageId, {
                         text: partial ? `${partial}\n\n[Stopped]` : 'Stopped.',
                         pending: false,
-                    });
+                    }, {chatId: pending.chatId});
                 } else {
                     updateChatMessage(pending.assistantMessageId, {
                         role: 'error',
                         text: payload.error,
                         pending: false,
-                    });
+                        retryText: pending.userText,
+                    }, {chatId: pending.chatId});
                 }
                 this.pendingConversation = null;
             }
@@ -651,24 +634,11 @@ export class StreamController {
         window.api.assistant.onStreamError(this.streamErrorHandler);
     }
 
-    private buildConversationContext(): ConversationMessage[] {
-        const turns = this.conversationHistory.slice(-MAX_CONTEXT_TURNS);
-        const context: ConversationMessage[] = [];
-        for (const turn of turns) {
-            if (turn.user?.trim()) {
-                context.push({role: 'user', content: turn.user.trim()});
-            }
-            if (turn.assistant?.trim()) {
-                context.push({role: 'assistant', content: turn.assistant.trim()});
-            }
-        }
-        return context;
-    }
-
-    private createPendingConversation(requestId: string, userText: string): PendingConversation {
-        const userMessageId = appendChatMessage('user', userText);
-        const assistantMessageId = appendChatMessage('assistant', 'Syncing...', {pending: true});
+    private createPendingConversation(chatId: string, requestId: string, userText: string): PendingConversation {
+        const userMessageId = appendChatMessage('user', userText, {chatId});
+        const assistantMessageId = appendChatMessage('assistant', 'Syncing...', {pending: true, chatId});
         return {
+            chatId,
             requestId,
             userText,
             userMessageId,
@@ -682,7 +652,8 @@ export class StreamController {
             role: 'error',
             text: errorMessage,
             pending: false,
-        });
+            retryText: this.pendingConversation.userText,
+        }, {chatId: this.pendingConversation.chatId});
         this.pendingConversation = null;
     }
 

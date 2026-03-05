@@ -4,8 +4,16 @@ import type {AuthProvider as OAuthProviderType} from '@renderer/types';
 import GoogleIcon from '@mui/icons-material/Google';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import SvgIcon, {SvgIconProps} from '@mui/material/SvgIcon';
-import {TextField} from '@mui/material';
+import {MenuItem, TextField} from '@mui/material';
 import {WindowResizer} from '../../common/WindowResizer/WindowResizer';
+import {
+    BACKEND_DOMAINS,
+    type BackendDomain,
+    getBackendDomain,
+    resolveAuthApiBaseUrl,
+    setBackendDomain as applyBackendDomain,
+} from '@shared/appUrls';
+import {authClient} from '@renderer/services/authClient';
 
 function DiscordIcon(props: SvgIconProps) {
     return (
@@ -22,6 +30,7 @@ export function LoginView() {
     const [password, setPassword] = useState('');
     const [localError, setLocalError] = useState<string | null>(null);
     const [oauthProvider, setOauthProvider] = useState<OAuthProviderType | null>(null);
+    const [backendDomain, setBackendDomainState] = useState<BackendDomain>(getBackendDomain());
 
     const isSubmitting = status === 'signing-in';
     const isOAuthInProgress = status === 'oauth';
@@ -85,12 +94,48 @@ export function LoginView() {
         }
     }, [status]);
 
+    useEffect(() => {
+        let cancelled = false;
+        const syncDomain = async () => {
+            try {
+                const settings = await window.api.settings.get();
+                const domain = settings.backendDomain ?? getBackendDomain();
+                if (cancelled) return;
+                setBackendDomainState(domain);
+                applyBackendDomain(domain);
+                authClient.setBaseUrl(resolveAuthApiBaseUrl());
+            } catch {
+            }
+        };
+        void syncDomain();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const handleClose = useCallback(() => {
         try {
             window.api?.window?.close();
         } catch {
         }
     }, []);
+
+    const handleBackendDomainChange = useCallback(async (domain: BackendDomain) => {
+        if (domain === backendDomain) return;
+        const previous = backendDomain;
+        setBackendDomainState(domain);
+        applyBackendDomain(domain);
+        authClient.setBaseUrl(resolveAuthApiBaseUrl());
+        try {
+            await window.api.settings.setBackendDomain(domain);
+        } catch (error) {
+            console.error('[LoginView] Failed to update backend domain', error);
+            setBackendDomainState(previous);
+            applyBackendDomain(previous);
+            authClient.setBaseUrl(resolveAuthApiBaseUrl());
+            setLocalError('Failed to update backend domain');
+        }
+    }, [backendDomain]);
 
     const combinedError = localError || error;
 
@@ -239,6 +284,25 @@ export function LoginView() {
                         </div>
                     ) : null}
                 </form>
+            </div>
+            <div className="absolute bottom-4 left-4 w-[190px]">
+                <TextField
+                    select
+                    size="small"
+                    label="Backend domain"
+                    value={backendDomain}
+                    onChange={(event) => {
+                        void handleBackendDomainChange(event.target.value as BackendDomain);
+                    }}
+                    disabled={isSubmitting || isOAuthInProgress}
+                    fullWidth
+                >
+                    {BACKEND_DOMAINS.map((domain) => (
+                        <MenuItem key={domain} value={domain}>
+                            {domain}
+                        </MenuItem>
+                    ))}
+                </TextField>
             </div>
         </div>
     );

@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
-import {CssBaseline, TextField, ThemeProvider} from '@mui/material';
+import {Accordion, AccordionDetails, AccordionSummary, CssBaseline, TextField, ThemeProvider, Typography} from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {initializeRenderer} from './renderer';
 import {setStatus} from './ui/status';
 import {SettingsView} from './components/settings/SettingsView/SettingsView';
@@ -18,6 +19,7 @@ import {setCurrentUser} from './utils/featureAccess';
 function AuthenticatedApp() {
     const initializedRef = useRef(false);
     const [activeTab, setActiveTab] = useState<'main' | 'settings' | 'profile'>('main');
+    const [chatsAccordionExpanded, setChatsAccordionExpanded] = useState(false);
 
     useEffect(() => {
         if (initializedRef.current) return;
@@ -130,30 +132,28 @@ function AuthenticatedApp() {
                             </div>
 
                             <div className="mt-2 flex flex-col">
-                                <div className="flex h-[42px] items-stretch gap-2">
-                                    <div className="h-full flex-grow">
+                                <div className="flex items-end gap-2">
+                                    <div className="flex-grow">
                                         <TextField
                                             id="textInput"
-                                            placeholder="Type your question here..."
+                                            placeholder="Ask a question..."
                                             fullWidth
                                             variant="outlined"
                                             size="small"
                                             multiline
                                             minRows={1}
-                                            maxRows={4}
+                                            maxRows={7}
                                             sx={{
-                                                height: '100%',
                                                 '& .MuiInputBase-root': {
-                                                    height: '100%',
-                                                    alignItems: 'center',
+                                                    alignItems: 'flex-start',
                                                 },
                                             }}
                                         />
                                     </div>
-                                    <div className="h-full">
+                                    <div>
                                         <button
                                             id="btnSendText"
-                                            className="btn btn-primary h-full"
+                                            className="btn btn-primary"
                                             type="button"
                                             disabled
                                         >
@@ -170,13 +170,44 @@ function AuthenticatedApp() {
                                         Stop
                                     </button>
                                     <button
-                                        id="btnClearHistory"
+                                        id="btnNewChat"
                                         className="btn btn-secondary !px-2 !py-1 text-xs"
                                         type="button"
                                     >
-                                        Clear history
+                                        New chat
                                     </button>
                                 </div>
+                                <Accordion
+                                    id="chatSessionsPanel"
+                                    className="chat-sessions-panel mt-2"
+                                    disableGutters
+                                    elevation={0}
+                                    square
+                                    expanded={chatsAccordionExpanded}
+                                    onChange={(_event, expanded) => setChatsAccordionExpanded(expanded)}
+                                    sx={{
+                                        background: '#0001',
+                                        border: '1px solid #ffffff10',
+                                        borderRadius: '8px !important',
+                                        '&::before': {display: 'none'},
+                                    }}
+                                >
+                                    <AccordionSummary
+                                        id="chatSessionsToggle"
+                                        expandIcon={<ExpandMoreIcon sx={{fontSize: 16, color: '#9ca3af'}}/>}
+                                        sx={{
+                                            minHeight: 28,
+                                            px: 1.1,
+                                            '& .MuiAccordionSummary-content': {my: 0.2},
+                                            '&.Mui-expanded': {minHeight: 28},
+                                        }}
+                                    >
+                                        <Typography sx={{fontSize: '0.72rem', color: '#9ca3af'}}>Chats</Typography>
+                                    </AccordionSummary>
+                                    <AccordionDetails sx={{pt: 0, pb: 0.8, px: 0.8}}>
+                                        <div id="chatSessionsList" className="chat-sessions-list"/>
+                                    </AccordionDetails>
+                                </Accordion>
                             </div>
 
                             <div id="streamResultsSection" className="mt-2 hidden">

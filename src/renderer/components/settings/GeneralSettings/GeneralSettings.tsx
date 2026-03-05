@@ -1,10 +1,18 @@
 // noinspection XmlDeprecatedElement
 
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {Checkbox, FormControlLabel, Slider, TextField} from '@mui/material';
+import {Checkbox, FormControlLabel, MenuItem, Slider, TextField} from '@mui/material';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import {logger} from '../../../utils/logger';
 import {toast} from 'react-toastify';
+import {
+    BACKEND_DOMAINS,
+    type BackendDomain,
+    getBackendDomain,
+    resolveAuthApiBaseUrl,
+    setBackendDomain as applyBackendDomain,
+} from '@shared/appUrls';
+import {authClient} from '../../../services/authClient';
 import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
@@ -37,6 +45,9 @@ export const GeneralSettings = () => {
     const [windowScale, setWindowScale] = useState(settings.windowScale ?? 1);
     const [windowWidth, setWindowWidth] = useState(settings.windowWidth ?? DEFAULT_WINDOW_WIDTH);
     const [windowHeight, setWindowHeight] = useState(settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT);
+    const [backendDomain, setBackendDomainState] = useState<BackendDomain>(
+        settings.backendDomain ?? getBackendDomain()
+    );
     const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastWindowSizeRef = useRef<{ width: number; height: number }>({
         width: settings.windowWidth ?? DEFAULT_WINDOW_WIDTH,
@@ -55,6 +66,7 @@ export const GeneralSettings = () => {
             setWindowWidth(nextWidth);
             setWindowHeight(nextHeight);
         }
+        setBackendDomainState(settings.backendDomain ?? getBackendDomain());
     }, [settings]);
 
     const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
@@ -172,6 +184,25 @@ export const GeneralSettings = () => {
         }
     };
 
+    const handleBackendDomainChange = async (domain: BackendDomain) => {
+        if (domain === backendDomain) return;
+        const previous = backendDomain;
+        setBackendDomainState(domain);
+        applyBackendDomain(domain);
+        authClient.setBaseUrl(resolveAuthApiBaseUrl());
+        try {
+            await window.api.settings.setBackendDomain(domain);
+            patchLocal({backendDomain: domain});
+            showMessage('Backend domain saved');
+        } catch (error) {
+            logger.error('settings', 'Failed to update backend domain', {error});
+            setBackendDomainState(previous);
+            applyBackendDomain(previous);
+            authClient.setBaseUrl(resolveAuthApiBaseUrl());
+            showMessage('Failed to update backend domain', 'error');
+        }
+    };
+
     return (
         <div className="settings-sections fc gap-3">
             <section className="settings-card card">
@@ -236,6 +267,28 @@ export const GeneralSettings = () => {
                         />
                         <span className="settings-slider__value">{windowScale.toFixed(1)}x</span>
                     </div>
+                </div>
+            </section>
+
+            <section className="settings-card card">
+                <h3 className="settings-card__title">Backend domain</h3>
+                <div className="settings-field">
+                    <TextField
+                        select
+                        size="small"
+                        label="Primary backend domain"
+                        value={backendDomain}
+                        onChange={(event) => {
+                            void handleBackendDomainChange(event.target.value as BackendDomain);
+                        }}
+                        fullWidth
+                    >
+                        {BACKEND_DOMAINS.map((domain) => (
+                            <MenuItem key={domain} value={domain}>
+                                {domain}
+                            </MenuItem>
+                        ))}
+                    </TextField>
                 </div>
             </section>
 

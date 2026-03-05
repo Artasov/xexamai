@@ -1,4 +1,5 @@
 // noinspection JSUnusedGlobalSymbols
+import type {BackendDomain} from './appUrls';
 
 export type SttProcessRequest = {
     audio: Buffer | Uint8Array | ArrayBuffer | { type?: 'Buffer'; data?: number[] };
@@ -57,6 +58,7 @@ export type AppSettings = {
     streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
     screenProcessingPrompt?: string;
+    backendDomain?: BackendDomain;
 };
 
 export const DEFAULT_LLM_PROMPT =
@@ -81,7 +83,10 @@ export const DefaultSettings: AppSettings = {
     streamSendHotkey: '~',
     screenProcessingModel: 'openai',
     screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
-    screenProcessingTimeoutMs: 50000,
+    apiSttTimeoutMs: 150000,
+    apiLlmTimeoutMs: 150000,
+    screenProcessingTimeoutMs: 150000,
+    backendDomain: 'xlartas.com',
 };
 
 export const IPCChannels = {
@@ -175,6 +180,8 @@ export type ScreenProcessRequest = {
     mime: string;
     width?: number;
     height?: number;
+    userText?: string;
+    history?: ChatHistoryMessage[];
 };
 
 export type ScreenProcessResponse = {
@@ -290,6 +297,7 @@ export type AssistantAPI = {
         setStreamSendHotkey: (key: string) => Promise<void>;
         setWindowScale: (scale: number) => Promise<void>;
         setHideApp: (hideApp: boolean) => Promise<void>;
+        setBackendDomain: (domain: BackendDomain) => Promise<void>;
     };
     window: {
         minimize: () => Promise<void>;

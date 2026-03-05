@@ -5,15 +5,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::constants::{
-    DEFAULT_API_LLM_TIMEOUT_MS, DEFAULT_API_STT_TIMEOUT_MS, DEFAULT_AUDIO_INPUT_TYPE,
-    DEFAULT_DURATIONS, DEFAULT_LLM_HOST, DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE,
-    DEFAULT_LOCAL_LLM_MODEL, DEFAULT_LOCAL_WHISPER_MODEL, DEFAULT_OPENAI_MODEL,
-    DEFAULT_OPENAI_TRANSCRIPTION_MODEL, DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS,
-    DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER, DEFAULT_STREAM_SEND_HOTKEY,
-    DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE,
+    BACKEND_DOMAIN_RU, DEFAULT_API_LLM_TIMEOUT_MS, DEFAULT_API_STT_TIMEOUT_MS,
+    DEFAULT_AUDIO_INPUT_TYPE, DEFAULT_BACKEND_DOMAIN, DEFAULT_DURATIONS,
+    DEFAULT_LLM_HOST, DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE, DEFAULT_LOCAL_LLM_MODEL,
+    DEFAULT_LOCAL_WHISPER_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
+    DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS, DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER,
+    DEFAULT_STREAM_SEND_HOTKEY, DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE,
     DEFAULT_TRANSCRIPTION_PROMPT, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT,
-    DEFAULT_WINDOW_MIN_WIDTH, DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE,
-    DEFAULT_WINDOW_WIDTH,
+    DEFAULT_WINDOW_MIN_WIDTH, DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE, DEFAULT_WINDOW_WIDTH,
 };
 
 const VALID_LOCAL_DEVICES: &[&str] = &["auto", "cpu", "cuda", "metal", "gpu"];
@@ -91,9 +90,15 @@ fn default_screen_prompt() -> String {
     DEFAULT_SCREEN_PROMPT.to_string()
 }
 
+fn default_backend_domain() -> String {
+    DEFAULT_BACKEND_DOMAIN.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    #[serde(default = "default_backend_domain")]
+    pub backend_domain: String,
     #[serde(default)]
     pub openai_api_key: Option<String>,
     #[serde(default)]
@@ -189,6 +194,7 @@ fn default_screen_timeout() -> u32 {
 impl Default for AppConfig {
     fn default() -> Self {
         let mut cfg = Self {
+            backend_domain: default_backend_domain(),
             openai_api_key: None,
             google_api_key: None,
             durations: default_durations(),
@@ -228,6 +234,10 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn normalize(&mut self) {
+        if self.backend_domain != DEFAULT_BACKEND_DOMAIN && self.backend_domain != BACKEND_DOMAIN_RU {
+            self.backend_domain = default_backend_domain();
+        }
+
         if self.durations.is_empty() {
             self.durations = DEFAULT_DURATIONS.to_vec();
         }

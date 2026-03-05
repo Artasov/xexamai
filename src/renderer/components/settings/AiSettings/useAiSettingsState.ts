@@ -41,9 +41,9 @@ export type AiSettingsState = {
 export function useAiSettingsState() {
     const {settings, patchLocal} = useSettingsContext();
 
-    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
-    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
-    const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
+    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 150000);
+    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 150000);
+    const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 150000);
     const [transcriptionPrompt, setTranscriptionPrompt] = useState(settings.transcriptionPrompt ?? '');
     const [llmPrompt, setLlmPrompt] = useState(settings.llmPrompt ?? '');
 
@@ -75,9 +75,9 @@ export function useAiSettingsState() {
     const localStatusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
-        setApiSttTimeout(settings.apiSttTimeoutMs ?? 30000);
-        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 30000);
-        setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
+        setApiSttTimeout(settings.apiSttTimeoutMs ?? 150000);
+        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 150000);
+        setScreenTimeout(settings.screenProcessingTimeoutMs ?? 150000);
         setTranscriptionPrompt(settings.transcriptionPrompt ?? '');
         setLlmPrompt(settings.llmPrompt ?? '');
     }, [

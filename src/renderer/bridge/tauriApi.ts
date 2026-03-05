@@ -138,6 +138,7 @@ const settingsApi: AssistantAPI['settings'] = {
     setWelcomeModalDismissed: makeSettingSetter('welcomeModalDismissed'),
     setGoogleApiKey: makeSettingSetter('googleApiKey'),
     setStreamSendHotkey: makeSettingSetter<string>('streamSendHotkey'),
+    setBackendDomain: makeSettingSetter('backendDomain'),
 };
 
 const audioApi: AssistantAPI['audio'] = {

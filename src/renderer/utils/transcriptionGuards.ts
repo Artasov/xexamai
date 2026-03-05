@@ -1,11 +1,13 @@
 import {settingsStore} from '../state/settingsStore';
 import {setStatus} from '../ui/status';
 import {normalizeLocalWhisperModel} from '../services/localSpeechModels';
-import {TRANSCRIBE_API_MODELS} from '@shared/constants';
+import {WINKY_TRANSCRIBE_MODELS} from '@shared/constants';
 import {checkOllamaModelDownloaded, isOllamaModelDownloading, isOllamaModelWarming} from '../services/ollama';
+import {authClient} from '../services/authClient';
 
-const DEFAULT_API_MODEL = TRANSCRIBE_API_MODELS[0] ?? 'gpt-4o-mini-transcribe';
+const DEFAULT_API_MODEL = 'gpt-4o-mini-transcribe';
 const DEFAULT_LOCAL_MODEL = 'base';
+const WINKY_TRANSCRIBE_SET = new Set<string>(WINKY_TRANSCRIBE_MODELS as readonly string[]);
 
 const hasText = (value?: string | null): boolean => Boolean((value ?? '').trim().length);
 
@@ -20,6 +22,14 @@ export const ensureTranscriptionReady = async (): Promise<boolean> => {
     const apiModel = settings.transcriptionModel || DEFAULT_API_MODEL;
 
     if (mode === 'api') {
+        if (WINKY_TRANSCRIBE_SET.has(apiModel)) {
+            const accessToken = authClient.getTokens()?.access?.trim();
+            if (!accessToken) {
+                setStatus('Sign in to use Winky transcription model', 'error');
+                return false;
+            }
+            return true;
+        }
         const needsOpenAi = apiModel.startsWith('gpt');
         const needsGoogle = apiModel.startsWith('gemini');
         if (needsOpenAi && !hasText(settings.openaiApiKey)) {

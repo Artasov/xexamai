@@ -1,7 +1,14 @@
 import {initControls, updateDurations} from './ui/controls';
 import {listen} from '@tauri-apps/api/event';
 import {initStatus, setStatus} from './ui/status';
-import {initOutputs} from './ui/outputs';
+import {
+    CHAT_RETRY_EVENT_NAME,
+    createNewChat,
+    initOutputs,
+    subscribeChatSessions,
+    switchChat,
+    type ChatSessionSummary
+} from './ui/outputs';
 import {settingsStore} from './state/settingsStore';
 import {initializeWelcomeModal} from './ui/welcomeModal';
 import {setupAnswerFontSizeControls} from './app/fontSizeControls';
@@ -14,6 +21,58 @@ import {hideStopButton, registerStopButton} from './ui/stopButton';
 import {state} from './state/appState';
 import {checkOllamaModelDownloaded} from './services/ollama';
 import {normalizeLocalWhisperModel} from './services/localSpeechModels';
+
+function renderChatSessionsList(
+    listElement: HTMLElement | null,
+    sessions: ChatSessionSummary[],
+    activeId: string,
+) {
+    if (!listElement) return;
+    listElement.innerHTML = '';
+    for (const session of sessions) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `chat-session-item ${session.id === activeId ? 'active' : ''}`;
+        button.dataset['chatId'] = session.id;
+
+        const title = document.createElement('div');
+        title.className = 'chat-session-item__title';
+        title.textContent = session.title || 'New chat';
+
+        const meta = document.createElement('div');
+        meta.className = 'chat-session-item__meta';
+        meta.textContent = `${new Date(session.updatedAt).toLocaleString()} • ${session.messageCount}`;
+
+        button.appendChild(title);
+        button.appendChild(meta);
+        listElement.appendChild(button);
+    }
+}
+
+function bindChatSessionsUi() {
+    const list = document.getElementById('chatSessionsList') as HTMLDivElement | null;
+    const newChatButton = document.getElementById('btnNewChat') as HTMLButtonElement | null;
+
+    list?.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        const item = target?.closest('.chat-session-item') as HTMLButtonElement | null;
+        const chatId = item?.dataset['chatId'];
+        if (!chatId) return;
+        switchChat(chatId);
+    });
+
+    newChatButton?.addEventListener('click', () => {
+        createNewChat();
+    });
+
+    const unsubscribe = subscribeChatSessions((sessions, activeId) => {
+        renderChatSessionsList(list, sessions, activeId);
+    });
+
+    return () => {
+        unsubscribe();
+    };
+}
 
 // Preload models when local mode is enabled
 async function preloadLocalModelsIfNeeded() {
@@ -116,6 +175,7 @@ export async function initializeRenderer() {
 
     const streamController = new StreamController();
     const screenshotController = new ScreenshotController();
+    bindChatSessionsUi();
 
     const streamModeContainer = document.getElementById('streamResultsSection');
     const streamResults = document.getElementById('streamResultsTextarea') as HTMLTextAreaElement | null;
@@ -133,9 +193,15 @@ export async function initializeRenderer() {
     });
     await streamController.syncInitialSettings();
 
+    window.addEventListener(CHAT_RETRY_EVENT_NAME, (event: Event) => {
+        const detail = (event as CustomEvent<{ text?: string }>).detail;
+        const text = detail?.text?.trim();
+        if (!text) return;
+        void streamController.retryFailedMessage(text);
+    });
+
     const btnScreenshot = document.getElementById('btnScreenshot') as HTMLButtonElement | null;
     const btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
-    const btnClearHistory = document.getElementById('btnClearHistory') as HTMLButtonElement | null;
     registerStopButton(btnStop);
 
     if (btnScreenshot) {
@@ -157,12 +223,6 @@ export async function initializeRenderer() {
                 return;
             }
             hideStopButton();
-        });
-    }
-
-    if (btnClearHistory) {
-        btnClearHistory.addEventListener('click', () => {
-            streamController.clearConversationHistory();
         });
     }
 
@@ -299,3 +359,4 @@ export async function initializeRenderer() {
         });
     }
 }
+

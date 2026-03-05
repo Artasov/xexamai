@@ -1,7 +1,8 @@
-const DEFAULT_SITE_BASE_URL = 'https://xlartas.com';
-const DEFAULT_AUTH_API_BASE_URL = 'https://xlartas.com/api/v1';
-// const DEFAULT_SITE_BASE_URL = 'http://localhost:3000';
-// const DEFAULT_AUTH_API_BASE_URL = 'http://localhost:8000/api/v1';
+export const BACKEND_DOMAINS = ['xlartas.com', 'xlartas.ru'] as const;
+export type BackendDomain = (typeof BACKEND_DOMAINS)[number];
+export const DEFAULT_BACKEND_DOMAIN: BackendDomain = 'xlartas.com';
+
+const BACKEND_DOMAIN_STORAGE_KEY = 'xexamai.backend.domain';
 
 type EnvRecord = Record<string, string | undefined>;
 
@@ -41,19 +42,67 @@ function readEnv(name: string): string | undefined {
     return readFromProcessEnv(name) ?? readFromGlobalEnv(name);
 }
 
+function resolveBackendDomain(domain: string | null | undefined): BackendDomain {
+    return domain === 'xlartas.ru' ? 'xlartas.ru' : DEFAULT_BACKEND_DOMAIN;
+}
+
+function readStoredBackendDomain(): BackendDomain {
+    if (typeof window === 'undefined') {
+        return DEFAULT_BACKEND_DOMAIN;
+    }
+    try {
+        return resolveBackendDomain(window.localStorage?.getItem(BACKEND_DOMAIN_STORAGE_KEY));
+    } catch {
+        return DEFAULT_BACKEND_DOMAIN;
+    }
+}
+
+function persistBackendDomain(domain: BackendDomain): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage?.setItem(BACKEND_DOMAIN_STORAGE_KEY, domain);
+    } catch {
+    }
+}
+
+let currentBackendDomain: BackendDomain = readStoredBackendDomain();
+
+export function getBackendDomain(): BackendDomain {
+    return currentBackendDomain;
+}
+
+export function setBackendDomain(domain: string | null | undefined): BackendDomain {
+    const resolved = resolveBackendDomain(domain);
+    currentBackendDomain = resolved;
+    persistBackendDomain(resolved);
+    return resolved;
+}
+
+export function getSiteBaseUrl(domain?: string | null): string {
+    const resolved = resolveBackendDomain(domain ?? currentBackendDomain);
+    return `https://${resolved}`;
+}
+
+export function getWsBaseUrl(domain?: string | null): string {
+    const resolved = resolveBackendDomain(domain ?? currentBackendDomain);
+    return `wss://${resolved}`;
+}
+
+export function getAuthApiBaseUrl(domain?: string | null): string {
+    return `${getSiteBaseUrl(domain)}/api/v1`;
+}
+
 // noinspection JSUnusedGlobalSymbols
 export function resolveSiteBaseUrl(): string {
-    return (
-        normalizeBase(
-            readEnv('XEXAMAI_SITE_BASE_URL') ??
-            readEnv('APP_BASE_URL') ??
-            readEnv('OAUTH_BASE_URL'),
-        ) ?? DEFAULT_SITE_BASE_URL
-    );
+    const envValue = readEnv('XEXAMAI_SITE_BASE_URL') ??
+        readEnv('APP_BASE_URL') ??
+        readEnv('OAUTH_BASE_URL');
+    return normalizeBase(envValue) ?? getSiteBaseUrl();
 }
 
 export function resolveAuthApiBaseUrl(): string {
-    const envValue = readEnv('XEXAMAI_AUTH_API_BASE_URL') ?? readEnv('XEXAMAI_API_BASE_URL') ?? readEnv('API_BASE_URL');
-    const normalized = normalizeBase(envValue);
-    return normalized ?? DEFAULT_AUTH_API_BASE_URL;
+    const envValue = readEnv('XEXAMAI_AUTH_API_BASE_URL') ??
+        readEnv('XEXAMAI_API_BASE_URL') ??
+        readEnv('API_BASE_URL');
+    return normalizeBase(envValue) ?? getAuthApiBaseUrl();
 }

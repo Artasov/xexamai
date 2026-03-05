@@ -22,9 +22,9 @@ pub const DEFAULT_TOGGLE_INPUT_HOTKEY: &str = "g";
 
 pub const DEFAULT_DURATIONS: [u32; 6] = [5, 10, 15, 20, 30, 60];
 
-pub const DEFAULT_API_STT_TIMEOUT_MS: u32 = 30_000;
-pub const DEFAULT_API_LLM_TIMEOUT_MS: u32 = 30_000;
-pub const DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS: u32 = 50_000;
+pub const DEFAULT_API_STT_TIMEOUT_MS: u32 = 150_000;
+pub const DEFAULT_API_LLM_TIMEOUT_MS: u32 = 150_000;
+pub const DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS: u32 = 150_000;
 
 pub const DEFAULT_SCREEN_PROVIDER: &str = "openai";
 
@@ -32,6 +32,9 @@ pub const DEFAULT_TRANSCRIPTION_PROMPT: &str = "This is a technical interview co
 pub const DEFAULT_LLM_PROMPT: &str = "You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code";
 pub const DEFAULT_SCREEN_PROMPT: &str = "You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate's environment, tools, or work. Focus on actionable insights.";
 
+pub const BACKEND_DOMAIN_COM: &str = "xlartas.com";
+pub const BACKEND_DOMAIN_RU: &str = "xlartas.ru";
+pub const DEFAULT_BACKEND_DOMAIN: &str = BACKEND_DOMAIN_COM;
 pub const SITE_BASE_URL: &str = "https://xlartas.com";
 pub const OAUTH_APP_NAME: &str = "xexamai";
 pub const OAUTH_SCHEME: &str = "xexamai";

@@ -1,6 +1,6 @@
 // noinspection JSUnusedGlobalSymbols
 
-import {showAnswer, showError, showText} from '../ui/outputs';
+import {getActiveChatId, getConversationContext, showAnswer, showError, showText} from '../ui/outputs';
 import {setStatus} from '../ui/status';
 import {setProcessing, state} from '../state/appState';
 import {updateButtonsState} from '../ui/controls';
@@ -34,6 +34,9 @@ export class ScreenshotController {
 
         const cancelToken: CancelToken = {cancelled: false};
         this.cancelToken = cancelToken;
+        const requestChatId = getActiveChatId();
+        const textInput = document.getElementById('textInput') as HTMLTextAreaElement | null;
+        const rawUserText = textInput?.value?.trim() || '';
 
         setProcessing(true);
         updateButtonsState();
@@ -55,15 +58,23 @@ export class ScreenshotController {
 
             const timestamp = new Date().toLocaleString();
             const label = `[Screenshot captured ${timestamp}]`;
-            showText(label);
+            const uiUserMessage = rawUserText ? `${label}\n${rawUserText}` : label;
+            showText(uiUserMessage, requestChatId);
+            if (textInput && rawUserText) {
+                textInput.value = '';
+                textInput.dispatchEvent(new Event('input', {bubbles: true}));
+            }
 
             setStatus('Analyzing screenshot...', 'processing');
+            const history = getConversationContext(requestChatId);
 
             const result = await window.api.screen.process({
                 imageBase64: capture.base64,
                 mime: capture.mime,
                 width: capture.width,
                 height: capture.height,
+                userText: rawUserText || undefined,
+                history,
             });
 
             if (cancelToken.cancelled) {
@@ -77,9 +88,9 @@ export class ScreenshotController {
 
             const answerText = (result.answer || '').trim();
             if (answerText) {
-                showAnswer(answerText);
+                showAnswer(answerText, requestChatId);
             } else {
-                showAnswer('No insights returned.');
+                showAnswer('No insights returned.', requestChatId);
             }
             setStatus('Done', 'ready');
             logger.info('screenshot', 'Screenshot analysis completed', {answerLength: result.answer?.length || 0});
@@ -93,7 +104,7 @@ export class ScreenshotController {
             const message = error instanceof Error ? error.message : String(error);
             logger.error('screenshot', 'Screenshot analysis failed', {error: message});
             setStatus('Error', 'error');
-            showError(message);
+            showError(message, requestChatId);
         } finally {
             if (this.cancelToken === cancelToken) {
                 this.cancelToken = null;

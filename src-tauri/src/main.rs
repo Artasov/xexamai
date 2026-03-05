@@ -206,9 +206,15 @@ async fn auth_consume_pending(
 }
 
 #[tauri::command]
-async fn auth_start_oauth(app: tauri::AppHandle, provider: String) -> Result<(), String> {
+async fn auth_start_oauth(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<ConfigState>>,
+    provider: String,
+) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    let url = oauth::build_oauth_start_url(&provider).map_err(|error| error.to_string())?;
+    let cfg = state.get().await;
+    let url = oauth::build_oauth_start_url(&provider, Some(cfg.backend_domain.as_str()))
+        .map_err(|error| error.to_string())?;
     app.opener()
         .open_url(url, None::<String>)
         .map_err(|error| error.to_string())

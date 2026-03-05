@@ -16,14 +16,14 @@ import {
 } from '@mui/material';
 import {listen, type UnlistenFn} from '@tauri-apps/api/event';
 import {
-    API_LLM_MODELS,
     GEMINI_LLM_MODELS,
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_MODELS,
     LOCAL_TRANSCRIBE_MODELS,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
-    TRANSCRIBE_API_MODELS,
+    WINKY_LLM_MODELS,
+    WINKY_TRANSCRIBE_MODELS,
 } from '@shared/constants';
 import type {FastWhisperStatus} from '@shared/ipc';
 import type {LlmHost, ScreenProcessingProvider, TranscriptionMode} from '@renderer/types';
@@ -59,9 +59,9 @@ type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
 
 type WithLabel = { value: string; label: string };
 
-const DEFAULT_API_TRANSCRIBE_MODEL = TRANSCRIBE_API_MODELS[0] ?? 'gpt-4o-mini-transcribe';
+const DEFAULT_API_TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
 const DEFAULT_LOCAL_TRANSCRIBE_MODEL = 'base';
-const DEFAULT_API_LLM_MODEL = API_LLM_MODELS[0] ?? 'gpt-4.1-nano';
+const DEFAULT_API_LLM_MODEL = 'gpt-4.1-nano';
 const DEFAULT_LOCAL_LLM_MODEL =
     LOCAL_LLM_MODELS.find((value) => value === 'gpt-oss:20b') ?? LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
 const FAST_WHISPER_INSTALL_SIZE_HINT = '~4.3GB';
@@ -69,8 +69,10 @@ const WARMUP_VISIBILITY_DELAY_MS = 1200;
 
 const OPENAI_TRANSCRIBE_SET = new Set<string>(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
 const GOOGLE_TRANSCRIBE_SET = new Set<string>(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
+const WINKY_TRANSCRIBE_SET = new Set<string>(WINKY_TRANSCRIBE_MODELS as readonly string[]);
 const OPENAI_LLM_SET = new Set<string>(OPENAI_LLM_MODELS as readonly string[]);
 const GEMINI_LLM_SET = new Set<string>(GEMINI_LLM_MODELS as readonly string[]);
+const WINKY_LLM_SET = new Set<string>(WINKY_LLM_MODELS as readonly string[]);
 
 const TRANSCRIPTION_MODE_OPTIONS: WithLabel[] = [
     {value: 'api', label: 'API'},
@@ -92,11 +94,12 @@ export const AiSettings = () => {
 
     const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey ?? '');
     const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
-    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 30000);
-    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 30000);
-    const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 50000);
+    const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 150000);
+    const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 150000);
+    const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 150000);
     const [transcriptionPrompt, setTranscriptionPrompt] = useState(settings.transcriptionPrompt ?? '');
     const [llmPrompt, setLlmPrompt] = useState(settings.llmPrompt ?? '');
+    const [screenProcessingPrompt, setScreenProcessingPrompt] = useState(settings.screenProcessingPrompt ?? '');
     const timeoutSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const promptSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -130,12 +133,13 @@ export const AiSettings = () => {
     useEffect(() => {
         setOpenaiKey(settings.openaiApiKey ?? '');
         setGoogleKey(settings.googleApiKey ?? '');
-        setApiSttTimeout(settings.apiSttTimeoutMs ?? 30000);
-        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 30000);
-        setScreenTimeout(settings.screenProcessingTimeoutMs ?? 50000);
+        setApiSttTimeout(settings.apiSttTimeoutMs ?? 150000);
+        setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 150000);
+        setScreenTimeout(settings.screenProcessingTimeoutMs ?? 150000);
         setTranscriptionPrompt(settings.transcriptionPrompt ?? '');
         setLlmPrompt(settings.llmPrompt ?? '');
-    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.googleApiKey, settings.openaiApiKey, settings.screenProcessingTimeoutMs, settings.transcriptionPrompt, settings.llmPrompt]);
+        setScreenProcessingPrompt(settings.screenProcessingPrompt ?? '');
+    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.googleApiKey, settings.openaiApiKey, settings.screenProcessingTimeoutMs, settings.transcriptionPrompt, settings.llmPrompt, settings.screenProcessingPrompt]);
 
     const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
         if (tone === 'success') return;
@@ -514,6 +518,9 @@ export const AiSettings = () => {
             if (OPENAI_TRANSCRIBE_SET.has(model) && !hasOpenAiKey) {
                 showMessage('OpenAI API key is missing, requests may fail', 'error');
             }
+            if (WINKY_TRANSCRIBE_SET.has(model)) {
+                // Winky transcription uses app auth token and backend credits, API keys are not required.
+            }
         }
         try {
             await window.api.settings.setTranscriptionModel(model);
@@ -567,11 +574,15 @@ export const AiSettings = () => {
         }
         const needsOpenAi = OPENAI_LLM_SET.has(model);
         const needsGoogle = GEMINI_LLM_SET.has(model);
+        const isWinkyModel = WINKY_LLM_SET.has(model);
         if (needsOpenAi && !hasOpenAiKey) {
             showMessage('OpenAI API key is missing, requests may fail', 'error');
         }
         if (needsGoogle && !hasGoogleKey) {
             showMessage('Google API key is missing, requests may fail', 'error');
+        }
+        if (isWinkyModel) {
+            // Winky LLM models use app auth token and backend credits, API keys are not required.
         }
         try {
             await window.api.settings.setLlmModel(model, 'api');
@@ -715,7 +726,8 @@ export const AiSettings = () => {
     useEffect(() => {
         if (
             transcriptionPrompt === (settings.transcriptionPrompt ?? '') &&
-            llmPrompt === (settings.llmPrompt ?? '')
+            llmPrompt === (settings.llmPrompt ?? '') &&
+            screenProcessingPrompt === (settings.screenProcessingPrompt ?? '')
         ) {
             return;
         }
@@ -729,10 +741,12 @@ export const AiSettings = () => {
                     await Promise.all([
                         window.api.settings.setTranscriptionPrompt(transcriptionPrompt ?? ''),
                         window.api.settings.setLlmPrompt(llmPrompt ?? ''),
+                        window.api.settings.setScreenProcessingPrompt(screenProcessingPrompt ?? ''),
                     ]);
                     patchLocal({
                         transcriptionPrompt: transcriptionPrompt ?? '',
                         llmPrompt: llmPrompt ?? '',
+                        screenProcessingPrompt: screenProcessingPrompt ?? '',
                     });
                 } catch (error) {
                     logger.error('settings', 'Failed to save prompts', {error});
@@ -746,7 +760,7 @@ export const AiSettings = () => {
                 promptSaveRef.current = null;
             }
         };
-    }, [transcriptionPrompt, llmPrompt, patchLocal, settings.llmPrompt, settings.transcriptionPrompt]);
+    }, [transcriptionPrompt, llmPrompt, screenProcessingPrompt, patchLocal, settings.llmPrompt, settings.transcriptionPrompt, settings.screenProcessingPrompt]);
     const hasOpenAiKey = Boolean(settings.openaiApiKey?.trim());
     const hasGoogleKey = Boolean(settings.googleApiKey?.trim());
 
@@ -755,12 +769,20 @@ export const AiSettings = () => {
     const isLlmAllowed = useCallback((_model: string) => true, []);
 
     const apiTranscribeOptions = useMemo(() => {
-        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
+        const models: string[] = [
+            ...(WINKY_TRANSCRIBE_MODELS as unknown as string[]),
+            ...OPENAI_TRANSCRIBE_MODELS,
+            ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[]),
+        ];
         return models;
     }, []);
 
     const apiLlmOptions = useMemo(() => {
-        const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
+        const models: string[] = [
+            ...(WINKY_LLM_MODELS as unknown as string[]),
+            ...OPENAI_LLM_MODELS,
+            ...(GEMINI_LLM_MODELS as unknown as string[]),
+        ];
         return models;
     }, []);
 
@@ -773,7 +795,11 @@ export const AiSettings = () => {
         if (settings.transcriptionMode === 'local') {
             return LOCAL_TRANSCRIBE_MODELS.map((model) => ({value: model, label: formatTranscribeLabel(model)}));
         }
-        const models: string[] = [...OPENAI_TRANSCRIBE_MODELS, ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[])];
+        const models: string[] = [
+            ...(WINKY_TRANSCRIBE_MODELS as unknown as string[]),
+            ...OPENAI_TRANSCRIBE_MODELS,
+            ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[]),
+        ];
         return models.map((model) => {
             return {
                 value: model,
@@ -787,7 +813,11 @@ export const AiSettings = () => {
         if (settings.llmHost === 'local') {
             return LOCAL_LLM_MODELS.map((model) => ({value: model, label: formatLlmLabel(model)}));
         }
-        const models: string[] = [...OPENAI_LLM_MODELS, ...(GEMINI_LLM_MODELS as unknown as string[])];
+        const models: string[] = [
+            ...(WINKY_LLM_MODELS as unknown as string[]),
+            ...OPENAI_LLM_MODELS,
+            ...(GEMINI_LLM_MODELS as unknown as string[]),
+        ];
         return models.map((model) => {
             return {
                 value: model,
@@ -1346,6 +1376,17 @@ export const AiSettings = () => {
                             multiline
                             minRows={3}
                             placeholder="Optional: system message for the LLM"
+                        />
+                    </div>
+                    <div className="settings-field">
+                        <TextField
+                            label="Screen processing prompt"
+                            value={screenProcessingPrompt}
+                            onChange={(event) => setScreenProcessingPrompt(event.target.value)}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            placeholder="Optional: global instruction for screenshot analysis"
                         />
                     </div>
                 </div>
