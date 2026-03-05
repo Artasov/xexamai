@@ -32,7 +32,7 @@ export const formatTranscribeLabel = (value: string): string => {
         return `${metadata.label} (${metadata.size})`;
     }
     if (WINKY_TRANSCRIBE_SET.has(value)) {
-        return 'Winky Transcribe';
+        return 'Our Transcribe';
     }
     if (GOOGLE_TRANSCRIBE_SET.has(value)) {
         return `Google ${toTitle(value)}`;
@@ -45,7 +45,7 @@ export const formatTranscribeLabel = (value: string): string => {
 
 export const formatLlmLabel = (value: string): string => {
     if (WINKY_LLM_SET.has(value)) {
-        return `Winky ${toTitle(value.replace(/^winky-/, ''))}`;
+        return `Our ${toTitle(value.replace(/^winky-/, ''))}`;
     }
     if (GEMINI_LLM_SET.has(value)) {
         return `Google ${toTitle(value)}`;
