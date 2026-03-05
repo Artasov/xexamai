@@ -32,6 +32,100 @@ use tray::set_tray_visible;
 
 static PENDING_DEEP_LINKS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
+#[cfg(target_os = "windows")]
+static ORIGINAL_WNDPROC_BY_HWND: Lazy<Mutex<std::collections::HashMap<isize, isize>>> =
+    Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
+
+#[cfg(target_os = "windows")]
+fn is_resize_hit_test(hit_test_code: u16) -> bool {
+    matches!(hit_test_code, 4 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn force_arrow_cursor_wndproc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallWindowProcW, DefWindowProcW, GWLP_WNDPROC, IDC_ARROW, LoadCursorW, SetCursor, SetWindowLongPtrW,
+        WM_NCDESTROY, WM_SETCURSOR, WNDPROC,
+    };
+
+    if msg == WM_SETCURSOR {
+        let hit_test = (lparam.0 & 0xFFFF) as u16;
+        if is_resize_hit_test(hit_test) {
+            if let Ok(cursor) = unsafe { LoadCursorW(None, IDC_ARROW) } {
+                let _ = unsafe { SetCursor(Some(cursor)) };
+            }
+            return LRESULT(1);
+        }
+    }
+
+    let hwnd_key = hwnd.0 as isize;
+    let original_ptr = ORIGINAL_WNDPROC_BY_HWND
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&hwnd_key).copied())
+        .unwrap_or(0);
+
+    if msg == WM_NCDESTROY && original_ptr != 0 {
+        let _ = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, original_ptr) };
+        if let Ok(mut map) = ORIGINAL_WNDPROC_BY_HWND.lock() {
+            map.remove(&hwnd_key);
+        }
+    }
+
+    if original_ptr == 0 {
+        return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+    }
+
+    let original_fn: unsafe extern "system" fn(
+        windows::Win32::Foundation::HWND,
+        u32,
+        windows::Win32::Foundation::WPARAM,
+        windows::Win32::Foundation::LPARAM,
+    ) -> windows::Win32::Foundation::LRESULT = unsafe { std::mem::transmute(original_ptr) };
+    let original: WNDPROC = Some(original_fn);
+    unsafe { CallWindowProcW(original, hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(target_os = "windows")]
+fn install_force_default_cursor(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{GetLastError, HWND, SetLastError, WIN32_ERROR};
+    use windows::Win32::UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrW};
+
+    let Ok(raw_hwnd) = window.hwnd() else {
+        return;
+    };
+    let hwnd = HWND(raw_hwnd.0);
+    let hwnd_key = hwnd.0 as isize;
+
+    if ORIGINAL_WNDPROC_BY_HWND
+        .lock()
+        .map(|map| map.contains_key(&hwnd_key))
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    unsafe { SetLastError(WIN32_ERROR(0)) };
+    let previous = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, force_arrow_cursor_wndproc as usize as isize) };
+    if previous == 0 {
+        let error = unsafe { GetLastError() };
+        if error.0 != 0 {
+            eprintln!("[window] failed to install cursor override hook: {}", error.0);
+            return;
+        }
+    }
+
+    if let Ok(mut map) = ORIGINAL_WNDPROC_BY_HWND.lock() {
+        map.insert(hwnd_key, previous);
+    }
+}
+
 #[tauri::command]
 async fn config_get(state: State<'_, Arc<ConfigState>>) -> Result<AppConfig, String> {
     Ok(state.get().await)
@@ -426,6 +520,9 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
 
 pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "windows")]
+        install_force_default_cursor(&window);
+
         window.show().map_err(|error| error.to_string())?;
         window.set_focus().map_err(|error| error.to_string())?;
         Ok(())
@@ -442,6 +539,9 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
             .build()
             .map_err(|error| error.to_string())?;
         if let Some(window) = app.get_webview_window("main") {
+            #[cfg(target_os = "windows")]
+            install_force_default_cursor(&window);
+
             window.show().map_err(|error| error.to_string())?;
             window.set_focus().map_err(|error| error.to_string())?;
         }
@@ -491,6 +591,9 @@ fn main() {
             setup_deep_link_listener(&app_handle, auth_queue);
 
             if let Some(main_window) = app.get_webview_window("main") {
+                #[cfg(target_os = "windows")]
+                install_force_default_cursor(&main_window);
+
                 let app_handle = app_handle.clone();
                 main_window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {

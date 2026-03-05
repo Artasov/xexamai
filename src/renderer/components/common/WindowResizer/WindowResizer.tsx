@@ -19,16 +19,15 @@ const MIN_HEIGHT = 500;
 const EDGE_CONFIG: Array<{
     edge: Edge;
     className: string;
-    cursor: string;
 }> = [
-    {edge: 'top', className: 'resize-handle resize-handle--top', cursor: 'ns-resize'},
-    {edge: 'bottom', className: 'resize-handle resize-handle--bottom', cursor: 'ns-resize'},
-    {edge: 'left', className: 'resize-handle resize-handle--left', cursor: 'ew-resize'},
-    {edge: 'right', className: 'resize-handle resize-handle--right', cursor: 'ew-resize'},
-    {edge: 'top-left', className: 'resize-handle resize-handle--top-left', cursor: 'nwse-resize'},
-    {edge: 'top-right', className: 'resize-handle resize-handle--top-right', cursor: 'nesw-resize'},
-    {edge: 'bottom-left', className: 'resize-handle resize-handle--bottom-left', cursor: 'nesw-resize'},
-    {edge: 'bottom-right', className: 'resize-handle resize-handle--bottom-right', cursor: 'nwse-resize'},
+    {edge: 'top', className: 'resize-handle resize-handle--top'},
+    {edge: 'bottom', className: 'resize-handle resize-handle--bottom'},
+    {edge: 'left', className: 'resize-handle resize-handle--left'},
+    {edge: 'right', className: 'resize-handle resize-handle--right'},
+    {edge: 'top-left', className: 'resize-handle resize-handle--top-left'},
+    {edge: 'top-right', className: 'resize-handle resize-handle--top-right'},
+    {edge: 'bottom-left', className: 'resize-handle resize-handle--bottom-left'},
+    {edge: 'bottom-right', className: 'resize-handle resize-handle--bottom-right'},
 ];
 
 type ResizeState = {
@@ -101,7 +100,6 @@ export const WindowResizer = () => {
         stateRef.current = null;
         pendingBoundsRef.current = null;
         frameRequestedRef.current = false;
-        document.body.style.cursor = '';
         document.body.style.userSelect = '';
     }, []);
 
@@ -139,7 +137,6 @@ export const WindowResizer = () => {
         event.stopPropagation();
         if (!isWindows) return;
 
-        document.body.style.cursor = (EDGE_CONFIG.find((item) => item.edge === edge)?.cursor) ?? '';
         document.body.style.userSelect = 'none';
 
         stateRef.current = {
@@ -172,7 +169,6 @@ export const WindowResizer = () => {
                     className={config.className}
                     role="presentation"
                     onMouseDown={handleMouseDown(config.edge)}
-                    style={{cursor: config.cursor}}
                 />
             ))}
         </div>

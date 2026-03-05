@@ -3,7 +3,11 @@
 
 @source "./**/*.{ts,tsx,html}";
 
-* {
+html,
+body,
+*,
+*::before,
+*::after {
     cursor: default !important;
 }
 
