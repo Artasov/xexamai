@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 env:
-  NODE_VERSION: 20
+  NODE_VERSION: 24
   AWS_DEFAULT_REGION: ru-1
   AWS_S3_FORCE_PATH_STYLE: true
   S3_BUCKET: 324718a4-2cc5dd7a-917b-4e82-87c5-b9d5f8de16ba
@@ -58,7 +58,7 @@ jobs:
       matrix:
         os:
           - windows-latest
-          - macos-latest
+          - macos-15
           - ubuntu-latest
 
     env:
@@ -98,7 +98,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cleanup macOS disk images
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         shell: bash
         run: |
           set -euo pipefail
@@ -150,7 +150,7 @@ jobs:
               TARGET="windows"
               FIND_EXPR=(-type f \( -name "*.exe" -o -name "*.msi" \))
               ;;
-            macos-latest)
+            macos-15)
               TARGET="macos"
               FIND_EXPR=(-type f -name "*.dmg")
               ;;
@@ -229,7 +229,7 @@ jobs:
 
       - name: Upload release link manifest
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-links-${{ matrix.os }}
           path: release-links/*
@@ -246,7 +246,7 @@ jobs:
 
     steps:
       - name: Download release link manifests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: release-links-*
           path: release-links
