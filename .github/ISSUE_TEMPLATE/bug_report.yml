@@ -1,0 +1,111 @@
+name: Bug report
+description: Report a problem with the XEXAMAI desktop app.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem.
+
+        Logs are very helpful for desktop app issues, especially auth, OAuth, update, audio, transcription, and backend connection problems. Please attach them when possible.
+
+        Do not paste API keys, access tokens, private prompts, or other secrets into this issue.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen.
+      placeholder: The app did..., but I expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps that trigger the issue.
+      placeholder: |
+        1. Open XEXAMAI
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: The version shown in the app or installer filename, if known.
+      placeholder: 0.0.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: backend-domain
+    attributes:
+      label: Backend domain
+      description: If the issue is related to login, OAuth, transcription, or AI requests, include the selected backend domain.
+      placeholder: xlartas.com
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Attach files when possible instead of pasting long logs.
+      value: |
+        Please attach:
+
+        1. Native/Rust app log:
+           - In the app: Settings -> General -> Logs -> Open logs folder.
+           - If you are not signed in yet: use the Open logs button on the login screen.
+           - Attach `xexamai.log`.
+           - If it exists, also attach `xexamai.old.log`.
+
+        2. Manual log folder locations:
+           - Windows: `%LOCALAPPDATA%\xexamai\logs\`
+           - macOS: `~/Library/Application Support/xexamai/logs/`
+           - Linux: `$XDG_DATA_HOME/xexamai/logs/` or `~/.local/share/xexamai/logs/`
+
+        3. Frontend console logs:
+           - Open DevTools if available: `Ctrl+Shift+I` or `F12` on Windows/Linux, `Option+Command+I` on macOS.
+           - Go to the Console tab.
+           - Reproduce the issue.
+           - Copy visible errors/warnings, or right-click in the console and save the log if your browser/WebView offers it.
+
+        If DevTools are not available in your build, attach the native/Rust app log from the logs folder.
+      placeholder: Drag log files here, or paste short relevant errors.
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recording
+      description: Add screenshots or a short recording if the issue is visual or hard to describe.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Add anything else that may help: proxy/VPN, microphone device, OAuth provider, update channel, antivirus, etc.
+    validations:
+      required: false
