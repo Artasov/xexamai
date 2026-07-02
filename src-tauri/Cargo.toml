@@ -21,7 +21,6 @@ tauri-plugin-deep-link = "2.4.5"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-http = "2.5.4"
 tauri-plugin-opener = "2.3.1"
-tauri-plugin-shell = "2.3.3"
 tauri-plugin-single-instance = "2.3.1"
 tauri-plugin-clipboard-manager = "2.3.2"
 thiserror = "1.0"
@@ -33,10 +32,13 @@ winapi = { version = "0.3", features = ["winuser", "dwmapi"] }
 zip = "0.6"
 flate2 = "1.0"
 futures-util = "0.3"
+hex = "0.4"
 image = "0.25"
 cpal = "0.15"
 crossbeam-channel = "0.5"
 bytemuck = { version = "1.15", features = ["derive"] }
+sha2 = "0.10"
+log = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

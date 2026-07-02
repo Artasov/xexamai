@@ -14,12 +14,51 @@ import {
     setBackendDomain as applyBackendDomain,
 } from '@shared/appUrls';
 import {authClient} from '@renderer/services/authClient';
+import {logger} from '@renderer/utils/logger';
+
+const KNOWN_OAUTH_PROVIDERS: readonly OAuthProviderType[] = [
+    'google',
+    'github',
+    'discord',
+    'yandex',
+];
+
+type AuthMethodsLike = {
+    allowedOAuthProviders?: string[];
+    allowedOauthProviders?: string[];
+    allowed_oauth_providers?: string[];
+};
+
+function isKnownOAuthProvider(value: string): value is OAuthProviderType {
+    return (KNOWN_OAUTH_PROVIDERS as readonly string[]).includes(value);
+}
+
+function normalizeAllowedOAuthProviders(methods: AuthMethodsLike): OAuthProviderType[] {
+    const rawProviders = methods.allowedOAuthProviders ??
+        methods.allowedOauthProviders ??
+        methods.allowed_oauth_providers ??
+        [];
+    return rawProviders
+        .map((provider) => provider.trim().toLowerCase())
+        .filter(isKnownOAuthProvider);
+}
 
 function DiscordIcon(props: SvgIconProps) {
     return (
         <SvgIcon {...props} viewBox="0 0 24 24">
             <path
                 d="M20.32 4.37A17.22 17.22 0 0 0 15.54 3l-.55 1.17a15.61 15.61 0 0 0-5-.01L9.43 3a16.97 16.97 0 0 0-4.78 1.35 18.45 18.45 0 0 0-2.97 12.4 16.41 16.41 0 0 0 5.84 2.96l.82-2.65-1.37-.46.36-1.16c1.47.49 2.94.73 4.4.73 1.46 0 2.93-.24 4.4-.73l.37 1.16-1.38.46.82 2.65a16.4 16.4 0 0 0 5.84-2.96 18.46 18.46 0 0 0-2.94-12.37zM8.88 14.47c-.85 0-1.54-.82-1.54-1.83s.69-1.82 1.54-1.82c.85 0 1.54.82 1.54 1.82 0 1.01-.69 1.83-1.54 1.83zm6.24 0c-.85 0-1.54-.82-1.54-1.83s.69-1.82 1.54-1.82 1.54.82 1.54 1.82-.69 1.83-1.54 1.83z"/>
+        </SvgIcon>
+    );
+}
+
+function YandexIcon(props: SvgIconProps) {
+    return (
+        <SvgIcon {...props} viewBox="0 0 24 24">
+            <path
+                fill="currentColor"
+                d="M13.48 13.12v6.77h-2.3v-6.77L6.2 4.12h2.55l3.62 6.78 3.63-6.78h2.49l-5.01 9z"
+            />
         </SvgIcon>
     );
 }
@@ -31,6 +70,8 @@ export function LoginView() {
     const [localError, setLocalError] = useState<string | null>(null);
     const [oauthProvider, setOauthProvider] = useState<OAuthProviderType | null>(null);
     const [backendDomain, setBackendDomainState] = useState<BackendDomain>(getBackendDomain());
+    const [allowedOAuthProviders, setAllowedOAuthProviders] = useState<OAuthProviderType[]>([]);
+    const [authMethodsLoading, setAuthMethodsLoading] = useState(true);
 
     const isSubmitting = status === 'signing-in';
     const isOAuthInProgress = status === 'oauth';
@@ -55,9 +96,41 @@ export function LoginView() {
                 className: 'oauth-button--discord',
                 Icon: DiscordIcon,
             },
+            {
+                id: 'yandex' as OAuthProviderType,
+                label: 'Sign in with Yandex',
+                className: 'oauth-button--yandex',
+                Icon: YandexIcon,
+            },
         ],
         [],
     );
+
+    const visibleOAuthProviders = useMemo(
+        () => oauthProviders.filter((provider) => allowedOAuthProviders.includes(provider.id)),
+        [allowedOAuthProviders, oauthProviders],
+    );
+
+    const syncAuthMethods = useCallback(async () => {
+        setAuthMethodsLoading(true);
+        logger.info('auth', 'Loading OAuth auth methods');
+        try {
+            const methods = await window.api.auth.getMethods();
+            const providers = normalizeAllowedOAuthProviders(methods);
+            logger.info('auth', 'OAuth auth methods loaded', {
+                countryCode: methods.countryCode,
+                countryKnown: methods.countryKnown,
+                allowedOAuthProviders: providers,
+                emailPasswordAllowed: methods.emailPasswordAllowed,
+            });
+            setAllowedOAuthProviders(providers);
+        } catch (error) {
+            logger.error('auth', 'OAuth auth methods failed', {error});
+            setAllowedOAuthProviders([]);
+        } finally {
+            setAuthMethodsLoading(false);
+        }
+    }, []);
 
     const handleSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -78,6 +151,15 @@ export function LoginView() {
     const handleOAuth = useCallback(async (provider: OAuthProviderType) => {
         setLocalError(null);
         clearError();
+        if (!allowedOAuthProviders.includes(provider)) {
+            logger.warn('auth', 'OAuth provider blocked by loaded auth methods', {
+                provider,
+                allowedOAuthProviders,
+            });
+            setLocalError('This OAuth provider is not available for your region');
+            return;
+        }
+        logger.info('auth', 'Starting OAuth from login view', {provider});
         setOauthProvider(provider);
         try {
             await startOAuth(provider);
@@ -86,7 +168,7 @@ export function LoginView() {
             const message = err instanceof Error ? err.message : 'Failed to start OAuth flow';
             setLocalError(message);
         }
-    }, [clearError, startOAuth]);
+    }, [allowedOAuthProviders, clearError, startOAuth]);
 
     useEffect(() => {
         if (status !== 'oauth') {
@@ -101,22 +183,37 @@ export function LoginView() {
                 const settings = await window.api.settings.get();
                 const domain = settings.backendDomain ?? getBackendDomain();
                 if (cancelled) return;
-                setBackendDomainState(domain);
-                applyBackendDomain(domain);
-                authClient.setBaseUrl(resolveAuthApiBaseUrl());
-            } catch {
-            }
+            setBackendDomainState(domain);
+            applyBackendDomain(domain);
+            authClient.setBaseUrl(resolveAuthApiBaseUrl());
+            logger.info('auth', 'Backend domain loaded for login view', {domain});
+            await syncAuthMethods();
+        } catch {
+            logger.warn('auth', 'Failed to load backend domain from settings; using current domain');
+            await syncAuthMethods();
+        }
         };
         void syncDomain();
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [syncAuthMethods]);
 
     const handleClose = useCallback(() => {
         try {
             window.api?.window?.close();
         } catch {
+        }
+    }, []);
+
+    const handleOpenLogsFolder = useCallback(async () => {
+        try {
+            const logPath = await window.api.settings.getLogPath();
+            logger.info('auth', 'Opening logs folder from login view', {logPath});
+            await window.api.settings.openLogsFolder();
+        } catch (error) {
+            logger.error('auth', 'Failed to open logs folder from login view', {error});
+            setLocalError('Unable to open logs folder');
         }
     }, []);
 
@@ -126,16 +223,19 @@ export function LoginView() {
         setBackendDomainState(domain);
         applyBackendDomain(domain);
         authClient.setBaseUrl(resolveAuthApiBaseUrl());
+        logger.info('settings', 'Changing backend domain from login view', {domain});
         try {
             await window.api.settings.setBackendDomain(domain);
+            await syncAuthMethods();
         } catch (error) {
             console.error('[LoginView] Failed to update backend domain', error);
             setBackendDomainState(previous);
             applyBackendDomain(previous);
             authClient.setBaseUrl(resolveAuthApiBaseUrl());
+            await syncAuthMethods();
             setLocalError('Failed to update backend domain');
         }
-    }, [backendDomain]);
+    }, [backendDomain, syncAuthMethods]);
 
     const combinedError = localError || error;
 
@@ -255,26 +355,28 @@ export function LoginView() {
                         {isSubmitting ? 'Signing in…' : 'Sign In'}
                     </button>
 
-                    <div className="frc gap-3">
-                        <div className="flex items-center gap-3">
-                            {oauthProviders.map((provider) => {
-                                const isActive = oauthProvider === provider.id && isOAuthInProgress;
-                                const IconComponent = provider.Icon;
-                                return (
-                                    <button
-                                        key={provider.id}
-                                        type="button"
-                                        className={`oauth-button ${provider.className} ${isActive ? 'oauth-button--active' : ''}`}
-                                        disabled={isSubmitting}
-                                        onClick={() => handleOAuth(provider.id)}
-                                        aria-label={provider.label}
-                                    >
-                                        <IconComponent fontSize="small"/>
-                                    </button>
-                                );
-                            })}
+                    {visibleOAuthProviders.length ? (
+                        <div className="frc gap-3">
+                            <div className="flex items-center gap-3">
+                                {visibleOAuthProviders.map((provider) => {
+                                    const isActive = oauthProvider === provider.id && isOAuthInProgress;
+                                    const IconComponent = provider.Icon;
+                                    return (
+                                        <button
+                                            key={provider.id}
+                                            type="button"
+                                            className={`oauth-button ${provider.className} ${isActive ? 'oauth-button--active' : ''}`}
+                                            disabled={isSubmitting || authMethodsLoading}
+                                            onClick={() => handleOAuth(provider.id)}
+                                            aria-label={provider.label}
+                                        >
+                                            <IconComponent fontSize="small"/>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    ) : null}
 
                     {isOAuthInProgress ? (
                         <div
@@ -285,7 +387,7 @@ export function LoginView() {
                     ) : null}
                 </form>
             </div>
-            <div className="absolute bottom-4 left-4 w-[190px]">
+            <div className="absolute bottom-4 left-4 flex w-[190px] flex-col gap-2">
                 <TextField
                     select
                     size="small"
@@ -303,6 +405,13 @@ export function LoginView() {
                         </MenuItem>
                     ))}
                 </TextField>
+                <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={handleOpenLogsFolder}
+                >
+                    Open logs
+                </button>
             </div>
         </div>
     );

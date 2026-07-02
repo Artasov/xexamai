@@ -23,8 +23,7 @@ export const ensureTranscriptionReady = async (): Promise<boolean> => {
 
     if (mode === 'api') {
         if (WINKY_TRANSCRIBE_SET.has(apiModel)) {
-            const accessToken = authClient.getTokens()?.access?.trim();
-            if (!accessToken) {
+            if (!authClient.hasTokens()) {
                 setStatus('Sign in to use Winky transcription model', 'error');
                 return false;
             }

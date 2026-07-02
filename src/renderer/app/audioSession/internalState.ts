@@ -33,7 +33,7 @@ export const audioSessionState: AudioSessionState = {
     srcNode: null,
     scriptNode: null,
     pcmRing: null,
-    currentAudioInputType: 'mixed',
+    currentAudioInputType: 'microphone',
     persistentSystemAudioTrack: null,
     rmsLevel: 0,
 };

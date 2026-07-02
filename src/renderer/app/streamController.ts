@@ -149,7 +149,7 @@ export class StreamController {
     async syncInitialSettings(): Promise<void> {
         const settings = await this.loadSettingsSafe();
         this.currentStreamSendHotkey = settings.streamSendHotkey || '~';
-        const audioInputType = (settings.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
+        const audioInputType = (settings.audioInputType || 'microphone') as 'microphone' | 'system' | 'mixed';
         setAudioInputType(audioInputType);
         await this.updateToggleButtonLabel(audioInputType);
         await this.updateStreamModeVisibility('base');
@@ -742,7 +742,7 @@ export class StreamController {
     private async handleAudioInputToggle(_source: ToggleSource): Promise<void> {
         try {
             const settingsSnapshot = await this.loadSettingsSafe();
-            const currentType = (settingsSnapshot.audioInputType || 'mixed') as 'microphone' | 'system' | 'mixed';
+            const currentType = (settingsSnapshot.audioInputType || 'microphone') as 'microphone' | 'system' | 'mixed';
             const nextType: 'microphone' | 'system' | 'mixed' =
                 currentType === 'microphone'
                     ? 'system'
@@ -812,7 +812,7 @@ export class StreamController {
         let type: 'microphone' | 'system' | 'mixed' | undefined = preferred as any;
         if (!type) {
             const settings = await this.loadSettingsSafe();
-            type = (settings.audioInputType || 'mixed') as any;
+            type = (settings.audioInputType || 'microphone') as any;
         }
         if (!type) type = getAudioInputType();
 

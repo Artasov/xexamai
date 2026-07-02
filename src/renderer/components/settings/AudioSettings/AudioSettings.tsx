@@ -85,7 +85,7 @@ export const AudioSettings = () => {
                         select
                         size="small"
                         label="Input type"
-                        value={settings.audioInputType ?? 'mixed'}
+                        value={settings.audioInputType ?? 'microphone'}
                         onChange={(event) => handleInputTypeChange(event.target.value as 'microphone' | 'system' | 'mixed')}
                         fullWidth
                     >

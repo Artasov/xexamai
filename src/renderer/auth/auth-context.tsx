@@ -145,8 +145,12 @@ export function AuthProvider({children}: AuthProviderProps) {
         };
 
         const unsubscribe = window.api.auth.onOAuthPayload(handleOAuthPayload);
-        window.api.auth.consumePendingOAuthPayloads().catch(() => {
-        });
+        window.api.auth.consumePendingOAuthPayloads()
+            .then((payloads) => {
+                payloads.forEach(handleOAuthPayload);
+            })
+            .catch(() => {
+            });
 
         return () => {
             cancelled = true;

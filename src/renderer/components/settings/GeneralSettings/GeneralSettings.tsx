@@ -184,6 +184,17 @@ export const GeneralSettings = () => {
         }
     };
 
+    const openLogsFolder = async () => {
+        try {
+            const logPath = await window.api.settings.getLogPath();
+            logger.info('settings', 'Opening logs folder', {logPath});
+            await window.api.settings.openLogsFolder();
+        } catch (error) {
+            logger.error('settings', 'Failed to open logs folder', {error});
+            showMessage('Unable to open logs folder', 'error');
+        }
+    };
+
     const handleBackendDomainChange = async (domain: BackendDomain) => {
         if (domain === backendDomain) return;
         const previous = backendDomain;
@@ -322,6 +333,13 @@ export const GeneralSettings = () => {
                 <h3 className="settings-card__title">Config folder</h3>
                 <button type="button" className="btn btn-sm" onClick={openConfigFolder}>
                     Open config folder
+                </button>
+            </section>
+
+            <section className="settings-card card">
+                <h3 className="settings-card__title">Logs</h3>
+                <button type="button" className="btn btn-sm" onClick={openLogsFolder}>
+                    Open logs folder
                 </button>
             </section>
         </div>

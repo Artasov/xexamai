@@ -73,6 +73,7 @@ export const DefaultSettings: AppSettings = {
     windowOpacity: 100,
     alwaysOnTop: false,
     welcomeModalDismissed: false,
+    audioInputType: 'microphone',
     transcriptionMode: 'api',
     llmHost: 'api',
     llmModel: 'gpt-4.1-nano',
@@ -221,7 +222,16 @@ export type LogEntry = {
     data?: any;
 };
 
-export type AuthProvider = 'google' | 'github' | 'discord';
+export type AuthProvider = 'google' | 'github' | 'discord' | 'yandex';
+
+export type AuthMethodsResponse = {
+    countryCode: string;
+    countryKnown: boolean;
+    allowedOAuthProviders: string[];
+    allowedOauthProviders?: string[];
+    emailPasswordAllowed: boolean;
+    allowedEmailDomains: string[];
+};
 
 export type AuthTokensPayload = {
     access: string;
@@ -233,12 +243,14 @@ export type AuthDeepLinkPayload =
     kind: 'success';
     provider: AuthProvider | string;
     tokens: AuthTokensPayload;
+    state?: string | null;
     user?: Record<string, unknown> | null;
 }
     | {
     kind: 'error';
     provider: AuthProvider | string;
     error: string;
+    state?: string | null;
 };
 
 export type AssistantAPI = {
@@ -289,6 +301,8 @@ export type AssistantAPI = {
         setApiLlmTimeoutMs: (timeoutMs: number) => Promise<void>;
         getAudioDevices: () => Promise<AudioDevice[]>;
         openConfigFolder: () => Promise<void>;
+        openLogsFolder: () => Promise<void>;
+        getLogPath: () => Promise<string>;
         setScreenProcessingModel: (provider: ScreenProcessingProvider) => Promise<void>;
         setScreenProcessingPrompt: (prompt: string) => Promise<void>;
         setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
@@ -326,6 +340,7 @@ export type AssistantAPI = {
         onError: (cb: (error: string) => void) => void;
     };
     auth: {
+        getMethods: () => Promise<AuthMethodsResponse>;
         startOAuth: (provider: AuthProvider) => Promise<void>;
         onOAuthPayload: (cb: (payload: AuthDeepLinkPayload) => void) => () => void;
         consumePendingOAuthPayloads: () => Promise<AuthDeepLinkPayload[]>;

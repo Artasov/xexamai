@@ -57,6 +57,109 @@ function sanitizeRole(value: unknown): ChatRole {
     return 'system';
 }
 
+const ALLOWED_HTML_TAGS = new Set([
+    'A',
+    'BLOCKQUOTE',
+    'BR',
+    'CODE',
+    'DEL',
+    'DIV',
+    'EM',
+    'H1',
+    'H2',
+    'H3',
+    'H4',
+    'H5',
+    'H6',
+    'HR',
+    'LI',
+    'OL',
+    'P',
+    'PRE',
+    'SPAN',
+    'STRONG',
+    'TABLE',
+    'TBODY',
+    'TD',
+    'TH',
+    'THEAD',
+    'TR',
+    'UL',
+]);
+
+const DROP_HTML_TAGS = new Set(['IFRAME', 'IMG', 'MATH', 'OBJECT', 'SCRIPT', 'STYLE', 'SVG']);
+
+function isSafeHtmlUrl(value: string): boolean {
+    try {
+        const url = new URL(value, window.location.origin);
+        return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:';
+    } catch {
+        return false;
+    }
+}
+
+function cleanElement(element: Element): void {
+    const tagName = element.tagName.toUpperCase();
+    if (DROP_HTML_TAGS.has(tagName)) {
+        element.remove();
+        return;
+    }
+
+    if (!ALLOWED_HTML_TAGS.has(tagName)) {
+        for (const child of Array.from(element.children)) {
+            cleanElement(child);
+        }
+        const parent = element.parentNode;
+        if (!parent) return;
+        while (element.firstChild) {
+            parent.insertBefore(element.firstChild, element);
+        }
+        parent.removeChild(element);
+        return;
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+        const name = attribute.name.toLowerCase();
+        const keepGlobal = name === 'class' || name === 'title';
+        const keepLink = tagName === 'A' && ['href', 'target', 'rel'].includes(name);
+        if (!keepGlobal && !keepLink) {
+            element.removeAttribute(attribute.name);
+            continue;
+        }
+        if (tagName === 'A' && name === 'href' && !isSafeHtmlUrl(attribute.value)) {
+            element.removeAttribute(attribute.name);
+        }
+    }
+
+    if (tagName === 'A' && element.getAttribute('href')) {
+        element.setAttribute('target', '_blank');
+        element.setAttribute('rel', 'noopener noreferrer');
+    }
+
+    for (const child of Array.from(element.children)) {
+        cleanElement(child);
+    }
+}
+
+function sanitizeHtml(html: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    for (const child of Array.from(template.content.children)) {
+        cleanElement(child);
+    }
+    return template.innerHTML;
+}
+
+function renderMarkdown(value: string): string {
+    return sanitizeHtml(marked.parse(value, {async: false}) as string);
+}
+
+function escapeHtml(value: string): string {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
+}
+
 function normalizeChatMessage(raw: unknown): ChatMessage | null {
     if (!raw || typeof raw !== 'object') return null;
     const input = raw as Record<string, unknown>;
@@ -249,7 +352,7 @@ function renderChat(): void {
 
         if (message.role === 'assistant') {
             const value = message.text || (message.pending ? 'Syncing...' : '');
-            content.innerHTML = value ? (marked.parse(value, {async: false}) as string) : '';
+            content.innerHTML = value ? renderMarkdown(value) : '';
         } else {
             content.textContent = message.text;
         }
@@ -466,7 +569,7 @@ export function showAnswer(text: string, chatId?: string) {
     const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
     if (target) {
         answerOut = target;
-        target.innerHTML = text ? (marked.parse(text, {async: false}) as string) : '';
+        target.innerHTML = text ? renderMarkdown(text) : '';
         return;
     }
     if (text?.trim()) {
@@ -480,9 +583,9 @@ export function showError(error: unknown, chatId?: string) {
 
     if (target) {
         answerOut = target;
-        let errorHtml = `<div class="error-message">${formattedError.displayText}</div>`;
+        let errorHtml = `<div class="error-message">${escapeHtml(formattedError.displayText)}</div>`;
         if (formattedError.helpHtml) {
-            errorHtml += formattedError.helpHtml;
+            errorHtml += sanitizeHtml(formattedError.helpHtml);
         }
         target.innerHTML = errorHtml;
         return;

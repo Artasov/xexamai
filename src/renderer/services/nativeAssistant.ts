@@ -21,8 +21,9 @@ import {
 } from '@shared/constants';
 import {logRequest, previewText} from './nativeAssistant.helpers';
 import {fetchWithTimeout, ollamaAxios} from './nativeAssistant.network';
-import {getAuthApiBaseUrl, getSiteBaseUrl, getWsBaseUrl} from '@shared/appUrls';
-import {authClient} from './authClient';
+import {getSiteBaseUrl, getWsBaseUrl} from '@shared/appUrls';
+import {AuthError, authClient} from './authClient';
+import {uploadMediaFile} from './mediaClient';
 
 type StreamEventPayloads = {
     transcript: { requestId?: string; delta: string };
@@ -148,12 +149,10 @@ function ensureGoogleKey(settings: AppSettings): string {
     return key;
 }
 
-function ensureAccessToken(): string {
-    const token = authClient.getTokens()?.access?.trim();
-    if (!token) {
+function assertWinkySession(): void {
+    if (!authClient.hasTokens()) {
         throw new Error('Sign in to use Winky models.');
     }
-    return token;
 }
 
 function createCreditsError(message?: string): Error {
@@ -572,57 +571,56 @@ async function transcribeWithWinky(
     mime: string,
     settings: AppSettings
 ): Promise<string> {
-    const accessToken = ensureAccessToken();
-    const url = `${getAuthApiBaseUrl()}/ai/transcribe/`;
+    assertWinkySession();
     const fileName = getAudioFileNameByMime(mime);
     const blob = new Blob([buffer], {type: mime || 'audio/webm'});
-    const formData = new FormData();
-    formData.append('file', blob, fileName);
+    const modelLevel = mapWinkyModelToLevel(settings.transcriptionModel || 'winky-transcribe');
 
     logRequest('transcribe:winky', 'start', {
         model: settings.transcriptionModel || 'winky-transcribe',
+        modelLevel,
         mime,
         fileName,
         bufferSize: buffer.byteLength,
     });
 
-    const response = await fetchWithTimeout(
-        url,
-        {
+    try {
+        const media = await uploadMediaFile(blob, {
+            namespace: 'ai/transcriptions',
+            visibility: 'private',
+            fileName,
+            contentType: mime || 'audio/webm',
+        });
+        const data = await authClient.request({
+            url: '/ai/transcribe/media/',
             method: 'POST',
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
+            timeout: settings.apiSttTimeoutMs,
+            data: {
+                media_file_id: media.id,
+                model: modelLevel,
             },
-            body: formData,
-        },
-        settings.apiSttTimeoutMs
-    );
+        });
+        const text = extractSpeechText(data)?.trim();
+        if (!text) {
+            throw new Error('Winky returned empty transcription.');
+        }
 
-    if (!response.ok) {
-        const data = await response.json().catch(async () => ({text: await response.text()}));
-        if (response.status === 402) {
+        logRequest('transcribe:winky', 'ok', {
+            mediaFileId: media.id,
+            textPreview: previewText(text),
+        });
+        return text;
+    } catch (error) {
+        if (error instanceof AuthError && error.status === 402) {
+            const data = error.details as any;
             throw createCreditsError(
                 typeof data === 'string'
                     ? data
                     : data?.error?.message || data?.detail || data?.message
             );
         }
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || data?.detail || data?.message || `Winky transcription failed (${response.status})`;
-        throw new Error(message);
+        throw error;
     }
-
-    const data = await response.json().catch(async () => ({text: await response.text()}));
-    const text = extractSpeechText(data)?.trim();
-    if (!text) {
-        throw new Error('Winky returned empty transcription.');
-    }
-
-    logRequest('transcribe:winky', 'ok', {
-        textPreview: previewText(text),
-    });
-    return text;
 }
 
 const buildGeminiBody = (
@@ -806,8 +804,12 @@ async function runWinkyLLMStream(
     onChunk: (chunk: string) => void,
     controller?: AbortController
 ): Promise<string> {
-    const accessToken = ensureAccessToken();
-    const wsUrl = `${getWsBaseUrl()}/ws/ai/llm/?token=${encodeURIComponent(accessToken)}`;
+    assertWinkySession();
+    const wsToken = await authClient.wsTicket();
+    if (controller?.signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+    }
+    const wsUrl = `${getWsBaseUrl()}/ws/ai/llm/?token=${encodeURIComponent(wsToken)}`;
     const modelLevel = mapWinkyModelToLevel(model);
     const timeoutMs = Math.max(settings.apiLlmTimeoutMs || 0, 10_000);
 

@@ -16,7 +16,7 @@ pub const DEFAULT_LOCAL_DEVICE: &str = "cpu";
 
 pub const DEFAULT_TRANSCRIPTION_MODE: &str = "api";
 pub const DEFAULT_LLM_HOST: &str = "api";
-pub const DEFAULT_AUDIO_INPUT_TYPE: &str = "mixed";
+pub const DEFAULT_AUDIO_INPUT_TYPE: &str = "microphone";
 pub const DEFAULT_STREAM_SEND_HOTKEY: &str = "~";
 pub const DEFAULT_TOGGLE_INPUT_HOTKEY: &str = "g";
 
@@ -38,6 +38,10 @@ pub const DEFAULT_BACKEND_DOMAIN: &str = BACKEND_DOMAIN_COM;
 pub const SITE_BASE_URL: &str = "https://xlartas.com";
 pub const OAUTH_APP_NAME: &str = "xexamai";
 pub const OAUTH_SCHEME: &str = "xexamai";
+pub const UPDATE_MANIFEST_URL: &str =
+    "https://s3.twcstorage.ru/324718a4-2cc5dd7a-917b-4e82-87c5-b9d5f8de16ba/xexamai/latest.json";
+pub const UPDATE_INITIAL_CHECK_DELAY_SECS: u64 = 15;
+pub const UPDATE_CHECK_INTERVAL_SECS: u64 = 60 * 60;
 // Shared install location hint for the local speech server so multiple apps reuse one copy.
 pub const FAST_WHISPER_INSTALL_ENV_VAR: &str = "WINKY_LOCAL_SPEECH_DIR";
 pub const FAST_WHISPER_INSTALL_HINT_FILE: &str = "local-speech-path.txt";

@@ -5,7 +5,7 @@ import {initializeRenderer} from './renderer';
 import {setStatus} from './ui/status';
 import {SettingsView} from './components/settings/SettingsView/SettingsView';
 import {WindowResizer} from './components/common/WindowResizer/WindowResizer';
-import {ToastContainer} from 'react-toastify';
+import {toast, ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './styles/toast.sass';
 import {AuthProvider, useAuth} from './auth';
@@ -15,6 +15,116 @@ import {ProfileView} from './components/auth/ProfileView/ProfileView';
 import {BetaFeedbackWidget} from './components/feedback/BetaFeedbackWidget';
 import {muiTheme} from './mui/config.mui';
 import {setCurrentUser} from './utils/featureAccess';
+import {listen, UnlistenFn} from '@tauri-apps/api/event';
+
+type UpdateAvailablePayload = {
+    version: string;
+    currentVersion: string;
+    fileName: string;
+};
+
+type UpdateProgressPayload = {
+    percent: number;
+    downloadedBytes: number;
+    totalBytes?: number | null;
+};
+
+type UpdateStartedPayload = {
+    version: string;
+    fileName: string;
+};
+
+type UpdateErrorPayload = {
+    message: string;
+};
+
+const UPDATE_TOAST_ID = 'xexamai-update';
+
+function formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '0 MB';
+    }
+    const mb = bytes / 1_048_576;
+    return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
+}
+
+function useUpdateNotifications() {
+    useEffect(() => {
+        let unlisteners: UnlistenFn[] = [];
+        let cancelled = false;
+
+        const register = async () => {
+            try {
+                const nextUnlisteners = await Promise.all([
+                    listen<UpdateAvailablePayload>('update-available', (event) => {
+                        toast.info(`Update ${event.payload.version} is available. Downloading...`, {
+                            toastId: UPDATE_TOAST_ID,
+                            autoClose: false,
+                        });
+                    }),
+                    listen<UpdateProgressPayload>('update-download-progress', (event) => {
+                        const {percent, downloadedBytes, totalBytes} = event.payload;
+                        const details = totalBytes
+                            ? `${percent}% (${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)})`
+                            : formatBytes(downloadedBytes);
+                        if (toast.isActive(UPDATE_TOAST_ID)) {
+                            toast.update(UPDATE_TOAST_ID, {
+                                render: `Downloading update: ${details}`,
+                                type: 'info',
+                                autoClose: false,
+                            });
+                        } else {
+                            toast.info(`Downloading update: ${details}`, {
+                                toastId: UPDATE_TOAST_ID,
+                                autoClose: false,
+                            });
+                        }
+                    }),
+                    listen<UpdateStartedPayload>('update-started', (event) => {
+                        const message = `Installing update ${event.payload.version}. XEXAMAI will close to finish setup.`;
+                        if (toast.isActive(UPDATE_TOAST_ID)) {
+                            toast.update(UPDATE_TOAST_ID, {
+                                render: message,
+                                type: 'info',
+                                autoClose: false,
+                            });
+                        } else {
+                            toast.info(message, {
+                                toastId: UPDATE_TOAST_ID,
+                                autoClose: false,
+                            });
+                        }
+                    }),
+                    listen<UpdateErrorPayload>('update-error', (event) => {
+                        const message = `Update failed: ${event.payload.message}`;
+                        if (toast.isActive(UPDATE_TOAST_ID)) {
+                            toast.update(UPDATE_TOAST_ID, {
+                                render: message,
+                                type: 'error',
+                                autoClose: 8000,
+                            });
+                        } else {
+                            toast.error(message, {autoClose: 8000});
+                        }
+                    }),
+                ]);
+                if (cancelled) {
+                    nextUnlisteners.forEach((unlisten) => void unlisten());
+                    return;
+                }
+                unlisteners = nextUnlisteners;
+            } catch (error) {
+                console.warn('[update] failed to subscribe to update events', error);
+            }
+        };
+
+        void register();
+        return () => {
+            cancelled = true;
+            unlisteners.forEach((unlisten) => void unlisten());
+        };
+    }, []);
+}
 
 function AuthenticatedApp() {
     const initializedRef = useRef(false);
@@ -290,6 +400,8 @@ function AppContent() {
 }
 
 export function App() {
+    useUpdateNotifications();
+
     return (
         <ThemeProvider theme={muiTheme}>
             <CssBaseline/>

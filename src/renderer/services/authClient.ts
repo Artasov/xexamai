@@ -16,14 +16,12 @@ export type FeatureSchema = {
 };
 
 export type TierFeatures = {
-    history: boolean;
-    promt_presets: boolean;
-    screen_processing: boolean;
+    [code: string]: boolean | number | string | null | undefined;
 };
 
 export type Tier = {
     id: number;
-    token_id: number;
+    token_id: number | null;
     name: string;
     slug: string;
     token_threshold: string;
@@ -34,11 +32,11 @@ export type Tier = {
 };
 
 export type TiersAndFeatures = {
-    token_id: number;
+    token_id: number | null;
     token_ticker: string;
     balance: string;
     tiers: Tier[];
-    active_tier: Tier;
+    active_tier: Tier | null;
     active_features: TierFeatures;
     feature_schema: FeatureSchema[];
 };
@@ -60,12 +58,14 @@ export type AuthUser = {
 export class AuthError extends Error {
     public status?: number;
     public details?: unknown;
+    public headers?: Record<string, unknown>;
 
-    constructor(message: string, status?: number, details?: unknown) {
+    constructor(message: string, status?: number, details?: unknown, headers?: Record<string, unknown>) {
         super(message);
         this.name = 'AuthError';
         this.status = status;
         this.details = details;
+        this.headers = headers;
     }
 }
 
@@ -85,37 +85,31 @@ type TokenResponsePayload = {
 function readStorage(): AuthTokens | null {
     if (typeof window === 'undefined') return null;
     try {
-        const raw = window.localStorage?.getItem(AUTH_STORAGE_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as Partial<AuthTokens> | null;
-        if (!parsed?.access) return null;
-        return {
-            access: parsed.access,
-            refresh: typeof parsed.refresh === 'string' ? parsed.refresh : null,
-        };
+        window.localStorage?.removeItem(AUTH_STORAGE_KEY);
     } catch (error) {
-        logger.warn('auth', 'Failed to read tokens from storage', {error});
-        return null;
+        logger.warn('auth', 'Failed to clear legacy token storage', {error});
     }
+    return null;
 }
 
 function writeStorage(tokens: AuthTokens | null): void {
     if (typeof window === 'undefined') return;
     try {
-        if (!tokens) {
-            window.localStorage?.removeItem(AUTH_STORAGE_KEY);
-            return;
-        }
-        window.localStorage?.setItem(
-            AUTH_STORAGE_KEY,
-            JSON.stringify({
-                access: tokens.access,
-                refresh: tokens.refresh ?? null,
-            }),
-        );
+        void tokens;
+        window.localStorage?.removeItem(AUTH_STORAGE_KEY);
     } catch (error) {
-        logger.warn('auth', 'Failed to write tokens to storage', {error});
+        logger.warn('auth', 'Failed to clear token storage', {error});
     }
+}
+
+function redactUserForLog(user: AuthUser): Record<string, unknown> {
+    return {
+        id: user.id,
+        hasEmail: Boolean(user.email),
+        tiersAndFeaturesCount: Array.isArray(user.tiers_and_features)
+            ? user.tiers_and_features.length
+            : 0,
+    };
 }
 
 function extractMessage(payload: unknown, fallback: string): string {
@@ -170,7 +164,7 @@ function normalizeError(error: unknown): AuthError {
             ? `Request failed with status ${status}`
             : 'Network request failed';
         const message = extractMessage(payload, fallback);
-        return new AuthError(message || fallback, status, payload);
+        return new AuthError(message || fallback, status, payload, error.response?.headers as Record<string, unknown>);
     }
     if (error instanceof Error) {
         return new AuthError(error.message);
@@ -232,14 +226,21 @@ export class AuthClient {
     }
 
     public async login(email: string, password: string): Promise<AuthUser> {
+        logger.info('network', 'POST /auth/login/ → start', {baseUrl: this.baseUrl, hasEmail: Boolean(email)});
         try {
             const {data} = await axios.post(`${this.baseUrl}/auth/login/`, {email, password}, {
                 headers: {...JSON_HEADERS},
             });
             const tokens = this.parseTokenResponse(data);
             this.updateTokens(tokens);
+            logger.info('network', 'POST /auth/login/ → success');
         } catch (error) {
-            throw normalizeError(error);
+            const normalized = normalizeError(error);
+            logger.error('network', 'POST /auth/login/ → error', {
+                status: normalized.status,
+                message: normalized.message,
+            });
+            throw normalized;
         }
 
         try {
@@ -262,7 +263,7 @@ export class AuthClient {
                 url: path,
                 method: 'GET',
             });
-            logger.info('auth', `${label} → success`, user);
+            logger.info('auth', `${label} → success`, redactUserForLog(user));
             return user;
         } catch (error) {
             const normalized = normalizeError(error);
@@ -286,6 +287,7 @@ export class AuthClient {
         }
 
         this.refreshPromise = (async () => {
+            logger.info('network', 'POST /auth/refresh/ → start', {baseUrl: this.baseUrl});
             try {
                 const {data} = await axios.post(`${this.baseUrl}/auth/refresh/`, {refresh: refreshToken}, {
                     headers: {...JSON_HEADERS},
@@ -294,9 +296,15 @@ export class AuthClient {
                 const tokens = this.parseTokenResponse(data);
                 this.updateTokens(tokens);
                 logger.debug('auth', 'Access token refreshed');
+                logger.info('network', 'POST /auth/refresh/ → success');
                 return tokens.access;
             } catch (error) {
-                throw normalizeError(error);
+                const normalized = normalizeError(error);
+                logger.error('network', 'POST /auth/refresh/ → error', {
+                    status: normalized.status,
+                    message: normalized.message,
+                });
+                throw normalized;
             }
         })();
 
@@ -308,6 +316,21 @@ export class AuthClient {
         } finally {
             this.refreshPromise = null;
         }
+    }
+
+    public async wsTicket(): Promise<string> {
+        const payload = await this.authenticatedRequest<TokenResponsePayload>({
+            url: '/auth/ws-ticket/',
+            method: 'POST',
+        });
+        if (typeof payload.access !== 'string' || !payload.access.trim()) {
+            throw new AuthError('Missing WebSocket ticket in response');
+        }
+        return payload.access;
+    }
+
+    public async request<T>(config: AxiosRequestConfig): Promise<T> {
+        return this.authenticatedRequest<T>(config);
     }
 
     private updateTokens(next: AuthTokens): void {
@@ -344,6 +367,8 @@ export class AuthClient {
     private async authenticatedRequest<T>(config: AxiosRequestConfig, allowRetry: boolean = true): Promise<T> {
         const baseConfig: AxiosRequestConfig = {...config};
         const headers = this.buildHeaders(baseConfig.headers, this.tokens?.access || undefined);
+        const method = (baseConfig.method || 'GET').toUpperCase();
+        const url = baseConfig.url || '';
 
         const finalConfig: AxiosRequestConfig = {
             ...baseConfig,
@@ -351,11 +376,14 @@ export class AuthClient {
             headers,
         };
 
+        logger.info('network', `${method} ${url} → start`, {baseUrl: this.baseUrl});
         try {
             const response = await axios.request<T>(finalConfig);
+            logger.info('network', `${method} ${url} → success`, {status: response.status});
             return response.data;
         } catch (error) {
             if (allowRetry && axios.isAxiosError(error) && error.response?.status === 401) {
+                logger.warn('network', `${method} ${url} → unauthorized, refreshing token`);
                 try {
                     const refreshed = await this.refreshAccessToken();
                     if (refreshed) {
@@ -366,7 +394,12 @@ export class AuthClient {
                 }
             }
 
-            throw normalizeError(error);
+            const normalized = normalizeError(error);
+            logger.error('network', `${method} ${url} → error`, {
+                status: normalized.status,
+                message: normalized.message,
+            });
+            throw normalized;
         }
     }
 }

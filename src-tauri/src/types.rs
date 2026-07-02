@@ -6,13 +6,13 @@ use serde_json::Value;
 
 use crate::constants::{
     BACKEND_DOMAIN_RU, DEFAULT_API_LLM_TIMEOUT_MS, DEFAULT_API_STT_TIMEOUT_MS,
-    DEFAULT_AUDIO_INPUT_TYPE, DEFAULT_BACKEND_DOMAIN, DEFAULT_DURATIONS,
-    DEFAULT_LLM_HOST, DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE, DEFAULT_LOCAL_LLM_MODEL,
-    DEFAULT_LOCAL_WHISPER_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
-    DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS, DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER,
-    DEFAULT_STREAM_SEND_HOTKEY, DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE,
-    DEFAULT_TRANSCRIPTION_PROMPT, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT,
-    DEFAULT_WINDOW_MIN_WIDTH, DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE, DEFAULT_WINDOW_WIDTH,
+    DEFAULT_AUDIO_INPUT_TYPE, DEFAULT_BACKEND_DOMAIN, DEFAULT_DURATIONS, DEFAULT_LLM_HOST,
+    DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE, DEFAULT_LOCAL_LLM_MODEL, DEFAULT_LOCAL_WHISPER_MODEL,
+    DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL, DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS,
+    DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER, DEFAULT_STREAM_SEND_HOTKEY,
+    DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE, DEFAULT_TRANSCRIPTION_PROMPT,
+    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH,
+    DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE, DEFAULT_WINDOW_WIDTH,
 };
 
 const VALID_LOCAL_DEVICES: &[&str] = &["auto", "cpu", "cuda", "metal", "gpu"];
@@ -234,7 +234,8 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn normalize(&mut self) {
-        if self.backend_domain != DEFAULT_BACKEND_DOMAIN && self.backend_domain != BACKEND_DOMAIN_RU {
+        if self.backend_domain != DEFAULT_BACKEND_DOMAIN && self.backend_domain != BACKEND_DOMAIN_RU
+        {
             self.backend_domain = default_backend_domain();
         }
 
@@ -249,7 +250,10 @@ impl AppConfig {
             self.toggle_input_hotkey = DEFAULT_TOGGLE_INPUT_HOTKEY.to_string();
         }
 
-        if !matches!(self.audio_input_type.as_str(), "microphone" | "system" | "mixed") {
+        if !matches!(
+            self.audio_input_type.as_str(),
+            "microphone" | "system" | "mixed"
+        ) {
             self.audio_input_type = DEFAULT_AUDIO_INPUT_TYPE.to_string();
         }
 
@@ -334,11 +338,8 @@ fn ensure_duration_hotkeys(map: &mut BTreeMap<u32, String>, durations: &[u32]) {
     }
     let mut fallback_iter = (b'1'..=b'9').map(|b| (b as char).to_string());
     for duration in durations {
-        map.entry(*duration).or_insert_with(|| {
-            fallback_iter
-                .next()
-                .unwrap_or_else(|| duration.to_string())
-        });
+        map.entry(*duration)
+            .or_insert_with(|| fallback_iter.next().unwrap_or_else(|| duration.to_string()));
     }
 }
 
@@ -357,11 +358,15 @@ pub enum AuthDeepLinkPayload {
         provider: String,
         tokens: AuthTokensPayload,
         #[serde(default)]
+        state: Option<String>,
+        #[serde(default)]
         user: Option<Value>,
     },
     Error {
         provider: String,
         error: String,
+        #[serde(default)]
+        state: Option<String>,
     },
 }
 

@@ -3,6 +3,7 @@ import {getCurrentWindow, LogicalPosition, LogicalSize,} from '@tauri-apps/api/w
 import {
     AssistantAPI,
     AuthDeepLinkPayload,
+    AuthMethodsResponse,
     FastWhisperStatus,
     ScreenProcessRequest,
     ScreenProcessResponse,
@@ -132,6 +133,10 @@ const settingsApi: AssistantAPI['settings'] = {
     openConfigFolder: async () => {
         await invoke('open_config_folder');
     },
+    openLogsFolder: async () => {
+        await invoke('open_app_logs_folder');
+    },
+    getLogPath: () => invoke<string>('app_log_path'),
     setScreenProcessingModel: makeSettingSetter('screenProcessingModel'),
     setScreenProcessingPrompt: makeSettingSetter('screenProcessingPrompt'),
     setScreenProcessingTimeoutMs: makeSettingSetter('screenProcessingTimeoutMs'),
@@ -248,6 +253,7 @@ const googleApi: AssistantAPI['google'] = {
 };
 
 const authApi: AssistantAPI['auth'] = {
+    getMethods: () => invoke<AuthMethodsResponse>('auth_get_methods'),
     startOAuth: (provider) => invoke('auth_start_oauth', {provider}),
     onOAuthPayload: (cb) => {
         authListeners.add(cb);
@@ -306,12 +312,24 @@ const api: AssistantAPI = {
     log: async (entry) => {
         const prefix = `[${entry.category}] ${entry.message}`;
         const data = entry.data;
+        const consoleMethod = entry.level === 'error'
+            ? console.error
+            : entry.level === 'warn'
+                ? console.warn
+                : entry.level === 'debug'
+                    ? console.debug
+                    : console.info;
         if (data && typeof data === 'object' && Object.keys(data).length > 0) {
             console.groupCollapsed(prefix);
-            console.log(data);
+            consoleMethod(data);
             console.groupEnd();
         } else {
-            console.info(prefix);
+            consoleMethod(prefix);
+        }
+        try {
+            await invoke('log_frontend', {entry});
+        } catch (error) {
+            console.warn('[logger] failed to write frontend log', error);
         }
     },
 };

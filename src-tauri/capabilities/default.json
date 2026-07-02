@@ -25,7 +25,6 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
-    "shell:allow-open",
     "deep-link:default",
     {
       "identifier": "http:default",

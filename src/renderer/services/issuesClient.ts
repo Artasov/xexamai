@@ -1,6 +1,5 @@
-import axios from 'axios';
-import {resolveAuthApiBaseUrl} from '@shared/appUrls';
-import {authClient} from './authClient';
+import {AuthError, authClient} from './authClient';
+import {uploadMediaFile} from './mediaClient';
 
 export type IssueReportPayload = {
     subject: string;
@@ -20,39 +19,33 @@ function buildMessage(payload: IssueReportPayload): string {
 }
 
 export async function submitIssueReport(payload: IssueReportPayload): Promise<void> {
-    const baseUrl = resolveAuthApiBaseUrl();
-    const formData = new FormData();
-    formData.append('subject', payload.subject.trim());
-    formData.append('message', buildMessage(payload));
-    payload.files.forEach((file) => {
-        formData.append('files', file);
-    });
-
-    const tokens = authClient.getTokens();
-    const headers: Record<string, string> = {
-        Accept: 'application/json',
-    };
-
-    if (tokens?.access) {
-        headers.Authorization = `Bearer ${tokens.access}`;
-    }
-
     try {
-        await axios.post(`${baseUrl}/issues/create/`, formData, {
-            headers: {
-                ...headers,
-                'Content-Type': 'multipart/form-data',
+        const mediaFiles = await Promise.all(payload.files.map((file) => {
+            return uploadMediaFile(file, {
+                namespace: 'issues',
+                visibility: 'private',
+                fileName: file.name,
+                contentType: file.type,
+            });
+        }));
+        await authClient.request({
+            url: '/issues/create/media/',
+            method: 'POST',
+            data: {
+                subject: payload.subject.trim(),
+                message: buildMessage(payload),
+                media_file_ids: mediaFiles.map((file) => file.id),
             },
         });
     } catch (error) {
-        if (axios.isAxiosError(error)) {
-            const status = error.response?.status;
-            const message =
-                (typeof error.response?.data === 'string' && error.response.data) ||
-                error.response?.statusText ||
-                error.message ||
-                'Failed to submit the report.';
-            throw new Error(status ? `${message} (status ${status})` : message);
+        if (error instanceof AuthError) {
+            const retryAfter = error.headers?.['retry-after'];
+            const retryText = retryAfter ? ` Retry after ${retryAfter} second(s).` : '';
+            throw new Error(
+                error.status
+                    ? `${error.message} (status ${error.status}).${retryText}`
+                    : error.message,
+            );
         }
         throw error instanceof Error ? error : new Error('Failed to submit the report.');
     }

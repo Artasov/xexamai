@@ -103,6 +103,18 @@ async function startNativeRecording(): Promise<void> {
         await startAudioCapture(source, deviceId);
         logger.info('audioSession', 'Native audio capture started successfully', {source, inputType});
     } catch (error) {
+        if (source === 'mixed') {
+            logger.warn('audioSession', 'Mixed capture failed, retrying with microphone only', {
+                error: error instanceof Error ? error.message : String(error),
+                deviceId,
+            });
+            try {
+                await stopAudioCapture();
+            } catch {
+            }
+            await fallbackToMicrophone(deviceId, error);
+            return;
+        }
         logger.error('recording', 'Failed to start native capture', {error});
         const description =
             error instanceof Error
@@ -113,6 +125,22 @@ async function startNativeRecording(): Promise<void> {
     }
 }
 
+async function fallbackToMicrophone(deviceId: string | undefined, originalError: unknown): Promise<void> {
+    audioSessionState.currentAudioInputType = 'microphone';
+    settingsStore.patch({audioInputType: 'microphone'});
+    try {
+        await window.api.settings.setAudioInputType('microphone');
+    } catch {
+    }
+
+    await startAudioCapture('mic', deviceId);
+    logger.info('audioSession', 'Microphone fallback started after mixed capture failure', {
+        deviceId,
+        originalError: originalError instanceof Error ? originalError.message : String(originalError),
+    });
+    setStatus('System audio unavailable. Switched to microphone only.', 'ready');
+}
+
 export async function stopRecording(): Promise<void> {
     logger.info('recording', 'Stopping recording');
 
@@ -121,16 +149,7 @@ export async function stopRecording(): Promise<void> {
         audioUnsubscribe = null;
     }
 
-    const inputType = audioSessionState.currentAudioInputType;
-    if (inputType === 'system' || inputType === 'mixed') {
-        // For system and mixed stop only mic capture if it was running
-        if (inputType === 'mixed') {
-            await stopAudioCapture();
-        }
-    } else {
-        // For mic stop the native Rust capture
-        await stopAudioCapture();
-    }
+    await stopAudioCapture();
 
     audioSessionState.currentStream = null;
     await cleanupAudioGraph();

@@ -1,34 +1,37 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio;
+mod app_log;
 mod auth;
 mod config;
 mod constants;
 mod hotkeys;
 mod local_speech;
-mod audio;
 mod oauth;
 mod ollama;
-mod tray;
 mod transcription;
+mod tray;
 mod types;
+mod update;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use audio::AudioManager;
 use auth::AuthQueue;
 use config::ConfigState;
 use constants::{
-    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH, DEFAULT_WINDOW_WIDTH,
+    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH,
+    DEFAULT_WINDOW_WIDTH,
 };
 use hotkeys::HotkeyManager;
 use local_speech::FastWhisperManager;
-use audio::AudioManager;
 use once_cell::sync::Lazy;
 use tauri::LogicalSize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
-use types::{AppConfig, AuthDeepLinkPayload, FastWhisperStatus};
 use tray::set_tray_visible;
+use types::{AppConfig, AuthDeepLinkPayload, FastWhisperStatus};
 
 static PENDING_DEEP_LINKS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
@@ -50,8 +53,8 @@ unsafe extern "system" fn force_arrow_cursor_wndproc(
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallWindowProcW, DefWindowProcW, GWLP_WNDPROC, IDC_ARROW, LoadCursorW, SetCursor, SetWindowLongPtrW,
-        WM_NCDESTROY, WM_SETCURSOR, WNDPROC,
+        CallWindowProcW, DefWindowProcW, LoadCursorW, SetCursor, SetWindowLongPtrW, GWLP_WNDPROC,
+        IDC_ARROW, WM_NCDESTROY, WM_SETCURSOR, WNDPROC,
     };
 
     if msg == WM_SETCURSOR {
@@ -94,8 +97,8 @@ unsafe extern "system" fn force_arrow_cursor_wndproc(
 
 #[cfg(target_os = "windows")]
 fn install_force_default_cursor(window: &tauri::WebviewWindow) {
-    use windows::Win32::Foundation::{GetLastError, HWND, SetLastError, WIN32_ERROR};
-    use windows::Win32::UI::WindowsAndMessaging::{GWLP_WNDPROC, SetWindowLongPtrW};
+    use windows::Win32::Foundation::{GetLastError, SetLastError, HWND, WIN32_ERROR};
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_WNDPROC};
 
     let Ok(raw_hwnd) = window.hwnd() else {
         return;
@@ -112,11 +115,20 @@ fn install_force_default_cursor(window: &tauri::WebviewWindow) {
     }
 
     unsafe { SetLastError(WIN32_ERROR(0)) };
-    let previous = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, force_arrow_cursor_wndproc as usize as isize) };
+    let previous = unsafe {
+        SetWindowLongPtrW(
+            hwnd,
+            GWLP_WNDPROC,
+            force_arrow_cursor_wndproc as usize as isize,
+        )
+    };
     if previous == 0 {
         let error = unsafe { GetLastError() };
         if error.0 != 0 {
-            eprintln!("[window] failed to install cursor override hook: {}", error.0);
+            eprintln!(
+                "[window] failed to install cursor override hook: {}",
+                error.0
+            );
             return;
         }
     }
@@ -138,7 +150,15 @@ async fn config_update(
     hotkeys: State<'_, Arc<HotkeyManager>>,
     payload: serde_json::Value,
 ) -> Result<AppConfig, String> {
-    let apply_window_size = payload.get("windowWidth").is_some() || payload.get("windowHeight").is_some();
+    let apply_window_size =
+        payload.get("windowWidth").is_some() || payload.get("windowHeight").is_some();
+    log::info!(
+        target: "config",
+        "config_update command: keys={:?}",
+        payload
+            .as_object()
+            .map(|value| value.keys().cloned().collect::<Vec<_>>())
+    );
     let updated = state
         .update(payload)
         .await
@@ -155,10 +175,7 @@ async fn config_reset(
     state: State<'_, Arc<ConfigState>>,
     hotkeys: State<'_, Arc<HotkeyManager>>,
 ) -> Result<AppConfig, String> {
-    let updated = state
-        .reset()
-        .await
-        .map_err(|error| error.to_string())?;
+    let updated = state.reset().await.map_err(|error| error.to_string())?;
     app.emit("config:updated", &updated)
         .map_err(|error| error.to_string())?;
     handle_config_effects(&app, &updated, hotkeys.inner().clone(), true);
@@ -179,6 +196,66 @@ async fn open_config_folder(
     tauri_plugin_opener::OpenerExt::opener(&app)
         .open_path(dir.to_string_lossy(), None::<String>)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn app_log_path() -> Result<String, String> {
+    app_log::current_log_path().map(|path| path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn open_app_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = app_log::current_log_dir()?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<String>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn log_frontend(entry: serde_json::Value) -> Result<(), String> {
+    let level = entry
+        .get("level")
+        .and_then(|value| value.as_str())
+        .unwrap_or("info")
+        .trim()
+        .to_lowercase();
+    let category = entry
+        .get("category")
+        .and_then(|value| value.as_str())
+        .unwrap_or("renderer")
+        .trim()
+        .to_string();
+    let message = entry
+        .get("message")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let data = entry.get("data").cloned().unwrap_or(serde_json::Value::Null);
+    let data_text = if data.is_null() {
+        String::new()
+    } else {
+        let text = serde_json::to_string(&data).unwrap_or_else(|_| "<unserializable>".to_string());
+        format!(" data={}", truncate_log_value(&text, 4000))
+    };
+    let line = format!("[{category}] {message}{data_text}");
+
+    match level.as_str() {
+        "error" => log::error!(target: "frontend", "{line}"),
+        "warn" | "warning" => log::warn!(target: "frontend", "{line}"),
+        "debug" => log::debug!(target: "frontend", "{line}"),
+        _ => log::info!(target: "frontend", "{line}"),
+    }
+    Ok(())
+}
+
+fn truncate_log_value(value: &str, max_len: usize) -> String {
+    if value.chars().count() <= max_len {
+        return value.to_string();
+    }
+    let truncated = value.chars().take(max_len).collect::<String>();
+    format!("{truncated}...<truncated>")
 }
 
 #[tauri::command]
@@ -206,18 +283,70 @@ async fn auth_consume_pending(
 }
 
 #[tauri::command]
+async fn auth_get_methods(
+    config: State<'_, Arc<ConfigState>>,
+) -> Result<oauth::AuthMethods, String> {
+    let cfg = config.get().await;
+    log::info!(
+        target: "auth",
+        "auth_get_methods command: backend_domain={}",
+        cfg.backend_domain
+    );
+    oauth::load_auth_methods(Some(cfg.backend_domain.as_str()))
+        .await
+        .map_err(|error| {
+            log::error!(target: "auth", "auth_get_methods failed: {error}");
+            error.to_string()
+        })
+}
+
+#[tauri::command]
 async fn auth_start_oauth(
     app: tauri::AppHandle,
-    state: State<'_, Arc<ConfigState>>,
+    config: State<'_, Arc<ConfigState>>,
+    queue: State<'_, Arc<AuthQueue>>,
     provider: String,
 ) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    let cfg = state.get().await;
-    let url = oauth::build_oauth_start_url(&provider, Some(cfg.backend_domain.as_str()))
-        .map_err(|error| error.to_string())?;
+    let cfg = config.get().await;
+    let provider = provider.trim().to_lowercase();
+    log::info!(
+        target: "auth",
+        "auth_start_oauth command: provider={} backend_domain={}",
+        provider,
+        cfg.backend_domain
+    );
+    if !oauth::is_supported_provider(&provider) {
+        log::warn!(target: "auth", "Unsupported OAuth provider requested: {provider}");
+        return Err(format!("Unsupported OAuth provider: {provider}"));
+    }
+    let methods = oauth::load_auth_methods(Some(cfg.backend_domain.as_str()))
+        .await
+        .map_err(|error| {
+            log::error!(target: "auth", "Failed to load auth methods before OAuth start: {error}");
+            error.to_string()
+        })?;
+    if !oauth::provider_is_allowed(&methods, &provider) {
+        log::warn!(
+            target: "auth",
+            "OAuth provider blocked: provider={} country={} allowed={:?}",
+            provider,
+            methods.country_code,
+            methods.allowed_oauth_providers
+        );
+        return Err("OAuth provider is not available for your region".to_string());
+    }
+    let oauth_state = queue.start_state(&provider).await;
+    let url =
+        oauth::build_oauth_start_url(&provider, Some(cfg.backend_domain.as_str()), &oauth_state)
+            .map_err(|error| error.to_string())?;
+    log::info!(target: "auth", "Opening OAuth URL: provider={provider}");
     app.opener()
         .open_url(url, None::<String>)
-        .map_err(|error| error.to_string())
+        .map_err(|error| {
+            log::error!(target: "auth", "Failed to open OAuth URL: provider={} error={}", provider, error);
+            error.to_string()
+        })
 }
 
 #[tauri::command]
@@ -284,10 +413,7 @@ async fn local_speech_stop(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
 ) -> Result<FastWhisperStatus, String> {
-    manager
-        .stop(&app)
-        .await
-        .map_err(|error| error.to_string())
+    manager.stop(&app).await.map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -331,7 +457,9 @@ async fn ollama_warmup_model(model: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn audio_list_devices(manager: State<'_, Arc<AudioManager>>) -> Result<Vec<audio::AudioDeviceInfo>, String> {
+async fn audio_list_devices(
+    manager: State<'_, Arc<AudioManager>>,
+) -> Result<Vec<audio::AudioDeviceInfo>, String> {
     manager.list_devices().map_err(|e| e.to_string())
 }
 
@@ -342,7 +470,9 @@ async fn audio_start_capture(
     source: String,
     device_id: Option<String>,
 ) -> Result<(), String> {
-    manager.start(app, &source, device_id).map_err(|e| e.to_string())
+    manager
+        .start(app, &source, device_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -408,22 +538,23 @@ fn handle_config_effects(
     }
 }
 
-fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_size: bool) -> Result<(), String> {
+fn apply_window_preferences(
+    app: &AppHandle,
+    config: &AppConfig,
+    apply_window_size: bool,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         let scale = config.window_scale.clamp(0.5, 3.0);
-        
+
         // Применяем размер окна БЕЗ масштабирования
         // Масштабирование контента происходит через CSS font-size на html
         if apply_window_size {
-            let base_width = config
-                .window_width
-                .max(DEFAULT_WINDOW_MIN_WIDTH)
-                .min(4000) as f64;
+            let base_width = config.window_width.max(DEFAULT_WINDOW_MIN_WIDTH).min(4000) as f64;
             let base_height = config
                 .window_height
                 .max(DEFAULT_WINDOW_MIN_HEIGHT)
                 .min(4000) as f64;
-            
+
             // Используем базовый размер окна без масштабирования
             window
                 .set_size(LogicalSize::new(base_width, base_height))
@@ -435,7 +566,7 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                 )))
                 .map_err(|error| error.to_string())?;
         }
-        
+
         window
             .set_always_on_top(config.always_on_top)
             .map_err(|error| error.to_string())?;
@@ -446,9 +577,9 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                 .map_err(|error| error.to_string())?;
         }
         set_tray_visible(!config.hide_app);
-        
+
         window.show().map_err(|error| error.to_string())?;
-        
+
         // Применяем opacity и скрытие от записи экрана (Windows) после показа окна
         #[cfg(target_os = "windows")]
         {
@@ -462,12 +593,13 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                     if let Ok(hwnd) = w.hwnd() {
                         use windows::Win32::Foundation::HWND;
                         use windows::Win32::UI::WindowsAndMessaging::{
-                            SetWindowDisplayAffinity, SetLayeredWindowAttributes, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
-                            GWL_EXSTYLE, WS_EX_LAYERED, LWA_ALPHA, GetWindowLongPtrW, SetWindowLongPtrW
+                            GetWindowLongPtrW, SetLayeredWindowAttributes,
+                            SetWindowDisplayAffinity, SetWindowLongPtrW, GWL_EXSTYLE, LWA_ALPHA,
+                            WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WS_EX_LAYERED,
                         };
-                        
+
                         let hwnd_handle = HWND(hwnd.0);
-                        
+
                         // Применяем opacity через SetLayeredWindowAttributes
                         let alpha = ((opacity_value as f32 / 100.0) * 255.0) as u8;
                         unsafe {
@@ -476,13 +608,19 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                             let layered_flag = WS_EX_LAYERED.0 as isize;
                             SetWindowLongPtrW(hwnd_handle, GWL_EXSTYLE, ex_style | layered_flag);
                             // Устанавливаем opacity
-                            let _ = SetLayeredWindowAttributes(hwnd_handle, windows::Win32::Foundation::COLORREF(0), alpha, LWA_ALPHA);
+                            let _ = SetLayeredWindowAttributes(
+                                hwnd_handle,
+                                windows::Win32::Foundation::COLORREF(0),
+                                alpha,
+                                LWA_ALPHA,
+                            );
                         }
-                        
+
                         // Применяем скрытие от записи экрана
                         unsafe {
                             if hide_app_value {
-                                let _ = SetWindowDisplayAffinity(hwnd_handle, WDA_EXCLUDEFROMCAPTURE);
+                                let _ =
+                                    SetWindowDisplayAffinity(hwnd_handle, WDA_EXCLUDEFROMCAPTURE);
                             } else {
                                 let _ = SetWindowDisplayAffinity(hwnd_handle, WDA_NONE);
                             }
@@ -491,7 +629,7 @@ fn apply_window_preferences(app: &AppHandle, config: &AppConfig, apply_window_si
                 }
             });
         }
-        
+
         // Применяем scale через CSS переменную и font-size на html
         // Это масштабирует все элементы, использующие rem единицы
         let scale_script = format!(
@@ -556,17 +694,24 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 fn main() {
+    if let Err(error) = app_log::init() {
+        eprintln!("App logger initialization failed: {error}");
+    }
+    log::info!(target: "app", "Starting XEXAMAI");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            log::info!(target: "deep-link", "Single instance activation: args={:?}", args);
             if let Some(url) = args.into_iter().find(|arg| arg.starts_with("xexamai://")) {
+                log::info!(target: "deep-link", "Single instance received deep link");
                 if let Some(state) = app.try_state::<Arc<AuthQueue>>() {
                     dispatch_deep_link(app, state.inner().clone(), url);
                 } else {
+                    log::warn!(target: "deep-link", "AuthQueue is not ready; queueing pending deep link");
                     PENDING_DEEP_LINKS.lock().unwrap().push(url);
                 }
             } else {
@@ -576,9 +721,18 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let app_handle = app.handle();
-            let config_state =
-                Arc::new(tauri::async_runtime::block_on(ConfigState::initialize(&app_handle))?);
+            ensure_deep_links_registered(&app_handle);
+            let config_state = Arc::new(tauri::async_runtime::block_on(ConfigState::initialize(
+                &app_handle,
+            ))?);
             let initial_config = tauri::async_runtime::block_on(config_state.get());
+            log::info!(
+                target: "app",
+                "Config loaded: backend_domain={} transcription_mode={} llm_host={}",
+                initial_config.backend_domain,
+                initial_config.transcription_mode,
+                initial_config.llm_host
+            );
 
             let hotkeys = Arc::new(HotkeyManager::new());
             let fast_whisper = Arc::new(FastWhisperManager::new());
@@ -595,6 +749,7 @@ fn main() {
             handle_config_effects(&app_handle, &initial_config, hotkeys, true);
             flush_pending_deep_links(&app_handle, auth_queue.clone());
             setup_deep_link_listener(&app_handle, auth_queue);
+            update::start_update_poll(app_handle.clone());
 
             if let Some(main_window) = app.get_webview_window("main") {
                 #[cfg(target_os = "windows")]
@@ -617,9 +772,13 @@ fn main() {
             config_reset,
             config_path,
             open_config_folder,
+            app_log_path,
+            open_app_logs_folder,
+            log_frontend,
             open_external_url,
             ollama_http_request,
             auth_consume_pending,
+            auth_get_methods,
             auth_start_oauth,
             local_speech_get_status,
             local_speech_check_health,
@@ -636,6 +795,7 @@ fn main() {
             audio_list_devices,
             audio_start_capture,
             audio_stop_capture,
+            update::check_app_update,
             transcription::transcribe_audio,
         ])
         .run(tauri::generate_context!())
@@ -644,6 +804,13 @@ fn main() {
 
 fn flush_pending_deep_links(app: &AppHandle, queue: Arc<AuthQueue>) {
     let mut pending = PENDING_DEEP_LINKS.lock().unwrap();
+    if !pending.is_empty() {
+        log::info!(
+            target: "deep-link",
+            "Flushing pending deep links: count={}",
+            pending.len()
+        );
+    }
     for url in pending.drain(..) {
         dispatch_deep_link(app, queue.clone(), url);
     }
@@ -651,19 +818,43 @@ fn flush_pending_deep_links(app: &AppHandle, queue: Arc<AuthQueue>) {
 
 fn setup_deep_link_listener(app: &AppHandle, queue: Arc<AuthQueue>) {
     if let Ok(Some(urls)) = app.deep_link().get_current() {
+        log::info!(
+            target: "deep-link",
+            "Current deep links found at startup: count={}",
+            urls.len()
+        );
         for url in urls {
             dispatch_deep_link(app, queue.clone(), url.to_string());
         }
+    } else {
+        log::info!(target: "deep-link", "No current deep link at startup");
     }
     let queue_listener = queue.clone();
     let app_listener = app.clone();
     app.deep_link().on_open_url(move |event| {
-        for url in event.urls() {
+        let urls = event.urls();
+        log::info!(
+            target: "deep-link",
+            "Deep link open event: count={}",
+            urls.len()
+        );
+        for url in urls {
             dispatch_deep_link(&app_listener, queue_listener.clone(), url.to_string());
         }
     });
 }
 
 fn dispatch_deep_link(app: &AppHandle, queue: Arc<AuthQueue>, url: String) {
+    log::info!(target: "deep-link", "Dispatching deep link to auth handler");
     tauri::async_runtime::spawn(auth::handle_deep_link(app.clone(), queue, url));
+}
+
+fn ensure_deep_links_registered(app: &AppHandle) {
+    match app.deep_link().register_all() {
+        Ok(()) => log::info!(target: "deep-link", "Deep link schemes registered"),
+        Err(error) => {
+            log::error!(target: "deep-link", "Failed to register deep link schemes: {error}");
+            eprintln!("[deep-link] failed to register schemes: {error}");
+        }
+    }
 }
