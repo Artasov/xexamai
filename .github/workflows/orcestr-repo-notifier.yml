@@ -1,0 +1,70 @@
+name: Repo update to Telegram
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What should Codex write about?
+        required: true
+        type: string
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: Artasov/orcestr-repo-notifier@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          telegram-message-thread-id: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
+          telegram-parse-mode: HTML
+          custom-task: ${{ github.event.inputs.task }}
+          mode: product
+          language: en
+          model: gpt-5.5
+          effort: medium
+          custom-prompt: |
+            Write in English.
+            Return only the final Telegram message text. Do not explain the format.
+            These style and format rules apply to both automatic push updates and manual workflow tasks.
+            Automatic push updates are for meaningful XEXAMAI product or project progress that subscribers or stakeholders should know about.
+            For automatic push updates: output exactly ORCESTR_NOTIFY_SKIP only when the whole push is formatting-only: Prettier autofix, import sorting, whitespace cleanup, generated file reformatting, lockfile-only churn without behavior impact, or equivalent mechanical cleanup with no semantic, configuration, documentation, workflow, security, reliability, or behavior change.
+            Do not skip meaningful CI/CD, workflow, repo notifier, docs, internal tooling, reliability, security, auth, backend integration, desktop packaging, transcription, AI, audio, UX, or maintenance changes. Mention them concretely as project progress when they matter.
+            If many changes are one repeated type of work, group them into one concise bullet instead of spreading the same idea across multiple bullets.
+            Use exactly this message structure:
+            First line: DEV UPDATE <b>XEXAMAI</b>:
+            For automatic push updates, second line: Stats: <commit_count> commits, +<added_lines>/-<deleted_lines> lines.
+            Use the exact commit count, added line count, and deleted line count from the Change Stats section in context.
+            For manual workflow tasks, include the Stats line only if the task asks for change stats.
+            Then 3-5 bullet lines. Every bullet line must start with "- ".
+            Then one short closing line after a blank line.
+            After the closing line, always add exactly these two final link lines:
+            Open: https://artasov.github.io/xexamai/
+            Channel: https://t.me/xexamai
+            If the push is a new XEXAMAI app release or version bump, make the first bullet start with "- New release:" and include the exact version, for example <b>XEXAMAI v2.3.0</b>.
+            The closing line can be a thank-you, a light call to try something, or a useful note. Make it different and relevant each time. Do not use all closing styles at once.
+            Do not ask users to re-test, wait for a next fix, check release-readiness, or do follow-up work unless the manual task explicitly asks for it or the change context explicitly proves it is needed.
+            Do not write filler bullets like "No visible app behavior changed". Either state the concrete project impact or skip only if it is formatting-only.
+            Do not use Markdown headings, code fences, numbered lists, or plain paragraph lines for the update items.
+            Telegram HTML parse mode is enabled. Use <b>...</b> sparingly for the first-line product name and 1-2 genuinely important accents, such as the app name, release version, authentication, audio, transcription, packaging, or backend integration.
+            Do not use colors, spans, inline styles, unsupported HTML tags, decorative formatting, or raw angle-bracket placeholders in the final message.
+            Do not include repository owner, repository name, branch name, author name, commit hashes, raw file lists, compare links, or any GitHub URL.
+            Do not add a final "Compare:" line.
+            Write a short Telegram update for subscribers.
+            Explain what changed in the product, not just what changed in code.
+            Focus on visible product progress, user-facing improvements, stability, speed, UX, auth reliability, audio reliability, AI quality, local model support, or maintainability.
+            If something is technically interesting, mention it briefly in plain English without jargon.
+            Keep every bullet concise and readable in Telegram.
