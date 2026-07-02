@@ -42,6 +42,9 @@ function normalizeAuthError(error: unknown): AuthError {
     return new AuthError(String(error ?? 'Unknown error'));
 }
 
+const shouldClearAuthTokens = (error: AuthError): boolean =>
+    error.status === 400 || error.status === 401 || error.status === 403;
+
 async function loadProfile(): Promise<AuthUser> {
     return authClient.getCurrentUser(true);
 }
@@ -49,9 +52,12 @@ async function loadProfile(): Promise<AuthUser> {
 const applyUnauthenticated = (
     setStatus: (status: AuthStatus) => void,
     setUser: (user: AuthUser | null) => void,
-    setError: (error: string | null) => void
+    setError: (error: string | null) => void,
+    options: {clearTokens?: boolean} = {}
 ) => {
-    authClient.clearTokens();
+    if (options.clearTokens ?? true) {
+        authClient.clearTokens();
+    }
     setUser(null);
     setStatus('unauthenticated');
     setError(null);
@@ -86,7 +92,9 @@ export function AuthProvider({children}: AuthProviderProps) {
                     error: normalized.message,
                     status: normalized.status
                 });
-                applyUnauthenticated(setStatus, setUser, setError);
+                applyUnauthenticated(setStatus, setUser, setError, {
+                    clearTokens: shouldClearAuthTokens(normalized),
+                });
             }
         };
 
@@ -134,7 +142,9 @@ export function AuthProvider({children}: AuthProviderProps) {
                         if (cancelled) return;
                         const normalized = normalizeAuthError(err);
                         logger.warn('auth', 'OAuth profile fetch failed', {error: normalized.message});
-                        applyUnauthenticated(setStatus, setUser, setError);
+                        applyUnauthenticated(setStatus, setUser, setError, {
+                            clearTokens: shouldClearAuthTokens(normalized),
+                        });
                         setError(normalized.message);
                     });
             } else {
@@ -222,7 +232,9 @@ export function AuthProvider({children}: AuthProviderProps) {
         } catch (err) {
             const normalized = normalizeAuthError(err);
             logger.warn('auth', 'Failed to reload user', {error: normalized.message, status: normalized.status});
-            authClient.clearTokens();
+            if (shouldClearAuthTokens(normalized)) {
+                authClient.clearTokens();
+            }
             setUser(null);
             setStatus('unauthenticated');
             setError(normalized.message);
