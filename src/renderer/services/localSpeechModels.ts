@@ -1,16 +1,39 @@
 // noinspection JSUnusedGlobalSymbols
 
-import axios, {AxiosInstance} from 'axios';
+import axios from 'axios';
 import {FAST_WHISPER_BASE_URL, LOCAL_TRANSCRIBE_ALIASES, LOCAL_TRANSCRIBE_MODEL_DETAILS,} from '@shared/constants';
+import {settingsStore} from '../state/settingsStore';
+import {beginNativeRendererActivity} from '../state/rendererActivity';
 
 const MODELS_DOWNLOAD_ENDPOINT = '/v1/models/download';
 const MODELS_WARMUP_ENDPOINT = '/v1/models/warmup';
 const MODELS_EXISTS_ENDPOINT = '/download/model/exists';
 
-const localSpeechClient: AxiosInstance = axios.create({
-    baseURL: FAST_WHISPER_BASE_URL,
-    timeout: 10000,
-});
+const resolveBaseUrl = async (): Promise<string> => {
+    try {
+        const status = await window.api?.localSpeech?.getStatus();
+        const dynamic = status?.baseUrl?.trim().replace(/\/$/, '');
+        if (dynamic) return dynamic;
+    } catch {
+    }
+    return FAST_WHISPER_BASE_URL;
+};
+
+const resolveDevice = async (): Promise<'auto' | 'cpu' | 'cuda'> => {
+    try {
+        let settings;
+        try {
+            settings = settingsStore.get();
+        } catch {
+            settings = await settingsStore.load();
+        }
+        const device = settings.localDevice?.toLowerCase();
+        if (device === 'cpu') return 'cpu';
+        if (device === 'cuda' || device === 'gpu') return 'cuda';
+    } catch {
+    }
+    return 'auto';
+};
 
 type WarmupListener = (models: Set<string>) => void;
 
@@ -103,12 +126,18 @@ export const checkLocalModelDownloaded = async (
     }
 
     try {
-        const {data} = await localSpeechClient.get<{ exists: boolean }>(MODELS_EXISTS_ENDPOINT, {
-            params: {model: normalized},
-        });
-        const exists = Boolean(data?.exists);
-        modelCache.set(normalized, exists);
-        return exists;
+        const releaseActivity = await beginNativeRendererActivity('Checking local speech model');
+        try {
+            const {data} = await axios.get<{ exists: boolean }>(`${await resolveBaseUrl()}${MODELS_EXISTS_ENDPOINT}`, {
+                params: {model: normalized},
+                timeout: 10_000,
+            });
+            const exists = Boolean(data?.exists);
+            modelCache.set(normalized, exists);
+            return exists;
+        } finally {
+            await releaseActivity();
+        }
     } catch (error) {
         console.error('[localSpeechModels] failed to verify model via HTTP', error);
         modelCache.set(normalized, false);
@@ -121,16 +150,21 @@ export const downloadLocalSpeechModel = async (model: string): Promise<LocalMode
     if (!normalized) {
         throw new Error('Model name is missing.');
     }
-    const {data} = await localSpeechClient.post<LocalModelDownloadResponse>(
-        MODELS_DOWNLOAD_ENDPOINT,
-        {model: normalized},
-        {
-            headers: {'Content-Type': 'application/json'},
-            timeout: 30 * 60 * 1000,
-        },
-    );
-    modelCache.set(normalized, true);
-    return data;
+    const releaseActivity = await beginNativeRendererActivity('Downloading local speech model');
+    try {
+        const {data} = await axios.post<LocalModelDownloadResponse>(
+            `${await resolveBaseUrl()}${MODELS_DOWNLOAD_ENDPOINT}`,
+            {model: normalized},
+            {
+                headers: {'Content-Type': 'application/json'},
+                timeout: 30 * 60 * 1000,
+            },
+        );
+        modelCache.set(normalized, true);
+        return data;
+    } finally {
+        await releaseActivity();
+    }
 };
 
 export const warmupLocalSpeechModel = async (
@@ -145,10 +179,12 @@ export const warmupLocalSpeechModel = async (
     }
     warmupModels.add(normalized);
     notifyWarmup();
+    let releaseActivity: (() => Promise<void>) | null = null;
     try {
-        const {data} = await localSpeechClient.post<LocalModelWarmupResponse>(
-            MODELS_WARMUP_ENDPOINT,
-            {model: normalized},
+        releaseActivity = await beginNativeRendererActivity('Warming local speech model');
+        const {data} = await axios.post<LocalModelWarmupResponse>(
+            `${await resolveBaseUrl()}${MODELS_WARMUP_ENDPOINT}`,
+            {model: normalized, device: await resolveDevice()},
             {
                 headers: {'Content-Type': 'application/json'},
                 timeout: 2 * 60 * 1000,
@@ -156,6 +192,7 @@ export const warmupLocalSpeechModel = async (
         );
         return data;
     } finally {
+        await releaseActivity?.();
         warmupModels.delete(normalized);
         notifyWarmup();
     }

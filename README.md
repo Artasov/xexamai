@@ -1,305 +1,156 @@
 <div align="center">
-  <img src="brand/logo_white.png" alt="xexamai Logo" width="248" height="248">
+  <img src="brand/logo_white.png" alt="XEXAMAI logo" width="248" height="248">
   <h1>XEXAMAI</h1>
-  <h3><strong>Your smart free assistant for interviews and exams</strong></h3>
-  <h3>⭐ <strong>Star this repository if it helped you!</strong> ⭐</h3>
+  <p><strong>A desktop AI assistant for interviews, study sessions, and spoken questions.</strong></p>
 </div>
+
 <div align="center">
   <a href="https://github.com/Artasov/xexamai/releases/latest">
-    <img src="https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge" alt="Download Latest Release">
+    <img src="https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge" alt="Download the latest release">
   </a>
 </div>
 
 <div align="center">
-  <a href="https://github.com/Artasov/xexamai/blob/main/README.md">
-    <img src="https://img.shields.io/badge/English-blue?style=for-the-badge" alt="English">
-  </a>
-  <a href="https://github.com/Artasov/xexamai/blob/main/README_RU.md">
-    <img src="https://img.shields.io/badge/Русский-red?style=for-the-badge" alt="Русский">
-  </a>
+  <a href="https://github.com/Artasov/xexamai/blob/main/README.md">English</a>
+  ·
+  <a href="https://github.com/Artasov/xexamai/blob/main/README_RU.md">Русский</a>
 </div>
 
-## Table of Contents
+XEXAMAI is a Tauri 2 desktop application. It can keep a rolling in-memory audio buffer, transcribe a selected part of that buffer, and send the recognized question to a selected AI model. Microphone, system-audio, and mixed capture modes are available, with the strongest system-audio support on Windows.
 
-- [Key Features](#-key-features)
-- [How to Use](#-how-to-use)
-- [How to Use Locally](#how-to-use-locally)
-    - [Local LLM Processing](#local-llm-processing)
-    - [Local Speech Recognition](#local-speech-recognition)
-- [Important Notes](#important-notes)
-- [For Developers](#-for-developers)
+Use the application only where AI assistance and recording are permitted. You are responsible for consent, confidentiality, and the rules of the interview, exam, meeting, or service you use.
 
-## 🚀 Key Features
+## Features
 
-- **FREE USAGE** - no subscription required, no limits for local
-- **Complete invisibility** - stays hidden during screen sharing in Zoom, Google Meet, Teams and other platforms
-- **Advanced AI models** - uses cutting-edge speech recognition and AI generation
-- **Local AI models** - use local AI models for faster processing
-- **Privacy & Security** - all data processed locally, audio is not stored
-- **Flexible audio settings** - choose between system sound and microphone
-- **Cross-platform** - works on Windows, macOS and Linux
-- **Simple interface** - intuitive and easy to use
-- **Customizable transcription** - choose from multiple AI models and customize prompts
+- Native Rust audio capture with microphone, system-audio, and mixed modes.
+- Live input switching while recording, plus configurable buffer durations and global hotkeys.
+- OpenAI, Google Gemini, Google Live, Winky, Ollama, and local `fast-fast-whisper` modes.
+- Streaming answers and realtime Google transcription into the question field.
+- Local conversation history with search, filters, pinning, rename, retry, export, deletion, and configurable retention.
+- User-initiated screenshot analysis through OpenAI or Google.
+- OAuth or email/password sign-in for the XEXAMAI backend and Winky features.
+- Signed in-app update downloads with an explicit install step.
+- Always-on-top, opacity, scaling, and a best-effort Windows capture-exclusion option.
 
-### If you have any issues using the app, please open an [issue](https://github.com/Artasov/xexamai/issues)
+Local modes do not incur OpenAI or Google API usage, but they require local software and hardware resources. Cloud-provider usage is subject to that provider's account, quota, billing, and data-handling terms. Winky can require an XEXAMAI account and credits; screenshot processing currently also requires a server-verified feature entitlement even when the selected model uses the user's provider key.
 
-## 🎯 How to Use
+## Quick start
 
-### 1. Setup
+1. Install a build from [GitHub Releases](https://github.com/Artasov/xexamai/releases/latest) and open XEXAMAI.
+2. Sign in, then choose an AI and transcription mode in **Settings**.
+3. For OpenAI or Google BYOK modes, add the corresponding API key. For local modes, start Ollama and/or the local speech service.
+4. Select **Microphone**, **System audio**, or **Mic + System**, and choose the microphone device when applicable.
+5. Start recording. XEXAMAI keeps only the configured recent portion in its rolling memory buffer. If a Google Live transcription model is selected, recording also starts continuous audio streaming to Google until recording or that mode stops.
+6. Send the desired duration, type a question, start a stream, or explicitly capture a screenshot.
 
-1. Open `xexamai` application
-2. Go to `Settings` tab
-3. Enter api key:
-    * `OpenAI API key` (get it from [platform.openai.com](https://platform.openai.com))
-    * `Google AI API key` (get it from [console.cloud.google.com](https://aistudio.google.com/api-keys))
-4. Choose one `LLM Model` of the models suitable for your key
-5. Choose **audio input device**:
-    - `System Audio` - for recording sound from applications (Zoom, Teams, etc.)
-    - `Microphone` - for recording your voice
-6. **Configure transcription settings**:
-    - **Transcription Model** - choose from:
-        - `Whisper-1` (Default) - balanced speed and accuracy
-        - `GPT-4o Transcribe` (High Quality) - maximum accuracy for complex audio
-        - `GPT-4o Mini Transcribe` (Fast) - optimized for speed and efficiency
-    - **Transcription Prompt** - customize how AI should process your audio:
-        - Default prompt optimized for technical interviews in Russian
-        - Preserves English technical terms (Redis, Postgres, API, etc.)
-        - Can be customized for different languages and contexts
+Test audio and provider access before an important session. The first local request may be slower while models are downloaded or loaded into RAM/VRAM.
 
-### 2. Usage
+## Data flow at a glance
 
-1. Switch to `Main` tab
-2. Click `Start Audio Loop` - the app will start recording audio in the background
-3. When needed, click `Send Last X Seconds` to get an AI response
-4. Get instant answers to help you during interviews or exams
-5. If you use `Google AI`, then you can switch `Transcription Type` to `Stream` and then `Gemeni` will show you a
-   recognized text that you can send to receive an answer at the right time.
-6. See what settings are in different sections (`Hotkeys`, `API timeout for retry`, `always on top`, `opacity`)
+"Local" describes where inference happens; it does not mean that the whole application is offline. The app automatically restores an existing account session and profile at launch, refreshes profile/entitlements when the window regains focus or visibility and about every five minutes while active, and checks the signed update channel at startup and periodically. Login, feedback, and enabled provider actions make their documented requests as well.
 
-### 3. Usage Tips
+| Mode or action | Data sent | Destination |
+| --- | --- | --- |
+| Local speech (`fast-fast-whisper`) | The selected audio fragment | The local service at `127.0.0.1:8868` |
+| Local LLM (Ollama) | Prompt and selected conversation context | The local service at `127.0.0.1:11434` |
+| OpenAI | Selected audio, prompts/context, or a screenshot, depending on the action | `api.openai.com` |
+| Google standard | Selected audio, prompts/context, or a screenshot, depending on the action | `generativelanguage.googleapis.com` |
+| Google Live | Starting recording with a Live transcription model selected continuously sends the selected audio over a direct WebSocket; a one-use temporary token is used by the renderer | Google Live API |
+| Winky | Account/profile requests, prompts/context, or an uploaded audio fragment | The selected `xlartas.com` or `xlartas.ru` backend |
+| Feedback | Subject, message, contact, selected images, and optional diagnostics | The selected XEXAMAI backend |
 
-- `For interviews`: use system audio to record interviewer's questions
-- `For exams`: configure microphone to record your questions
-- Adjust transparency for maximum stealth
-- Practice before important events
+For accounts with the `history` entitlement, conversation history is stored locally in the webview profile and scoped by backend and account. Without it, the current conversation remains memory-only and existing stored data is preserved but not loaded. Signing out isolates the previous account's history but does not delete it. The default retention is 90 days; pinned chats are retained until unpinned or deleted. Screenshots themselves are not written to chat history, but the screenshot marker, prompt, and answer are.
 
-## Support the project on https://pump.fun/coin/D1zY7HRVE4cz2TctSrckwBKnUzhCkitUekgTf6bhXsTG or contact with me for other creds
+XEXAMAI writes local diagnostic logs. Those logs can include short previews of prompts, transcripts, and responses. Credential-shaped fields are redacted on a best-effort basis, but logs should still be treated as potentially sensitive. They are not uploaded automatically; a cleaned recent excerpt is attached to feedback only when the checkbox for that report is enabled.
 
-## How to Use Locally
+The manual `save_recorder_files` setting is off by default. If enabled, submitted audio fragments are also kept as raw debug files under app local data in `transcription_debug`, without automatic retention. Delete them manually when they are no longer needed.
 
-The examples below are implemented and tested on `Windows 11`. Steps may differ on other systems.
-> Local streaming as in gemeni is not available, but this is not scary
+See [Security and privacy](SECURITY.md) for the full per-mode matrix, credential storage, deletion caveats, and platform limitations.
 
-### The assistant works in two stages:
+## Local AI
 
-1. #### Audio transcription
+### Ollama
 
-2. #### Getting an answer from the LLM
+1. Install [Ollama](https://ollama.com/).
+2. Download a model, for example:
 
-### Each stage can be run locally.
-
-1. #### Install CUDA
-   https://developer.nvidia.com/cuda-12-1-0-download-archive?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
-
-2. #### cuDNN 9.13.1
-   https://developer.nvidia.com/cudnn-downloads?target_os=Windows&target_arch=x86_64&target_version=11&target_type=exe_local
-
-3. #### Add to Windows PATH environment variable
-   `C:\Program Files\NVIDIA\CUDNN\v9.13\bin\12.9`
-   > Or the path where cuDNN was installed
-
-4. #### Restart the PC
-
-### Local LLM Processing
-
-Minimum recommended configuration:
-
-- CPU - 4 cores / 8 threads
-- GPU - 6 GB VRAM
-- RAM - 16 GB
-
-1.
-    * In `xexamai` settings select an `Mode -> LLM` = `Local`.
-    * In `xexamai` settings choose a `Model -> LLM` from the available models:
-        * `gpt-oss:120b` `gpt-oss:20b` `gemma3:27b` `gemma3:12b` `gemma3:4b` `gemma3:1b` `deepseek-r1:8b`
-          `qwen3-coder:30b` `qwen3:30b` `qwen3:8b` `qwen3:4b`
-          > Choose a smaller model if your PC is low-spec
-
-2. #### Install Ollama
-   https://ollama.com/
-
-3. #### (Optional) Change the default models location
-    * Remove the original models directory
-      `Remove-Item -Recurse -Force "C:\\Users\\xl\\.ollama\\models"`
-    * Then create a junction
-      `New-Item -ItemType Junction -Path "C:\\Users\\xl\\.ollama\\models" -Target "F:\\ollama_models\\models"`
-4. #### Download the model chosen earlier
    ```shell
    ollama pull qwen3:4b
    ```
-5. #### Start Ollama
-   ```sh 
+
+3. Start Ollama if it is not already running:
+
+   ```shell
    ollama serve
    ```
 
-### Local Speech Recognition
+4. In XEXAMAI, set the LLM host to **Local**, select an installed model, and use the built-in availability test.
 
-1. In `xexamai` settings select an `Mode -> Transcription` = `Local`.
+XEXAMAI only accepts the loopback Ollama endpoint. Ollama owns its model cache and any logs it creates.
 
-2. In `xexamai` settings choose one of `Model -> Transcription`
+### fast-fast-whisper
 
-3. In `xexamai` settings choose `Local transcription device`: `GPU` (Graphics/NVIDIA) or `CPU` (Processor)
+In local transcription mode, the Settings screen can install, start, stop, restart, and check the bundled integration with [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper). You can also run that repository manually on port `8868`.
 
-4. ### Install and run [fast-fast-whisper](https://github.com/Artasov/fast-fast-whisper)
-   > It does not auto-start with Windows; you need to launch it manually so the local speech recognition server is
-   running
+The helper has its own Python environment, downloaded models, cache, and log files. Its supplied start scripts may listen on all network interfaces; use host firewall rules or change the helper binding if the machine is on an untrusted network. XEXAMAI itself connects to it through `127.0.0.1` and verifies the service identity before treating the endpoint as ready.
 
-### The first use after the opening of the program will be slower, since with local use of the AI models will be loaded in GPU or RAM, which takes time. Before the interview, do the 1st question and get the answer so that the subsequent calls are faster.
+GPU acceleration depends on the local helper, model, drivers, CUDA/cuDNN compatibility, and available VRAM. Follow the helper repository's current setup instructions rather than relying on a fixed CUDA version in this README.
 
-## Important Notes
+## Platform notes
 
-- This application is intended for educational purposes
-- Ensure that AI assistance is allowed in your situation
-- Follow honesty and academic integrity rules
-- API keys are stored locally and not shared with third parties
+- **Windows:** native WASAPI loopback is used for system audio and mixed capture. This is the primary tested path.
+- **macOS:** microphone capture uses the system audio API. System/mixed capture requires a virtual input such as BlackHole, Loopback, or Soundflower and the required OS permissions.
+- **Linux:** system/mixed capture requires a usable PulseAudio or PipeWire monitor source. Desktop portal, compositor, tray, and shortcut behavior can vary.
+- **Screen capture:** the OS/webview display picker is shown for each capture. The selected frame is resized before processing.
+- **Hide from capture:** Windows uses `SetWindowDisplayAffinity` as a best-effort measure. It is not a promise of invisibility and can vary by Windows version, capture software, remote desktop, or capture method. Equivalent exclusion is not implemented for macOS or Linux.
 
-## 🔧 For Developers
+## Development
 
-### Contributing
+### Requirements
 
-We welcome contributions to the project! If you want to contribute:
+- Node.js 24 and npm
+- Rust 1.97 with Cargo
+- The [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for the host platform
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Setup
 
-### Local Development
-
-#### Requirements
-
-- Node.js 20+
-- npm or yarn
-
-#### Installation
-
-```bash
-# Clone the repository
+```shell
 git clone https://github.com/Artasov/xexamai.git
 cd xexamai
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Run in development mode
+npm ci
 npm run dev
 ```
 
-#### Project Structure
+### Useful commands
 
-```
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Run the Tauri desktop app in development mode |
+| `npm run dev:renderer` | Run only the Vite renderer |
+| `npm run typecheck` | Type-check TypeScript |
+| `npm test` | Run renderer tests |
+| `npm run build:renderer` | Build only the renderer bundle |
+| `npm run build` | Build and package the Tauri app for the current host platform |
+| `npm run bindings:generate` | Regenerate Rust-to-TypeScript IPC bindings |
+| `npm run bindings:check` | Check the generated IPC command map |
+
+Packaged output is written under `src-tauri/target/release/bundle/`. Native Windows, macOS, and Linux release artifacts are built on their respective runners; local `npm run build` packages only for the current host and toolchain.
+
+### Project structure
+
+```text
 src/
-├── main/           # Electron main process
-├── renderer/       # Renderer process (UI)
-├── preload/        # Preload scripts
-└── shared/         # Shared types and utilities
+├── renderer/       # React renderer and application UI
+└── shared/         # Shared and generated TypeScript contracts
+src-tauri/
+├── src/            # Rust desktop host, audio, auth, updater, and provider proxies
+├── capabilities/   # Tauri command permissions
+└── tauri.conf.json # Desktop and bundle configuration
+scripts/            # Release, version, and update-manifest tooling
 ```
 
-#### Available Commands
+Contributions are welcome through pull requests. For a vulnerability, use the private reporting route described in [SECURITY.md](SECURITY.md), not a public issue.
 
-- `npm run dev` - run in development mode
-- `npm run build` - build the project
-- `npm run build:win` - create portable Windows executable
-- `npm run build:mac` - create portable macOS executable (macOS only)
-- `npm run build:linux` - create portable Linux directory
-- `npm run build:all` - create portable executables for Windows and Linux
-- `npm run build:win-linux` - same as build:all
-- `npm run clean` - clean build directory
+## License
 
-#### Building for Different Platforms
-
-##### Windows
-
-```bash
-npm run build:win
-```
-
-Creates:
-
-- Portable executable (`xexamai-${version}.exe`)
-
-##### macOS
-
-```bash
-npm run build:mac
-```
-
-Creates:
-
-- ZIP archive for Intel and Apple Silicon (`xexamai-${version}-x64.zip`, `xexamai-${version}-arm64.zip`)
-
-**Note**: For macOS builds, you may need to:
-
-1. Install Xcode Command Line Tools: `xcode-select --install`
-
-##### Linux
-
-```bash
-npm run build:linux
-```
-
-Creates:
-
-- Portable directory (`linux-unpacked/`)
-- **Archive is automatically created** (`xexamai-${version}-linux-x64.tar.gz`)
-
-**Note**:
-
-- Archive is ready for distribution - users can extract and run
-- Building AppImage requires additional tools that are difficult to configure on Windows
-
-##### Cross-platform Building
-
-**⚠️ Cross-platform build limitations:**
-
-- **Windows**: Can only build for Windows and Linux (via WSL)
-- **macOS**: Can build for all platforms (Windows, macOS, Linux)
-- **Linux**: Can only build for Linux and Windows, but not macOS
-
-**Cross-platform build commands:**
-
-```bash
-# On Windows - only Windows and Linux
-npm run build:all
-
-# On macOS - all platforms
-npm run build:all
-npm run build:win
-npm run build:mac  
-npm run build:linux
-
-# On Linux - only Linux and Windows
-npm run build:all
-```
-
-**To build macOS version:**
-
-- Use a macOS machine
-- Or use GitHub Actions (if you set up CI/CD)
-
-#### Technologies
-
-- **Electron** - cross-platform desktop application
-- **TypeScript** - typed JavaScript
-- **Tailwind CSS** - utility-first CSS framework
-- **OpenAI API** - AI integration
-
----
-
-<div align="center">
-  <p>Made with ❤️ for successful interviews and exams</p>
-</div>
+XEXAMAI is distributed under the [GNU General Public License v3.0](LICENSE).

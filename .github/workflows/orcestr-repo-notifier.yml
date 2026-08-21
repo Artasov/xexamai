@@ -19,12 +19,12 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: Artasov/orcestr-repo-notifier@v1
+      - uses: Artasov/orcestr-repo-notifier@b0b4cc79e0e5dbd75f29c528dc4047ed2e75b251 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}

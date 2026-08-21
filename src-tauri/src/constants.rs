@@ -38,8 +38,6 @@ pub const DEFAULT_BACKEND_DOMAIN: &str = BACKEND_DOMAIN_COM;
 pub const SITE_BASE_URL: &str = "https://xlartas.com";
 pub const OAUTH_APP_NAME: &str = "xexamai";
 pub const OAUTH_SCHEME: &str = "xexamai";
-pub const UPDATE_MANIFEST_URL: &str =
-    "https://s3.twcstorage.ru/324718a4-2cc5dd7a-917b-4e82-87c5-b9d5f8de16ba/xexamai/latest.json";
 pub const UPDATE_INITIAL_CHECK_DELAY_SECS: u64 = 15;
 pub const UPDATE_CHECK_INTERVAL_SECS: u64 = 60 * 60;
 // Shared install location hint for the local speech server so multiple apps reuse one copy.

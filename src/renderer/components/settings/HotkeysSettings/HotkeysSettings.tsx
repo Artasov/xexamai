@@ -9,6 +9,10 @@ import {emitSettingsChange} from '../../../utils/settingsEvents';
 import './HotkeysSettings.scss';
 
 const clampDuration = (duration: number) => Math.max(1, Math.min(300, duration));
+const normalizeShortcutKey = (value: string): string | null => {
+    const key = value.trim().toLowerCase();
+    return /^[a-z0-9`~\-=\[\];',./]$/.test(key) ? key : null;
+};
 
 export const HotkeysSettings = () => {
     const {settings, patchLocal} = useSettingsContext();
@@ -37,7 +41,7 @@ export const HotkeysSettings = () => {
 
     const addDuration = async () => {
         const raw = Number(newDuration);
-        if (Number.isNaN(raw)) {
+        if (!Number.isFinite(raw)) {
             showMessage('Invalid duration', 'error');
             return;
         }
@@ -52,6 +56,10 @@ export const HotkeysSettings = () => {
     };
 
     const removeDuration = async (duration: number) => {
+        if (durations.length <= 1) {
+            showMessage('At least one recording duration is required', 'error');
+            return;
+        }
         const next = durations.filter((value) => value !== duration);
         await updateDurations(next);
         const hotkeys = {...durationHotkeys};
@@ -77,21 +85,31 @@ export const HotkeysSettings = () => {
     };
 
     const saveHotkeyForDuration = async (duration: number) => {
-        const value = (durationHotkeys[duration] ?? '').trim();
-        if (!value) {
-            showMessage('Hotkey cannot be empty', 'error');
+        const char = normalizeShortcutKey(durationHotkeys[duration] ?? '');
+        if (!char) {
+            showMessage('Use one letter, digit, or supported punctuation key', 'error');
             return;
         }
-        const char = value[0].toLowerCase();
+        const duplicate = Object.entries(durationHotkeys)
+            .some(([seconds, key]) => Number(seconds) !== duration && normalizeShortcutKey(key) === char);
+        if (duplicate || normalizeShortcutKey(toggleHotkey) === char || normalizeShortcutKey(streamSendHotkey) === char) {
+            showMessage('This Ctrl hotkey is already assigned', 'error');
+            return;
+        }
         const map = {...durationHotkeys, [duration]: char};
         setDurationHotkeys(map);
         await saveDurationHotkeys(map);
     };
 
     const saveToggleHotkey = async () => {
-        const value = toggleHotkey.trim().toLowerCase();
+        const value = normalizeShortcutKey(toggleHotkey);
         if (!value) {
-            showMessage('Hotkey cannot be empty', 'error');
+            showMessage('Use one letter, digit, or supported punctuation key', 'error');
+            return;
+        }
+        if (Object.values(durationHotkeys).some((key) => normalizeShortcutKey(key) === value)
+            || normalizeShortcutKey(streamSendHotkey) === value) {
+            showMessage('This Ctrl hotkey is already assigned', 'error');
             return;
         }
         try {
@@ -105,12 +123,17 @@ export const HotkeysSettings = () => {
     };
 
     const saveStreamSendHotkey = async () => {
-        const value = streamSendHotkey.trim();
+        const value = normalizeShortcutKey(streamSendHotkey);
         if (!value) {
-            showMessage('Hotkey cannot be empty', 'error');
+            showMessage('Use one letter, digit, or supported punctuation key', 'error');
             return;
         }
-        const char = value[0];
+        if (Object.values(durationHotkeys).some((key) => normalizeShortcutKey(key) === value)
+            || normalizeShortcutKey(toggleHotkey) === value) {
+            showMessage('This Ctrl hotkey is already assigned', 'error');
+            return;
+        }
+        const char = value;
         try {
             await (window.api.settings as any).setStreamSendHotkey(char);
             patchLocal({streamSendHotkey: char});

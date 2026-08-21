@@ -1,108 +1,83 @@
-import {settingsStore} from '../state/settingsStore';
+import {onAudioChunk, type AudioChunk} from './nativeAudio';
+import {beginNativeRendererActivity} from '../state/rendererActivity';
+import {StreamingPcm16Resampler} from '../audio/streamingResampler';
 
 type StreamOptions = {
     streamMode?: 'base' | 'stream';
 };
 
+const TARGET_SAMPLE_RATE = 16_000;
+const MIN_SEND_SAMPLES = 1_600;
+
+/** Feeds the rolling native capture to Gemini Live without opening a second device. */
 export class GoogleStreamingService {
     private transcriptCallback: ((text: string) => void) | null = null;
     private errorCallback: ((error: string) => void) | null = null;
-    private audioContext: AudioContext | null = null;
-    private processor: ScriptProcessorNode | null = null;
-    private source: MediaStreamAudioSourceNode | null = null;
+    private audioUnsubscribe: (() => void) | null = null;
+    private messageUnsubscribe: (() => void) | null = null;
+    private errorUnsubscribe: (() => void) | null = null;
+    private bufferedSamples: Int16Array[] = [];
+    private bufferedLength = 0;
+    private active = false;
+    private releaseActivity: (() => Promise<void>) | null = null;
+    private readonly resampler = new StreamingPcm16Resampler(TARGET_SAMPLE_RATE);
 
-    async start(stream: MediaStream, _options: StreamOptions = {}): Promise<void> {
+    async start(_stream?: MediaStream | null, _options: StreamOptions = {}): Promise<void> {
         await this.stop();
+        const capability = await window.api.google.getLiveCapability();
+        if (!capability.supported || !capability.configured) {
+            throw new Error(capability.reason || 'Configure a Google AI API key to use realtime transcription.');
+        }
 
-        let settings;
+        this.messageUnsubscribe = window.api.google.onMessage((message: any) => {
+            const inputText = message?.serverContent?.inputTranscription?.text;
+            if (typeof inputText === 'string' && inputText.trim()) {
+                this.transcriptCallback?.(inputText.trim());
+            }
+        });
+        this.errorUnsubscribe = window.api.google.onError((message: string) => {
+            this.errorCallback?.(message || 'Google Live error');
+        });
+
         try {
-            settings = settingsStore.get();
-        } catch {
-            settings = await settingsStore.load();
+            this.releaseActivity = await beginNativeRendererActivity('Realtime transcription');
+            await window.api.google.startLive({
+                response: 'AUDIO',
+                transcribeInput: true,
+                transcribeOutput: false,
+            });
+            this.resampler.reset();
+            this.active = true;
+            this.audioUnsubscribe = onAudioChunk((chunk) => this.handleNativeAudio(chunk));
+        } catch (error) {
+            await this.stop();
+            throw error;
         }
-
-        const apiKey = settings.googleApiKey;
-        if (!apiKey) {
-            throw new Error('Google API key not configured');
-        }
-
-        await window.api.google.startLive({
-            apiKey,
-            response: 'TEXT',
-            transcribeInput: true,
-            transcribeOutput: false,
-        });
-
-        window.api.google.onMessage((message: any) => {
-            try {
-                const inputTx = message?.serverContent?.inputTranscription?.text;
-                const outputTx = message?.serverContent?.outputTranscription?.text;
-                const plainText = message?.text;
-                const text = inputTx || outputTx || plainText;
-                if (text && typeof text === 'string') {
-                    this.transcriptCallback?.(text);
-                }
-            } catch {
-            }
-        });
-
-        window.api.google.onError((msg: string) => {
-            this.errorCallback?.(msg || 'Google error');
-        });
-
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        this.source = this.audioContext.createMediaStreamSource(stream);
-        this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-
-        let audioBuffer: Float32Array[] = [];
-
-        this.processor.onaudioprocess = (event) => {
-            const inputBuffer = event.inputBuffer;
-            const inputData = inputBuffer.getChannelData(0);
-            audioBuffer.push(new Float32Array(inputData));
-
-            if (audioBuffer.length >= 20) {
-                this.processAudioChunk(audioBuffer, this.audioContext!.sampleRate).catch((e) => {
-                    try {
-                        console.error('Google chunk error', e);
-                    } catch {
-                    }
-                });
-                audioBuffer = [];
-            }
-        };
-
-        this.source.connect(this.processor);
-        this.processor.connect(this.audioContext.destination);
     }
 
     async stop(): Promise<void> {
+        // Deliver a short final fragment before signalling audioStreamEnd.
+        if (this.active) {
+            this.enqueueAudio(this.resampler.finish());
+            this.flushAudio();
+        } else {
+            this.resampler.reset();
+        }
+        this.active = false;
+        this.audioUnsubscribe?.();
+        this.audioUnsubscribe = null;
         try {
-            await window.api.google.stopLive?.();
+            await window.api.google.stopLive();
         } catch {
         }
-
-        if (this.processor) {
-            try {
-                this.processor.disconnect();
-            } catch {
-            }
-        }
-        if (this.source) {
-            try {
-                this.source.disconnect();
-            } catch {
-            }
-        }
-        if (this.audioContext) {
-            try {
-                await this.audioContext.close();
-            } catch {
-            }
-        }
-        this.audioContext = null;
-        this.processor = null;
-        this.source = null;
+        this.messageUnsubscribe?.();
+        this.messageUnsubscribe = null;
+        this.errorUnsubscribe?.();
+        this.errorUnsubscribe = null;
+        await this.releaseActivity?.();
+        this.releaseActivity = null;
+        this.bufferedSamples = [];
+        this.bufferedLength = 0;
     }
 
     onTranscript(callback: (text: string) => void): void {
@@ -113,62 +88,58 @@ export class GoogleStreamingService {
         this.errorCallback = callback;
     }
 
-    private async processAudioChunk(chunks: Float32Array[], sampleRate: number): Promise<void> {
-        const combined = this.combineChunks(chunks);
-        const pcm16 = this.float32ToPCM16Resampled(combined, Math.max(8000, Math.floor(sampleRate || 16000)), 16000);
-        const audioBase64 = this.bytesToBase64(new Uint8Array(pcm16.buffer));
-        await window.api.google.sendAudioChunk({
-            data: audioBase64,
-            mime: 'audio/pcm;rate=16000',
+    private handleNativeAudio(chunk: AudioChunk): void {
+        if (!this.active || !chunk.samples.length) return;
+        const pcm = this.resampler.process(
+            this.mixToMono(chunk.samples),
+            chunk.sampleRate,
+        );
+        this.enqueueAudio(pcm);
+        if (this.bufferedLength >= MIN_SEND_SAMPLES) this.flushAudio();
+    }
+
+    private enqueueAudio(pcm: Int16Array): void {
+        if (!pcm.length) return;
+        this.bufferedSamples.push(pcm);
+        this.bufferedLength += pcm.length;
+    }
+
+    private flushAudio(): void {
+        if (!this.bufferedLength || !this.active) return;
+        const combined = new Int16Array(this.bufferedLength);
+        let offset = 0;
+        for (const chunk of this.bufferedSamples) {
+            combined.set(chunk, offset);
+            offset += chunk.length;
+        }
+        this.bufferedSamples = [];
+        this.bufferedLength = 0;
+        const bytes = new Uint8Array(combined.buffer, combined.byteOffset, combined.byteLength);
+        window.api.google.sendAudioChunk({
+            data: this.bytesToBase64(bytes),
+            mime: `audio/pcm;rate=${TARGET_SAMPLE_RATE}`,
         });
     }
 
-    private combineChunks(chunks: Float32Array[]): Float32Array {
-        const totalLength = chunks.reduce((sum, buffer) => sum + buffer.length, 0);
-        const combinedBuffer = new Float32Array(totalLength);
-        let offset = 0;
-        for (const buffer of chunks) {
-            combinedBuffer.set(buffer, offset);
-            offset += buffer.length;
+    private mixToMono(channels: Float32Array[]): Float32Array {
+        if (channels.length === 1) return channels[0];
+        const length = Math.min(...channels.map((channel) => channel.length));
+        const mixed = new Float32Array(Math.max(0, length));
+        for (let i = 0; i < mixed.length; i++) {
+            let value = 0;
+            for (const channel of channels) value += channel[i] || 0;
+            mixed[i] = value / channels.length;
         }
-        return combinedBuffer;
+        return mixed;
     }
 
     private bytesToBase64(bytes: Uint8Array): string {
         const chunkSize = 0x8000;
         let binary = '';
         for (let i = 0; i < bytes.length; i += chunkSize) {
-            const sub = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-            binary += String.fromCharCode.apply(null, Array.from(sub) as unknown as number[]);
+            binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
         }
         return btoa(binary);
     }
 
-    private float32ToPCM16Resampled(input: Float32Array, inRate: number, outRate: number): Int16Array {
-        const clampedInRate = Math.max(8000, Math.floor(inRate || 16000));
-        const targetRate = Math.max(8000, Math.floor(outRate || 16000));
-        if (clampedInRate === targetRate) {
-            const out = new Int16Array(input.length);
-            for (let i = 0; i < input.length; i++) {
-                const s = Math.max(-1, Math.min(1, input[i] || 0));
-                out[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7fff);
-            }
-            return out;
-        }
-        const ratio = targetRate / clampedInRate;
-        const outLen = Math.max(1, Math.floor(input.length * ratio));
-        const out = new Int16Array(outLen);
-        for (let i = 0; i < outLen; i++) {
-            const t = i / ratio;
-            const i0 = Math.floor(t);
-            const i1 = Math.min(input.length - 1, i0 + 1);
-            const frac = t - i0;
-            const s0 = input[i0] || 0;
-            const s1 = input[i1] || 0;
-            const s = s0 + (s1 - s0) * frac;
-            const ss = Math.max(-1, Math.min(1, s));
-            out[i] = ss < 0 ? Math.round(ss * 0x8000) : Math.round(ss * 0x7fff);
-        }
-        return out;
-    }
 }

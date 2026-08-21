@@ -1,5 +1,6 @@
 import {
     appendChatMessage,
+    beginRetryChatMessage,
     getActiveChatId,
     getConversationContext,
     showError,
@@ -7,11 +8,11 @@ import {
 } from '../ui/outputs';
 import {setStatus} from '../ui/status';
 import {setProcessing, setRecording, state} from '../state/appState';
-import {updateButtonsState} from '../ui/controls';
 import {floatsToWav} from '../audio/encoder';
 import {logger} from '../utils/logger';
 import {settingsStore} from '../state/settingsStore';
 import {GoogleStreamingService} from '../services/googleStreamingService';
+import {LatestIntentQueue} from './latestIntentQueue';
 import {
     checkOllamaInstalled,
     checkOllamaModelDownloaded,
@@ -30,17 +31,16 @@ import {
     switchAudioInput as switchAudioInputDevice,
 } from './audioSession';
 import {hideStopButton, showStopButton} from '../ui/stopButton';
+import {resolveLlmProvider, type ChatProvider, type ChatSource} from '../ui/chatMetadata';
+import {migrateLegacyAudioDeviceSelection} from './audioSession/deviceSelection';
 
-type StreamElements = {
-    streamModeContainer: HTMLElement | null;
-    streamResults: HTMLTextAreaElement | null;
-    streamSendButton: HTMLButtonElement | null;
-    toggleInputButton: HTMLButtonElement | null;
-    toggleInputIcon?: HTMLImageElement | null;
-    durationsContainer?: HTMLDivElement | null;
+export type AudioInputType = 'microphone' | 'system' | 'mixed';
+
+export type StreamControllerUi = {
+    updateRealtimeTranscript?: (previous: string, next: string) => void;
+    restoreQuestionIfEmpty?: (text: string) => void;
+    setAudioInputPresentation?: (type: AudioInputType, switching: boolean) => void;
 };
-
-type ToggleSource = 'button' | 'hotkey';
 
 type PendingConversation = {
     chatId: string;
@@ -52,6 +52,8 @@ type PendingConversation = {
 
 export class StreamController {
     private googleStreamingService = new GoogleStreamingService();
+    private initialized = false;
+    private disposed = false;
 
     private currentRequestId: string | null = null;
     private activeOpId = 0;
@@ -59,21 +61,17 @@ export class StreamController {
     private streamDoneHandler: any = null;
     private streamErrorHandler: any = null;
 
-    private streamModeContainer: HTMLElement | null = null;
-    private streamResults: HTMLTextAreaElement | null = null;
-    private streamSendButton: HTMLButtonElement | null = null;
-    private toggleInputButton: HTMLButtonElement | null = null;
-    private toggleInputIcon: HTMLImageElement | null = null;
-    private durationsContainer: HTMLDivElement | null = null;
-
-    private isStreamMode = false;
-    private currentStreamSendHotkey = '~';
     private streamAccumulator = '';
-    private streamModeInitialized = false;
     private googleStreamingActive = false;
+    private readonly googleRealtimeTransitions = new LatestIntentQueue();
+    private lastRealtimeTranscript = '';
     private operationInProgress = false;
+    private audioSwitchInProgress = false;
     private pendingConversation: PendingConversation | null = null;
     private cancelledRequestIds = new Set<string>();
+
+    constructor(private readonly ui: StreamControllerUi = {}) {
+    }
 
     private toErrorMessage(error: unknown): string {
         return error instanceof Error ? error.message : String(error);
@@ -82,7 +80,6 @@ export class StreamController {
     private setErrorStatus(message: string): void {
         setStatus(message, 'error');
         setProcessing(false);
-        updateButtonsState();
     }
 
     private async loadSettingsSafe(): Promise<any> {
@@ -94,10 +91,12 @@ export class StreamController {
     }
 
     private readonly onTranscript = (text: string) => {
-        if (!this.streamResults) return;
-        this.streamResults.value += `${text} `;
-        this.streamResults.scrollTop = this.streamResults.scrollHeight;
-        this.updateStreamSendButtonState();
+        const normalized = text.replace(/\s+/g, ' ').trim();
+        if (!normalized) return;
+        if (normalized === this.lastRealtimeTranscript) return;
+        const previous = this.lastRealtimeTranscript;
+        this.lastRealtimeTranscript = normalized;
+        this.ui.updateRealtimeTranscript?.(previous, normalized);
     };
 
     private readonly onStreamingError = (error: string) => {
@@ -105,67 +104,42 @@ export class StreamController {
         setStatus(`Google error: ${error}`, 'error');
     };
 
-    private readonly handleDocumentKeydown = async (event: KeyboardEvent) => {
-        try {
-            const pressed = this.eventKeyId(event);
-            const targetKey = this.normalizeConfigHotkeyKey(this.currentStreamSendHotkey || '~');
-            if (event.ctrlKey && pressed === targetKey && this.isStreamMode) {
-                event.preventDefault();
-                await this.handleStreamTextSend();
-            }
-        } catch {
-        }
-    };
-
-    initialize(elements: StreamElements): void {
-        this.streamModeContainer = elements.streamModeContainer;
-        this.streamResults = elements.streamResults;
-        this.streamSendButton = elements.streamSendButton;
-        this.toggleInputButton = elements.toggleInputButton;
-        this.toggleInputIcon = elements.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
-        this.durationsContainer = elements.durationsContainer ?? (document.getElementById('send-last-container') as HTMLDivElement | null);
-
-        if (this.streamResults && this.streamSendButton) {
-            const update = () => this.updateStreamSendButtonState();
-            this.streamResults.addEventListener('input', update);
-            this.streamSendButton.addEventListener('click', async () => {
-                await this.handleStreamTextSend();
-            });
-            update();
-        }
-
-        if (this.toggleInputButton) {
-            this.toggleInputButton.addEventListener('click', async () => {
-                await this.handleAudioInputToggle('button');
-            });
-        }
-
+    initialize(): void {
+        if (this.initialized || this.disposed) return;
+        this.initialized = true;
         this.googleStreamingService.onTranscript(this.onTranscript);
         this.googleStreamingService.onError(this.onStreamingError);
-
-        document.addEventListener('keydown', this.handleDocumentKeydown);
     }
 
     async syncInitialSettings(): Promise<void> {
         const settings = await this.loadSettingsSafe();
-        this.currentStreamSendHotkey = settings.streamSendHotkey || '~';
-        const audioInputType = (settings.audioInputType || 'microphone') as 'microphone' | 'system' | 'mixed';
+        try {
+            await migrateLegacyAudioDeviceSelection(
+                await window.api.audio.listDevices(),
+                settings.audioInputDeviceId || '',
+            );
+        } catch (error) {
+            logger.warn('audio', 'Legacy microphone selection could not be migrated', {
+                error: this.toErrorMessage(error),
+            });
+        }
+        const audioInputType = (settings.audioInputType || 'microphone') as AudioInputType;
         setAudioInputType(audioInputType);
         await this.updateToggleButtonLabel(audioInputType);
-        await this.updateStreamModeVisibility('base');
     }
 
     handleSettingsChange(key: string, value: unknown): boolean | Promise<boolean> {
         switch (key) {
-            case 'streamSendHotkey': {
-                this.currentStreamSendHotkey = (value as string) || '~';
-                return true;
-            }
             case 'audioInputType': {
                 const normalized = value === 'system' ? 'system' : (value === 'mixed' ? 'mixed' : 'microphone');
-                settingsStore.patch({audioInputType: normalized});
-                setAudioInputType(normalized);
-                return this.updateToggleButtonLabel(normalized).then(() => true);
+                return this.applyAudioInputSetting(normalized);
+            }
+            case 'audioInputDeviceId':
+                return this.applyAudioDeviceSetting(typeof value === 'string' ? value : '');
+            case 'transcriptionMode':
+            case 'transcriptionModel': {
+                settingsStore.patch({[key]: value} as any);
+                return (state.isRecording ? this.syncGoogleRealtime() : Promise.resolve()).then(() => true);
             }
             default:
                 return false;
@@ -176,11 +150,16 @@ export class StreamController {
         try {
             if (shouldRecord) {
                 await startAudioRecording();
-                await this.updateStreamModeVisibility('base');
+                await this.syncGoogleRealtime();
             } else {
-                await stopAudioRecording();
-                await this.googleStreamingService.stop();
-                this.googleStreamingActive = false;
+                try {
+                    await stopAudioRecording();
+                } finally {
+                    // Recording state is changed by RendererSession before this
+                    // call. Queueing the stop prevents it overlapping an older
+                    // capability/token/WebSocket start.
+                    await this.syncGoogleRealtime();
+                }
             }
         } catch (error) {
             console.error('Record toggle failed', error);
@@ -192,7 +171,6 @@ export class StreamController {
                 setStatus('Failed to start recording', 'error');
             }
             setRecording(false);
-            updateButtonsState();
             throw error;
         }
     }
@@ -205,13 +183,11 @@ export class StreamController {
         }
 
         const opId = ++this.activeOpId;
+        const chatId = getActiveChatId();
         this.operationInProgress = true;
 
         setProcessing(true);
-        updateButtonsState();
         showStopButton();
-        appendChatMessage('system', `Last ${seconds}s sent for transcription...`);
-
         setStatus('Recognizing...', 'processing');
 
         const pcm = getLastSecondsFloats(seconds);
@@ -226,9 +202,20 @@ export class StreamController {
             setStatus('No audio in buffer', 'error');
             setProcessing(false);
             this.operationInProgress = false;
-            updateButtonsState();
+            hideStopButton();
             return;
         }
+
+        const actualSeconds = pcm.durationSeconds;
+        const durationLabel = actualSeconds >= 10 ? actualSeconds.toFixed(1) : actualSeconds.toFixed(2);
+        const hasFullWindow = actualSeconds + (1 / pcm.sampleRate) >= seconds;
+        appendChatMessage(
+            'system',
+            hasFullWindow
+                ? `Last ${durationLabel}s sent for transcription...`
+                : `Only ${durationLabel}s of the requested ${seconds}s is available; sending that audio...`,
+            {chatId, source: 'audio'},
+        );
 
         let audioBuffer: ArrayBuffer;
         let maxAmplitude = 0;
@@ -236,7 +223,7 @@ export class StreamController {
         let expectedFrames = 0;
         let dataMaxAmp = 0;
         try {
-            const result = await this.prepareAudioBuffer(pcm, seconds);
+            const result = await this.prepareAudioBuffer(pcm, actualSeconds);
             audioBuffer = result.arrayBuffer;
             maxAmplitude = result.maxAmplitude;
             rms = result.rms;
@@ -245,13 +232,17 @@ export class StreamController {
         } catch (error) {
             this.setErrorStatus(this.toErrorMessage(error));
             this.operationInProgress = false;
+            setProcessing(false);
+            hideStopButton();
             return;
         }
 
-        const requestId = `ask-window-${seconds}-` + Date.now();
+        const requestId = `ask-window-${crypto.randomUUID()}`;
+        this.currentRequestId = requestId;
         logger.info('ui', 'Sending audio for transcription', {
             size: audioBuffer.byteLength,
-            seconds,
+            requestedSeconds: seconds,
+            actualSeconds,
             sampleRate: pcm.sampleRate,
             channels: pcm.channels.length,
             frames: expectedFrames,
@@ -265,63 +256,73 @@ export class StreamController {
             const transcribeRes = await window.api.assistant.transcribeOnly({
                 arrayBuffer: audioBuffer,
                 mime: 'audio/wav',
-                filename: `last_${seconds}s.wav`,
-                audioSeconds: seconds,
+                filename: `last_${Math.round(actualSeconds * 1000)}ms.wav`,
+                audioSeconds: actualSeconds,
+                requestId,
             });
 
             if (opId !== this.activeOpId) {
                 setStatus('Ready', 'ready');
                 setProcessing(false);
                 this.operationInProgress = false;
-                updateButtonsState();
                 return;
             }
             if (!transcribeRes.ok) {
                 setStatus('Error', 'error');
-                showError(transcribeRes.error);
+                showError(transcribeRes.error, chatId, {source: 'audio'});
                 setProcessing(false);
                 this.operationInProgress = false;
-                updateButtonsState();
+                this.currentRequestId = null;
+                hideStopButton();
                 return;
             }
 
             const text = transcribeRes.text;
 
             setStatus('Sending to LLM...', 'sending');
-            await this.sendChatRequest(requestId, text, opId);
+            const started = await this.sendChatRequest(requestId, text, 'audio', chatId, opId);
+            if (!started) {
+                this.ui.restoreQuestionIfEmpty?.(text);
+            }
         } catch (error) {
+            if (opId !== this.activeOpId) {
+                // A user cancellation invalidates this operation before the
+                // native transcription promise rejects. Do not surface that
+                // expected cancellation as a new error.
+                setProcessing(false);
+                this.operationInProgress = false;
+                this.currentRequestId = null;
+                hideStopButton();
+                this.removeStreamHandlers();
+                return;
+            }
             setStatus('Error', 'error');
             const hadPending = !!this.pendingConversation;
             this.failPendingConversation(this.toErrorMessage(error));
             if (!hadPending) {
-                showError(error);
+                showError(error, chatId, {source: 'audio'});
             }
             setProcessing(false);
             this.operationInProgress = false;
             this.currentRequestId = null;
             hideStopButton();
             this.removeStreamHandlers();
-            updateButtonsState();
         }
     }
 
-    async handleTextSend(text: string): Promise<void> {
+    async handleTextSend(text: string): Promise<boolean> {
+        const normalizedText = text.trim();
+        if (!normalizedText) return false;
         logger.info('ui', 'Handle text send', {
-            textLength: text.length,
-            inputText: text,
+            textLength: normalizedText.length,
         });
         const opId = ++this.activeOpId;
+        const chatId = getActiveChatId();
         this.operationInProgress = true;
         setProcessing(true);
-        updateButtonsState();
         showStopButton();
 
-        const textInput = document.getElementById('textInput') as HTMLTextAreaElement | null;
-        if (textInput) {
-            textInput.value = '';
-        }
-
-        const requestId = `text-send-${Date.now()}`;
+        const requestId = `text-send-${crypto.randomUUID()}`;
 
         try {
             if (opId !== this.activeOpId) {
@@ -329,46 +330,78 @@ export class StreamController {
                 setProcessing(false);
                 this.operationInProgress = false;
                 hideStopButton();
-                updateButtonsState();
-                return;
+                return false;
             }
             setStatus('Sending to LLM...', 'sending');
-            await this.sendChatRequest(requestId, text, opId);
+            const started = await this.sendChatRequest(requestId, normalizedText, 'text', chatId, opId);
+            return started;
         } catch (error) {
             setStatus('Error', 'error');
             const hadPending = !!this.pendingConversation;
             this.failPendingConversation(this.toErrorMessage(error));
             if (!hadPending) {
-                showError(error);
+                showError(error, chatId, {source: 'text'});
             }
             setProcessing(false);
             this.operationInProgress = false;
             this.currentRequestId = null;
             hideStopButton();
             this.removeStreamHandlers();
-            updateButtonsState();
+            return false;
         }
-    }
-
-    async handleStreamTextSend(): Promise<void> {
-        if (!this.streamResults) return;
-        const text = this.streamResults.value.trim();
-        if (!text) return;
-        this.streamResults.value = '';
-        this.updateStreamSendButtonState();
-        await this.handleTextSend(text);
     }
 
     async stopActiveStream(): Promise<boolean> {
         return this.stopActiveOperation();
     }
 
-    async retryFailedMessage(text: string): Promise<void> {
-        const normalized = text.trim();
-        if (!normalized || state.isProcessing) {
-            return;
+    async retryFailedMessage(detail: {chatId?: string; messageId?: string; text?: string} | string): Promise<boolean> {
+        const payload = typeof detail === 'string' ? {text: detail} : detail;
+        const normalized = payload.text?.trim() || '';
+        if (!normalized || !payload.chatId || !payload.messageId || state.isProcessing) return false;
+
+        const opId = ++this.activeOpId;
+        this.operationInProgress = true;
+        setProcessing(true);
+        setStatus('Checking model...', 'processing');
+        try {
+            if (!(await this.ensureLlmReady()) || opId !== this.activeOpId) {
+                setProcessing(false);
+                this.operationInProgress = false;
+                return false;
+            }
+            const retry = beginRetryChatMessage(payload.chatId, payload.messageId);
+            if (!retry) throw new Error('The selected message can no longer be retried.');
+            const requestId = `retry-${crypto.randomUUID()}`;
+            this.pendingConversation = {...retry, requestId};
+            const provider = resolveLlmProvider(await this.loadSettingsSafe());
+            updateChatMessage(retry.assistantMessageId, {
+                retryText: retry.userText,
+                pending: true,
+                source: retry.source,
+                provider,
+            }, {chatId: retry.chatId});
+            const history = getConversationContext(retry.chatId);
+            const lastHistoryMessage = history[history.length - 1];
+            if (lastHistoryMessage?.role === 'user' && lastHistoryMessage.content.trim() === retry.userText) {
+                history.pop();
+            }
+            this.currentRequestId = requestId;
+            this.prepareStreamHandlers(requestId);
+            showStopButton();
+            setStatus('Retrying...', 'sending');
+            await window.api.assistant.askChat({text: retry.userText, requestId, history});
+            return true;
+        } catch (error) {
+            this.failPendingConversation(this.toErrorMessage(error));
+            setStatus('Error', 'error');
+            setProcessing(false);
+            this.operationInProgress = false;
+            this.currentRequestId = null;
+            hideStopButton();
+            this.removeStreamHandlers();
+            return false;
         }
-        await this.handleTextSend(normalized);
     }
 
     async stopActiveOperation(): Promise<boolean> {
@@ -393,8 +426,11 @@ export class StreamController {
             const pending = this.pendingConversation;
             const partial = this.streamAccumulator.trim();
             updateChatMessage(pending.assistantMessageId, {
-                text: partial ? `${partial}\n\n[Stopped]` : 'Stopped.',
+                role: 'error',
+                text: partial ? `${partial}\n\n[Interrupted — retry to continue]` : '[Interrupted — retry to continue]',
                 pending: false,
+                interrupted: true,
+                retryText: pending.userText,
             }, {chatId: pending.chatId});
             this.pendingConversation = null;
         }
@@ -405,40 +441,62 @@ export class StreamController {
         setProcessing(false);
         this.operationInProgress = false;
         hideStopButton();
-        updateButtonsState();
         return true;
     }
 
     async handleHotkeyToggleRequest(): Promise<void> {
-        await this.handleAudioInputToggle('hotkey');
+        await this.handleAudioInputToggle();
     }
 
-    async updateStreamModeVisibility(_preferred?: 'base' | 'stream'): Promise<void> {
+    async handleAudioInputToggleRequest(): Promise<void> {
+        await this.handleAudioInputToggle();
+    }
+
+    private async applyAudioInputSetting(type: AudioInputType): Promise<boolean> {
+        if (type === getAudioInputType()) {
+            await this.updateToggleButtonLabel(type);
+            return true;
+        }
+        if (this.audioSwitchInProgress) {
+            settingsStore.patch({audioInputType: getAudioInputType()});
+            return false;
+        }
+
+        this.audioSwitchInProgress = true;
+        this.ui.setAudioInputPresentation?.(getAudioInputType(), true);
         try {
-            this.isStreamMode = false;
-            this.streamModeInitialized = true;
-            if (this.streamModeContainer) {
-                this.streamModeContainer.classList.add('hidden');
-                this.streamModeContainer.style.display = 'none';
-            }
-            if (this.durationsContainer) {
-                this.durationsContainer.classList.remove('hidden');
-                this.durationsContainer.style.display = 'block';
-            }
-            if (this.googleStreamingActive) {
-                try {
-                    await this.googleStreamingService.stop();
-                } catch {
-                }
-                this.googleStreamingActive = false;
-            }
+            const result = await this.switchAudioInput(type);
+            return result.success;
         } catch (error) {
-            console.error('Error updating stream mode visibility:', error);
+            logger.error('audio', 'Settings audio input switch failed', {error: this.toErrorMessage(error)});
+            return false;
+        } finally {
+            this.audioSwitchInProgress = false;
+            this.ui.setAudioInputPresentation?.(getAudioInputType(), false);
+        }
+    }
+
+    private async applyAudioDeviceSetting(deviceId: string): Promise<boolean> {
+        const current = settingsStore.get().audioInputDeviceId || '';
+        if (deviceId === current) return true;
+        if (this.audioSwitchInProgress) return false;
+
+        this.audioSwitchInProgress = true;
+        this.ui.setAudioInputPresentation?.(getAudioInputType(), true);
+        try {
+            const result = await this.switchAudioInput(getAudioInputType(), deviceId);
+            return result.success;
+        } catch (error) {
+            logger.error('audio', 'Settings microphone switch failed', {error: this.toErrorMessage(error)});
+            return false;
+        } finally {
+            this.audioSwitchInProgress = false;
+            this.ui.setAudioInputPresentation?.(getAudioInputType(), false);
         }
     }
 
     private async prepareAudioBuffer(
-        pcm: { channels: Float32Array[]; sampleRate: number },
+        pcm: { channels: Float32Array[]; sampleRate: number; durationSeconds: number },
         seconds: number
     ): Promise<{
         arrayBuffer: ArrayBuffer;
@@ -527,7 +585,13 @@ export class StreamController {
         return {arrayBuffer, maxAmplitude, rms, expectedFrames, dataMaxAmp};
     }
 
-    private async sendChatRequest(requestId: string, text: string, opId?: number): Promise<boolean> {
+    private async sendChatRequest(
+        requestId: string,
+        text: string,
+        source: ChatSource,
+        chatId: string,
+        opId?: number,
+    ): Promise<boolean> {
         if (typeof opId === 'number' && opId !== this.activeOpId) {
             return false;
         }
@@ -535,15 +599,14 @@ export class StreamController {
             setProcessing(false);
             this.operationInProgress = false;
             hideStopButton();
-            updateButtonsState();
             return false;
         }
         if (typeof opId === 'number' && opId !== this.activeOpId) {
             return false;
         }
-        const chatId = getActiveChatId();
+        const provider = resolveLlmProvider(await this.loadSettingsSafe());
         const history = getConversationContext(chatId);
-        this.pendingConversation = this.createPendingConversation(chatId, requestId, text);
+        this.pendingConversation = this.createPendingConversation(chatId, requestId, text, source, provider);
         this.currentRequestId = requestId;
         this.prepareStreamHandlers(requestId);
         showStopButton();
@@ -578,6 +641,8 @@ export class StreamController {
                 updateChatMessage(pending.assistantMessageId, {
                     text: full,
                     pending: false,
+                    retryText: undefined,
+                    interrupted: false,
                 }, {chatId: pending.chatId});
                 this.pendingConversation = null;
             }
@@ -587,7 +652,6 @@ export class StreamController {
             setProcessing(false);
             this.operationInProgress = false;
             hideStopButton();
-            updateButtonsState();
             this.removeStreamHandlers();
         };
 
@@ -602,8 +666,11 @@ export class StreamController {
                 if (aborted) {
                     const partial = this.streamAccumulator.trim();
                     updateChatMessage(pending.assistantMessageId, {
-                        text: partial ? `${partial}\n\n[Stopped]` : 'Stopped.',
+                        role: 'error',
+                        text: partial ? `${partial}\n\n[Interrupted — retry to continue]` : '[Interrupted — retry to continue]',
                         pending: false,
+                        interrupted: true,
+                        retryText: pending.userText,
                     }, {chatId: pending.chatId});
                 } else {
                     updateChatMessage(pending.assistantMessageId, {
@@ -625,7 +692,6 @@ export class StreamController {
             setProcessing(false);
             this.operationInProgress = false;
             hideStopButton();
-            updateButtonsState();
             this.removeStreamHandlers();
         };
 
@@ -634,9 +700,21 @@ export class StreamController {
         window.api.assistant.onStreamError(this.streamErrorHandler);
     }
 
-    private createPendingConversation(chatId: string, requestId: string, userText: string): PendingConversation {
-        const userMessageId = appendChatMessage('user', userText, {chatId});
-        const assistantMessageId = appendChatMessage('assistant', 'Syncing...', {pending: true, chatId});
+    private createPendingConversation(
+        chatId: string,
+        requestId: string,
+        userText: string,
+        source: ChatSource,
+        provider: ChatProvider,
+    ): PendingConversation {
+        const userMessageId = appendChatMessage('user', userText, {chatId, source, provider});
+        const assistantMessageId = appendChatMessage('assistant', 'Syncing...', {
+            pending: true,
+            chatId,
+            retryText: userText,
+            source,
+            provider,
+        });
         return {
             chatId,
             requestId,
@@ -717,32 +795,12 @@ export class StreamController {
         this.streamAccumulator = '';
     }
 
-    private updateStreamSendButtonState(): void {
-        if (!this.streamResults || !this.streamSendButton) return;
+    private async handleAudioInputToggle(): Promise<void> {
+        if (this.audioSwitchInProgress) return;
+        this.audioSwitchInProgress = true;
+        this.ui.setAudioInputPresentation?.(getAudioInputType(), true);
         try {
-            this.streamSendButton.disabled = !(this.streamResults.value.trim().length > 0) || state.isProcessing;
-        } catch {
-        }
-    }
-
-    private normalizeConfigHotkeyKey(key: string): string {
-        const lower = String(key || '').toLowerCase();
-        if (lower === '~' || lower === '`') return 'backquote';
-        return lower;
-    }
-
-    private eventKeyId(event: KeyboardEvent): string {
-        const code = event.code || '';
-        const key = String(event.key || '').toLowerCase();
-        if (code === 'Backquote') return 'backquote';
-        if (key === 'dead' && code === 'Backquote') return 'backquote';
-        return key;
-    }
-
-    private async handleAudioInputToggle(_source: ToggleSource): Promise<void> {
-        try {
-            const settingsSnapshot = await this.loadSettingsSafe();
-            const currentType = (settingsSnapshot.audioInputType || 'microphone') as 'microphone' | 'system' | 'mixed';
+            const currentType = getAudioInputType();
             const nextType: 'microphone' | 'system' | 'mixed' =
                 currentType === 'microphone'
                     ? 'system'
@@ -751,117 +809,102 @@ export class StreamController {
                         : 'microphone';
 
             const result = await this.switchAudioInput(nextType);
-            if (result.success) {
-                settingsStore.patch({audioInputType: nextType});
-            }
+            settingsStore.patch({audioInputType: result.activeType});
         } catch (error) {
             console.error('Toggle input failed', error);
+        } finally {
+            this.audioSwitchInProgress = false;
+            this.ui.setAudioInputPresentation?.(getAudioInputType(), false);
         }
     }
 
-    private async switchAudioInput(newType: 'microphone' | 'system' | 'mixed'): Promise<SwitchAudioResult> {
-        logger.info('audio', 'Switch input requested', {newType});
+    private async syncGoogleRealtime(): Promise<void> {
+        return this.googleRealtimeTransitions.run(async (isCurrent) => {
+            if (!isCurrent()) return;
+            const settings = await this.loadSettingsSafe();
+            if (!isCurrent()) return;
+            const shouldRun = !this.disposed
+                && state.isRecording
+                && settings.transcriptionMode !== 'local'
+                && typeof settings.transcriptionModel === 'string'
+                && settings.transcriptionModel.startsWith('gemini-');
+            if (!shouldRun) {
+                await this.googleStreamingService.stop();
+                if (!isCurrent()) return;
+                this.googleStreamingActive = false;
+                this.lastRealtimeTranscript = '';
+                return;
+            }
+            if (this.googleStreamingActive) return;
+            this.lastRealtimeTranscript = '';
+            try {
+                await this.googleStreamingService.start(null, {streamMode: 'base'});
+                if (!isCurrent()) return;
+                this.googleStreamingActive = true;
+                setStatus('Recording · Gemini Live transcription active', 'recording');
+            } catch (error) {
+                this.googleStreamingActive = false;
+                await this.googleStreamingService.stop().catch(() => undefined);
+                if (!isCurrent()) return;
+                logger.warn('google-live', 'Realtime transcription unavailable', {
+                    error: this.toErrorMessage(error),
+                });
+                // Realtime is an enhancement; retain the rolling recorder so
+                // normal "send last N seconds" requests keep working.
+                setStatus('Recording · realtime transcription unavailable', 'recording');
+            }
+        });
+    }
 
-        const previousType = getAudioInputType();
-        setAudioInputType(newType);
+    private async switchAudioInput(newType: AudioInputType, newDeviceId?: string): Promise<SwitchAudioResult> {
+        logger.info('audio', 'Switch input requested', {newType, newDeviceId});
 
+        const result = await switchAudioInputDevice(newType, newDeviceId);
+        setAudioInputType(result.activeType);
+        settingsStore.patch({
+            audioInputType: result.activeType,
+            audioInputDeviceId: result.activeDeviceId,
+        });
         try {
-            await window.api.settings.setAudioInputType(newType);
+            await this.updateToggleButtonLabel(result.activeType);
         } catch {
         }
-
-        // Update icon immediately for better UX
-        try {
-            await this.updateToggleButtonLabel(newType);
-        } catch {
-        }
-
-        const result = await switchAudioInputDevice(newType);
-        if (!result.success) {
-            setAudioInputType(previousType);
-            try {
-                await window.api.settings.setAudioInputType(previousType);
-            } catch {
-            }
-            try {
-                await this.updateToggleButtonLabel(previousType);
-            } catch {
-            }
-            return result;
-        }
+        if (!result.success) return result;
 
         if (state.isRecording) {
-            try {
-                await this.googleStreamingService.stop();
-                this.googleStreamingActive = false;
-                setStatus('Recording...', 'recording');
-            } catch (error) {
-                console.error('Failed to refresh recorder status after input switch', error);
-            }
+            // GoogleStreamingService subscribes to the shared native audio bus,
+            // so the existing Live session automatically receives the new
+            // source. Keeping it open avoids dropping audio during a reconnect.
+            setStatus(
+                this.googleStreamingActive
+                    ? 'Recording · Gemini Live transcription active'
+                    : 'Recording...',
+                'recording',
+            );
         }
 
         return result;
     }
 
-    private async updateToggleButtonLabel(preferred?: 'microphone' | 'system' | 'mixed'): Promise<void> {
-        const btn = this.toggleInputButton ?? (document.getElementById('btnToggleInput') as HTMLButtonElement | null);
-        let icon = this.toggleInputIcon ?? (document.getElementById('toggleInputIcon') as HTMLImageElement | null);
-        this.toggleInputButton = btn;
-        if (!btn) return;
-
-        let type: 'microphone' | 'system' | 'mixed' | undefined = preferred as any;
+    private async updateToggleButtonLabel(preferred?: AudioInputType): Promise<void> {
+        let type: AudioInputType | undefined = preferred;
         if (!type) {
             const settings = await this.loadSettingsSafe();
-            type = (settings.audioInputType || 'microphone') as any;
+            type = (settings.audioInputType || 'microphone') as AudioInputType;
         }
         if (!type) type = getAudioInputType();
 
         setAudioInputType(type);
-        const iconAlt = type === 'microphone' ? 'MIC' : type === 'system' ? 'SYS' : 'MIX';
-        btn.title = type === 'microphone'
-            ? 'Using Microphone'
-            : type === 'system'
-                ? 'Using System Audio'
-                : 'Using Mic + System Audio';
+        this.ui.setAudioInputPresentation?.(type, this.audioSwitchInProgress);
+    }
 
-        // For mixed mode show two icons side by side
-        if (type === 'mixed') {
-            // Clear existing button content
-            btn.innerHTML = '';
-            // Create container for two icons
-            const container = document.createElement('div');
-            container.style.cssText = 'display: flex; align-items: center; gap: 2px;';
-
-            // Microphone icon
-            const micIcon = document.createElement('img');
-            micIcon.src = 'img/icons/mic.png';
-            micIcon.alt = 'MIC';
-            micIcon.className = 'h-5 w-5';
-            micIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
-
-            // System audio icon
-            const audioIcon = document.createElement('img');
-            audioIcon.src = 'img/icons/audio.png';
-            audioIcon.alt = 'SYS';
-            audioIcon.className = 'h-5 w-5';
-            audioIcon.style.cssText = 'filter: invert(1); opacity: 80%;';
-
-            container.appendChild(micIcon);
-            container.appendChild(audioIcon);
-            btn.appendChild(container);
-        } else {
-            // For other modes show a single icon and restore default structure when missing
-            if (!icon || !btn.contains(icon)) {
-                btn.innerHTML = '';
-                icon = document.createElement('img');
-                icon.id = 'toggleInputIcon';
-                icon.className = 'h-5 w-5';
-                icon.style.cssText = 'filter: invert(1); opacity: 80%;';
-                btn.appendChild(icon);
-                this.toggleInputIcon = icon;
-            }
-            icon.src = type === 'microphone' ? 'img/icons/mic.png' : 'img/icons/audio.png';
-            icon.alt = iconAlt;
-        }
+    async dispose(): Promise<void> {
+        if (this.disposed) return;
+        this.disposed = true;
+        this.activeOpId += 1;
+        await this.stopActiveOperation().catch(() => false);
+        await this.syncGoogleRealtime().catch(() => undefined);
+        this.googleStreamingActive = false;
+        this.removeStreamHandlers();
     }
 }

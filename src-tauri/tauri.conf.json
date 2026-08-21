@@ -10,7 +10,7 @@
     "frontendDist": "../dist/renderer"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "macOSPrivateApi": true,
     "windows": [
       {
@@ -28,10 +28,21 @@
       }
     ],
     "security": {
-      "csp": null
+      "freezePrototype": true,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8868 https://xlartas.com https://xlartas.ru wss://xlartas.com wss://xlartas.ru wss://generativelanguage.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8868 https://xlartas.com https://xlartas.ru wss://xlartas.com wss://xlartas.ru wss://generativelanguage.googleapis.com ws://localhost:1420; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     }
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwNTk1ODU3RjIzRUIyQzcKUldUSHNqN3lWMWhaNERQUnVsTnljdUFuOXJxY0cyREo5bFpCS3dlNkowalpwUUFpbDZLYTJleE0K",
+      "endpoints": [
+        "https://s3.twcstorage.ru/324718a4-2cc5dd7a-917b-4e82-87c5-b9d5f8de16ba/xexamai/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    },
     "deep-link": {
       "desktop": [
         {
@@ -44,6 +55,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/128x128.png",
@@ -54,6 +66,11 @@
     ],
     "resources": [
       "resources/**/*"
-    ]
+    ],
+    "macOS": {
+      "entitlements": "./Entitlements.plist",
+      "infoPlist": "./Info.plist",
+      "hardenedRuntime": true
+    }
   }
 }

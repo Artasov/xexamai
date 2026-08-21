@@ -1,17 +1,28 @@
 import {marked} from 'marked';
 import {addErrorHelpStyles, formatError} from '../utils/errorFormatter';
 import type {ChatHistoryMessage} from '@shared/ipc';
+import {buildHistoryScope, scopedHistoryStorageKey} from './historyScope';
+import {
+    isChatProvider,
+    isChatSource,
+    type ChatProvider,
+    type ChatSource,
+} from './chatMetadata';
 
-addErrorHelpStyles();
+if (typeof document !== 'undefined') addErrorHelpStyles();
 
-type ChatRole = 'user' | 'assistant' | 'error' | 'system';
+export type ChatRole = 'user' | 'assistant' | 'error' | 'system';
 
-type ChatMessage = {
+export type ChatMessage = {
     id: string;
     role: ChatRole;
     text: string;
     pending?: boolean;
     retryText?: string;
+    interrupted?: boolean;
+    source?: ChatSource;
+    provider?: ChatProvider;
+    createdAt: number;
 };
 
 type ChatSession = {
@@ -20,6 +31,7 @@ type ChatSession = {
     createdAt: number;
     updatedAt: number;
     messages: ChatMessage[];
+    pinned: boolean;
 };
 
 export type ChatSessionSummary = {
@@ -28,23 +40,51 @@ export type ChatSessionSummary = {
     createdAt: number;
     updatedAt: number;
     messageCount: number;
+    pinned: boolean;
+    interrupted: boolean;
+    sources: ChatSource[];
+    providers: ChatProvider[];
+};
+
+export type ChatMessageMetadata = {
+    source?: ChatSource;
+    provider?: ChatProvider;
+};
+
+export type ChatViewSnapshot = {
+    chatId: string;
+    messages: ChatMessage[];
 };
 
 type ChatSessionListener = (sessions: ChatSessionSummary[], activeChatId: string) => void;
 
-let textOut: HTMLDivElement | null = null;
-let answerOut: HTMLDivElement | null = null;
-let chatOut: HTMLDivElement | null = null;
 let messageSeq = 0;
 
 const CHAT_STORAGE_KEY = 'xexamai.chat.sessions.v1';
+const CHAT_RETENTION_KEY = 'xexamai.chat.retention-days.v1';
+const MAX_CHAT_SESSIONS = 100;
+const MAX_MESSAGES_PER_CHAT = 300;
+const DEFAULT_RETENTION_DAYS = 90;
+const PERSIST_DEBOUNCE_MS = 250;
 
 let sessionsHydrated = false;
 let chatSessions: ChatSession[] = [];
 let activeChatId: string | null = null;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let historyScope = buildHistoryScope('https://xlartas.com', null);
+let historyPersistenceEnabled = false;
 
 const chatSessionListeners = new Set<ChatSessionListener>();
+const chatViewListeners = new Set<() => void>();
+let chatViewSnapshot: ChatViewSnapshot = {chatId: '', messages: []};
+let chatRenderFrame: number | null = null;
+let sessionNotifyFrame: number | null = null;
 export const CHAT_RETRY_EVENT_NAME = 'xexamai:chat-retry';
+
+const currentChatStorageKey = (): string =>
+    scopedHistoryStorageKey(CHAT_STORAGE_KEY, historyScope);
+const currentRetentionStorageKey = (): string =>
+    scopedHistoryStorageKey(CHAT_RETENTION_KEY, historyScope);
 
 const nextMessageId = (): string => `msg-${Date.now()}-${++messageSeq}`;
 const nextChatId = (): string => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -150,26 +190,32 @@ function sanitizeHtml(html: string): string {
     return template.innerHTML;
 }
 
-function renderMarkdown(value: string): string {
+export function renderChatMarkdown(value: string): string {
     return sanitizeHtml(marked.parse(value, {async: false}) as string);
-}
-
-function escapeHtml(value: string): string {
-    const div = document.createElement('div');
-    div.textContent = value;
-    return div.innerHTML;
 }
 
 function normalizeChatMessage(raw: unknown): ChatMessage | null {
     if (!raw || typeof raw !== 'object') return null;
     const input = raw as Record<string, unknown>;
     const text = typeof input.text === 'string' ? input.text : '';
+    const interrupted = Boolean(input.pending) || input.interrupted === true;
+    const role = interrupted ? 'error' : sanitizeRole(input.role);
+    const interruptedMarker = '[Interrupted — retry to continue]';
+    const interruptedText = interrupted
+        ? text.includes(interruptedMarker)
+            ? text
+            : `${text && text !== 'Syncing...' ? `${text}\n\n` : ''}${interruptedMarker}`
+        : text;
     return {
         id: typeof input.id === 'string' && input.id ? input.id : nextMessageId(),
-        role: sanitizeRole(input.role),
-        text,
+        role,
+        text: interruptedText,
         pending: false,
         retryText: typeof input.retryText === 'string' ? input.retryText : undefined,
+        interrupted,
+        source: isChatSource(input.source) ? input.source : undefined,
+        provider: isChatProvider(input.provider) ? input.provider : undefined,
+        createdAt: typeof input.createdAt === 'number' ? input.createdAt : Date.now(),
     };
 }
 
@@ -189,6 +235,7 @@ function normalizeChatSession(raw: unknown): ChatSession | null {
         createdAt,
         updatedAt,
         messages,
+        pinned: input.pinned === true,
     };
 }
 
@@ -198,35 +245,101 @@ function isHistoryRole(
     return message.role === 'user' || message.role === 'assistant';
 }
 
-function persistSessions(): void {
-    if (typeof window === 'undefined') return;
+function retentionDays(): number {
+    if (!historyPersistenceEnabled) return DEFAULT_RETENTION_DAYS;
+    const stored = window.localStorage?.getItem(currentRetentionStorageKey());
+    if (stored == null) return DEFAULT_RETENTION_DAYS;
+    const raw = Number(stored);
+    return [0, 30, 90, 365].includes(raw) ? raw : DEFAULT_RETENTION_DAYS;
+}
+
+function pruneSessions(): void {
+    const days = retentionDays();
+    const cutoff = days === 0 ? 0 : Date.now() - days * 86_400_000;
+    chatSessions = chatSessions
+        .filter((session) => session.pinned || !cutoff || session.updatedAt >= cutoff || session.id === activeChatId)
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
+        .slice(0, MAX_CHAT_SESSIONS);
+    for (const session of chatSessions) {
+        if (session.messages.length > MAX_MESSAGES_PER_CHAT) {
+            session.messages = session.messages.slice(-MAX_MESSAGES_PER_CHAT);
+        }
+    }
+}
+
+function writeSessions(): void {
+    if (typeof window === 'undefined' || !historyPersistenceEnabled) return;
     try {
+        pruneSessions();
         const payload = {
             activeChatId,
-            sessions: chatSessions.map((session) => ({
-                ...session,
-                messages: session.messages.map((message) => ({
-                    ...message,
-                    pending: false,
-                })),
-            })),
+            sessions: chatSessions,
         };
-        window.localStorage?.setItem(CHAT_STORAGE_KEY, JSON.stringify(payload));
-    } catch {
+        window.localStorage?.setItem(currentChatStorageKey(), JSON.stringify(payload));
+    } catch (error) {
+        // Quota recovery is progressive: keep pinned/current chats, then reduce
+        // old sessions and long message lists before giving up.
+        const ordered = [...chatSessions]
+            .sort((a, b) => Number(b.pinned || b.id === activeChatId) - Number(a.pinned || a.id === activeChatId)
+                || b.updatedAt - a.updatedAt);
+        const attempts = [
+            ordered.slice(0, Math.max(1, Math.ceil(ordered.length / 2))),
+            ordered.slice(0, Math.max(1, Math.ceil(ordered.length / 3))).map((session) => ({
+                ...session,
+                messages: session.messages.slice(-100),
+            })),
+            ordered.filter((session) => session.pinned || session.id === activeChatId).map((session) => ({
+                ...session,
+                messages: session.messages.slice(-40),
+            })),
+        ];
+        for (const candidate of attempts) {
+            if (!candidate.length) continue;
+            try {
+                window.localStorage?.setItem(currentChatStorageKey(), JSON.stringify({activeChatId, sessions: candidate}));
+                chatSessions = candidate;
+                return;
+            } catch {
+            }
+        }
+        console.warn('[history] Could not persist chat history', error);
     }
+}
+
+function persistSessions(immediate = false): void {
+    if (persistTimer) clearTimeout(persistTimer);
+    if (!historyPersistenceEnabled) {
+        persistTimer = null;
+        return;
+    }
+    if (immediate) {
+        persistTimer = null;
+        writeSessions();
+        return;
+    }
+    persistTimer = setTimeout(() => {
+        persistTimer = null;
+        writeSessions();
+    }, PERSIST_DEBOUNCE_MS);
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => persistSessions(true));
+    window.addEventListener('beforeunload', () => persistSessions(true));
 }
 
 function hydrateSessions(): void {
     if (sessionsHydrated) return;
     sessionsHydrated = true;
 
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !historyPersistenceEnabled) {
         const session: ChatSession = {
             id: nextChatId(),
             title: initialChatTitle(),
             createdAt: Date.now(),
             updatedAt: Date.now(),
             messages: [],
+            pinned: false,
         };
         chatSessions = [session];
         activeChatId = session.id;
@@ -234,7 +347,7 @@ function hydrateSessions(): void {
     }
 
     try {
-        const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
+        const raw = window.localStorage?.getItem(currentChatStorageKey());
         if (!raw) {
             throw new Error('No chats in storage');
         }
@@ -254,16 +367,24 @@ function hydrateSessions(): void {
             ? candidateId
             : normalized[0].id;
     } catch {
+        try {
+            const damaged = window.localStorage?.getItem(currentChatStorageKey());
+            if (damaged) {
+                window.localStorage?.setItem(`${currentChatStorageKey()}.corrupt.${Date.now()}`, damaged.slice(0, 1_000_000));
+            }
+        } catch {
+        }
         const session: ChatSession = {
             id: nextChatId(),
             title: initialChatTitle(),
             createdAt: Date.now(),
             updatedAt: Date.now(),
             messages: [],
+            pinned: false,
         };
         chatSessions = [session];
         activeChatId = session.id;
-        persistSessions();
+        persistSessions(true);
     }
 }
 
@@ -277,6 +398,7 @@ function getActiveSession(): ChatSession {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             messages: [],
+            pinned: false,
         };
         chatSessions = [session];
         activeChatId = session.id;
@@ -320,82 +442,43 @@ function maybeUpdateSessionTitle(session: ChatSession, role: ChatRole, text: str
     session.title = title;
 }
 
-function resolveChatOut(): HTMLDivElement | null {
-    const target = chatOut ?? (document.getElementById('chatOut') as HTMLDivElement | null);
-    if (!target) return null;
-    chatOut = target;
-    return target;
+function commitChatView(): void {
+    chatRenderFrame = null;
+    const session = getActiveSession();
+    chatViewSnapshot = {
+        chatId: session.id,
+        messages: session.messages.map((message) => ({...message})),
+    };
+    for (const listener of [...chatViewListeners]) {
+        try {
+            listener();
+        } catch {
+        }
+    }
 }
 
 function renderChat(): void {
-    const target = resolveChatOut();
-    if (!target) return;
-
-    const session = getActiveSession();
-    const chatMessages = session.messages;
-
-    const currentScrollTop = target.scrollTop;
-    const currentScrollHeight = target.scrollHeight;
-    const isAtBottom = currentScrollTop + target.clientHeight >= currentScrollHeight - 8;
-
-    target.innerHTML = '';
-
-    for (const message of chatMessages) {
-        const row = document.createElement('div');
-        row.className = `chat-row chat-row--${message.role}`;
-
-        const bubble = document.createElement('div');
-        bubble.className = `chat-message chat-message--${message.role}`;
-
-        const content = document.createElement('div');
-        content.className = `chat-message__content ${message.role === 'assistant' ? 'chat-markdown' : ''}`;
-
-        if (message.role === 'assistant') {
-            const value = message.text || (message.pending ? 'Syncing...' : '');
-            content.innerHTML = value ? renderMarkdown(value) : '';
-        } else {
-            content.textContent = message.text;
-        }
-
-        bubble.appendChild(content);
-
-        const canRetry = message.role === 'error' &&
-            typeof message.retryText === 'string' &&
-            message.retryText.trim().length > 0;
-        if (canRetry) {
-            const actions = document.createElement('div');
-            actions.className = 'chat-message__actions';
-
-            const retryButton = document.createElement('button');
-            retryButton.type = 'button';
-            retryButton.className = 'chat-retry-btn';
-            retryButton.textContent = 'Retry';
-            retryButton.addEventListener('click', () => {
-                if (typeof window === 'undefined') return;
-                const payload = {
-                    chatId: session.id,
-                    messageId: message.id,
-                    text: (message.retryText || '').trim(),
-                };
-                window.dispatchEvent(new CustomEvent(CHAT_RETRY_EVENT_NAME, {detail: payload}));
-            });
-
-            actions.appendChild(retryButton);
-            bubble.appendChild(actions);
-        }
-
-        row.appendChild(bubble);
-        target.appendChild(row);
+    if (chatRenderFrame !== null) return;
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        chatRenderFrame = window.requestAnimationFrame(commitChatView);
+        return;
     }
-
-    if (isAtBottom) {
-        target.scrollTop = target.scrollHeight;
-    } else {
-        target.scrollTop = currentScrollTop;
-    }
+    commitChatView();
 }
 
-function notifyChatSessionsChanged(): void {
+export function getChatViewSnapshot(): ChatViewSnapshot {
+    hydrateSessions();
+    if (!chatViewSnapshot.chatId) commitChatView();
+    return chatViewSnapshot;
+}
+
+export function subscribeChatView(listener: () => void): () => void {
+    chatViewListeners.add(listener);
+    return () => chatViewListeners.delete(listener);
+}
+
+function commitChatSessionsChanged(): void {
+    sessionNotifyFrame = null;
     const activeId = getActiveSession().id;
     const sessions = listChatSessions();
     for (const listener of chatSessionListeners) {
@@ -406,30 +489,29 @@ function notifyChatSessionsChanged(): void {
     }
 }
 
-export function initOutputs(elements: {
-    text?: HTMLDivElement | null;
-    answer?: HTMLDivElement | null;
-    chat?: HTMLDivElement | null;
-}) {
-    if (typeof elements !== 'object' || !elements) return;
-    if (elements.text) textOut = elements.text;
-    if (elements.answer) answerOut = elements.answer;
-    if (elements.chat) chatOut = elements.chat;
-    hydrateSessions();
-    renderChat();
-    notifyChatSessionsChanged();
+function notifyChatSessionsChanged(): void {
+    if (sessionNotifyFrame !== null) return;
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        sessionNotifyFrame = window.requestAnimationFrame(commitChatSessionsChanged);
+        return;
+    }
+    commitChatSessionsChanged();
 }
 
 export function listChatSessions(): ChatSessionSummary[] {
     hydrateSessions();
     return [...chatSessions]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
         .map((session) => ({
             id: session.id,
             title: session.title,
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             messageCount: session.messages.length,
+            pinned: session.pinned,
+            interrupted: session.messages.some((message) => message.interrupted),
+            sources: getSessionSources(session),
+            providers: getSessionProviders(session),
         }));
 }
 
@@ -465,6 +547,7 @@ export function createNewChat(): string {
         createdAt: now,
         updatedAt: now,
         messages: [],
+        pinned: false,
     };
     chatSessions.unshift(next);
     activeChatId = next.id;
@@ -477,7 +560,14 @@ export function createNewChat(): string {
 export function appendChatMessage(
     role: ChatRole,
     text: string,
-    options?: { id?: string; pending?: boolean; chatId?: string; retryText?: string }
+    options?: {
+        id?: string;
+        pending?: boolean;
+        chatId?: string;
+        retryText?: string;
+        source?: ChatSource;
+        provider?: ChatProvider;
+    }
 ): string {
     const session = getSessionById(options?.chatId ?? null);
     const id = options?.id || nextMessageId();
@@ -487,6 +577,10 @@ export function appendChatMessage(
         text: text || '',
         pending: options?.pending ?? false,
         retryText: options?.retryText?.trim() || undefined,
+        interrupted: false,
+        source: options?.source,
+        provider: options?.provider,
+        createdAt: Date.now(),
     };
     session.messages.push(entry);
     session.updatedAt = Date.now();
@@ -546,50 +640,189 @@ export function getConversationContext(chatId?: string, maxTurns = 20): ChatHist
             message.text.trim().length > 0
         ));
 
-    const sliced = messages.slice(-Math.max(1, maxTurns) * 2);
-    return sliced.map((message) => ({
-        role: message.role,
+    const selected = messages.slice(-Math.max(1, maxTurns) * 2);
+    return selected.map((message) => ({
+        role: message.role === 'user' ? 'user' as const : 'assistant' as const,
         content: message.text.trim(),
     }));
 }
 
-export function showText(text: string, chatId?: string) {
-    const target = textOut ?? (document.getElementById('textOut') as HTMLDivElement | null);
-    if (target) {
-        textOut = target;
-        target.textContent = text || '';
-        return;
+export function setChatHistoryScope(
+    accountId: number | null,
+    backendOrigin: string,
+    persistenceEnabled = false,
+): void {
+    const nextScope = buildHistoryScope(backendOrigin, accountId);
+    if (nextScope === historyScope && persistenceEnabled === historyPersistenceEnabled) return;
+    if (sessionsHydrated && historyPersistenceEnabled) persistSessions(true);
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = null;
+    historyScope = nextScope;
+    historyPersistenceEnabled = persistenceEnabled;
+    sessionsHydrated = false;
+    chatSessions = [];
+    activeChatId = null;
+    // The old unscoped format has no ownership metadata. Never attach it to the
+    // next signed-in account on a shared Windows profile.
+    try {
+        window.localStorage?.removeItem(CHAT_STORAGE_KEY);
+        window.localStorage?.removeItem(CHAT_RETENTION_KEY);
+    } catch {
     }
-    if (text?.trim()) {
-        appendChatMessage('user', text, {chatId});
-    }
+    hydrateSessions();
+    renderChat();
+    notifyChatSessionsChanged();
 }
 
-export function showAnswer(text: string, chatId?: string) {
-    const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
-    if (target) {
-        answerOut = target;
-        target.innerHTML = text ? renderMarkdown(text) : '';
-        return;
+function getSessionSources(session: ChatSession): ChatSource[] {
+    const sources = new Set<ChatSource>();
+    for (const message of session.messages) {
+        if (message.source) sources.add(message.source);
+        else if (/\[Screenshot\b/i.test(message.text)) sources.add('screenshot');
+        else if (message.role === 'system' && /\b(?:audio|transcription|last\s+\d)/i.test(message.text)) sources.add('audio');
+        else if (message.role === 'user') sources.add('text');
     }
-    if (text?.trim()) {
-        appendChatMessage('assistant', text, {chatId});
-    }
+    return [...sources];
 }
 
-export function showError(error: unknown, chatId?: string) {
-    const formattedError = formatError(error);
-    const target = answerOut ?? (document.getElementById('answerOut') as HTMLDivElement | null);
-
-    if (target) {
-        answerOut = target;
-        let errorHtml = `<div class="error-message">${escapeHtml(formattedError.displayText)}</div>`;
-        if (formattedError.helpHtml) {
-            errorHtml += sanitizeHtml(formattedError.helpHtml);
+function getSessionProviders(session: ChatSession): ChatProvider[] {
+    const providers = new Set<ChatProvider>();
+    for (const message of session.messages) {
+        if (message.provider) {
+            providers.add(message.provider);
+            continue;
         }
-        target.innerHTML = errorHtml;
-        return;
+        // Backwards-compatible inference for screenshot markers written before
+        // explicit message metadata existed. Ordinary message text is not
+        // inspected, avoiding false provider matches in interview content.
+        if (!/\[Screenshot\b/i.test(message.text)) continue;
+        if (/sent to Google\b/i.test(message.text)) providers.add('google');
+        if (/sent to OpenAI\b/i.test(message.text)) providers.add('openai');
     }
+    return [...providers];
+}
 
-    appendChatMessage('error', formattedError.displayText, {chatId});
+export function searchChatSessions(query = '', pinnedOnly = false): ChatSessionSummary[] {
+    hydrateSessions();
+    const normalized = query.trim().toLocaleLowerCase();
+    const ids = new Set(chatSessions
+        .filter((session) => !pinnedOnly || session.pinned)
+        .filter((session) => !normalized || session.title.toLocaleLowerCase().includes(normalized)
+            || session.messages.some((message) => message.text.toLocaleLowerCase().includes(normalized)))
+        .map((session) => session.id));
+    return listChatSessions().filter((session) => ids.has(session.id));
+}
+
+export function renameChat(chatId: string, title: string): boolean {
+    const session = getSessionById(chatId);
+    const normalized = title.trim().slice(0, 120);
+    if (!normalized || session.id !== chatId) return false;
+    session.title = normalized;
+    session.updatedAt = Date.now();
+    persistSessions();
+    notifyChatSessionsChanged();
+    return true;
+}
+
+export function toggleChatPinned(chatId: string): boolean {
+    const session = chatSessions.find((item) => item.id === chatId);
+    if (!session) return false;
+    session.pinned = !session.pinned;
+    session.updatedAt = Date.now();
+    persistSessions();
+    notifyChatSessionsChanged();
+    return session.pinned;
+}
+
+export function deleteChat(chatId: string): boolean {
+    hydrateSessions();
+    const index = chatSessions.findIndex((session) => session.id === chatId);
+    if (index < 0) return false;
+    chatSessions.splice(index, 1);
+    if (!chatSessions.length) {
+        createNewChat();
+        return true;
+    }
+    if (activeChatId === chatId) activeChatId = chatSessions[0].id;
+    persistSessions();
+    renderChat();
+    notifyChatSessionsChanged();
+    return true;
+}
+
+export function exportChat(chatId: string): string | null {
+    const session = chatSessions.find((item) => item.id === chatId);
+    if (!session) return null;
+    const lines = [`# ${session.title}`, '', `Created: ${new Date(session.createdAt).toISOString()}`, ''];
+    for (const message of session.messages) {
+        lines.push(`## ${message.role}`, '', message.text, '');
+    }
+    return lines.join('\n');
+}
+
+export function setChatRetentionDays(days: number): void {
+    if (!historyPersistenceEnabled) return;
+    const normalized = [0, 30, 90, 365].includes(days) ? days : DEFAULT_RETENTION_DAYS;
+    window.localStorage?.setItem(currentRetentionStorageKey(), String(normalized));
+    pruneSessions();
+    persistSessions(true);
+    renderChat();
+    notifyChatSessionsChanged();
+}
+
+export function getChatRetentionDays(): number {
+    return retentionDays();
+}
+
+export function beginRetryChatMessage(chatId: string, messageId: string): {
+    chatId: string;
+    userText: string;
+    userMessageId: string;
+    assistantMessageId: string;
+    source?: ChatSource;
+    provider?: ChatProvider;
+} | null {
+    const session = chatSessions.find((item) => item.id === chatId);
+    if (!session) return null;
+    const index = session.messages.findIndex((message) => message.id === messageId);
+    const message = session.messages[index];
+    const userText = message?.retryText?.trim();
+    if (!message || !userText) return null;
+    const priorUser = [...session.messages.slice(0, index)].reverse()
+        .find((candidate) => candidate.role === 'user' && candidate.text.trim() === userText);
+    message.role = 'assistant';
+    message.text = 'Syncing...';
+    message.pending = true;
+    message.interrupted = false;
+    message.retryText = undefined;
+    session.updatedAt = Date.now();
+    activeChatId = session.id;
+    persistSessions();
+    renderChat();
+    notifyChatSessionsChanged();
+    return {
+        chatId: session.id,
+        userText,
+        userMessageId: priorUser?.id || '',
+        assistantMessageId: message.id,
+        source: message.source || priorUser?.source,
+        provider: message.provider || priorUser?.provider,
+    };
+}
+
+export function showText(text: string, chatId?: string, metadata?: ChatMessageMetadata) {
+    if (text?.trim()) {
+        appendChatMessage('user', text, {chatId, ...metadata});
+    }
+}
+
+export function showAnswer(text: string, chatId?: string, metadata?: ChatMessageMetadata) {
+    if (text?.trim()) {
+        appendChatMessage('assistant', text, {chatId, ...metadata});
+    }
+}
+
+export function showError(error: unknown, chatId?: string, metadata?: ChatMessageMetadata) {
+    const formattedError = formatError(error);
+    appendChatMessage('error', formattedError.displayText, {chatId, ...metadata});
 }

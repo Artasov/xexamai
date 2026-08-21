@@ -3,14 +3,23 @@
 import {getActiveChatId, getConversationContext, showAnswer, showError, showText} from '../ui/outputs';
 import {setStatus} from '../ui/status';
 import {setProcessing, state} from '../state/appState';
-import {updateButtonsState} from '../ui/controls';
 import {logger} from '../utils/logger';
 import {hideStopButton, showStopButton} from '../ui/stopButton';
+import {settingsStore} from '../state/settingsStore';
+import type {ChatProvider} from '../ui/chatMetadata';
+import {beginNativeRendererActivity} from '../state/rendererActivity';
 
-type CancelToken = { cancelled: boolean };
+type CancelToken = { cancelled: boolean; requestId: string };
+type ScreenshotControllerUi = {
+    getQuestion?: () => string;
+    clearQuestionIfUnchanged?: (value: string) => void;
+};
 
 export class ScreenshotController {
     private cancelToken: CancelToken | null = null;
+
+    constructor(private readonly ui: ScreenshotControllerUi = {}) {
+    }
 
     isActive(): boolean {
         return !!this.cancelToken && !this.cancelToken.cancelled;
@@ -22,29 +31,34 @@ export class ScreenshotController {
         }
         logger.info('screenshot', 'Screenshot stop requested');
         this.cancelToken.cancelled = true;
+        window.api.screen.cancel(this.cancelToken.requestId);
         setStatus('Cancelled', 'ready');
         setProcessing(false);
         hideStopButton();
-        updateButtonsState();
         return true;
     }
 
     async start(): Promise<void> {
         if (state.isProcessing) return;
 
-        const cancelToken: CancelToken = {cancelled: false};
+        const cancelToken: CancelToken = {cancelled: false, requestId: `screen-${crypto.randomUUID()}`};
         this.cancelToken = cancelToken;
         const requestChatId = getActiveChatId();
-        const textInput = document.getElementById('textInput') as HTMLTextAreaElement | null;
-        const rawUserText = textInput?.value?.trim() || '';
+        const rawUserText = this.ui.getQuestion?.().trim() || '';
+        let provider: ChatProvider = 'openai';
+        try {
+            provider = settingsStore.get().screenProcessingModel === 'google' ? 'google' : 'openai';
+        } catch {
+        }
+        const metadata = {source: 'screenshot' as const, provider};
 
         setProcessing(true);
-        updateButtonsState();
         setStatus('Capturing screen...', 'processing');
-        showAnswer('');
         showStopButton();
 
+        let releaseActivity: (() => Promise<void>) | null = null;
         try {
+            releaseActivity = await beginNativeRendererActivity('Capturing and analyzing screenshot');
             logger.info('screenshot', 'Screenshot capture requested');
             const capture = await window.api.screen.capture();
             if (!capture || !capture.base64) {
@@ -56,19 +70,20 @@ export class ScreenshotController {
                 return;
             }
 
+            // Capture context before appending the current screenshot marker so
+            // the user request is not sent twice (once in history and once with the image).
+            const history = getConversationContext(requestChatId);
             const timestamp = new Date().toLocaleString();
-            const label = `[Screenshot captured ${timestamp}]`;
+            const providerLabel = provider === 'google' ? 'Google' : 'OpenAI';
+            const label = `[Screenshot ${capture.width}×${capture.height} sent to ${providerLabel} at ${timestamp}; image pixels are not stored in chat history]`;
             const uiUserMessage = rawUserText ? `${label}\n${rawUserText}` : label;
-            showText(uiUserMessage, requestChatId);
-            if (textInput && rawUserText) {
-                textInput.value = '';
-                textInput.dispatchEvent(new Event('input', {bubbles: true}));
-            }
+            showText(uiUserMessage, requestChatId, metadata);
+            if (rawUserText) this.ui.clearQuestionIfUnchanged?.(rawUserText);
 
             setStatus('Analyzing screenshot...', 'processing');
-            const history = getConversationContext(requestChatId);
 
             const result = await window.api.screen.process({
+                requestId: cancelToken.requestId,
                 imageBase64: capture.base64,
                 mime: capture.mime,
                 width: capture.width,
@@ -88,9 +103,9 @@ export class ScreenshotController {
 
             const answerText = (result.answer || '').trim();
             if (answerText) {
-                showAnswer(answerText, requestChatId);
+                showAnswer(answerText, requestChatId, metadata);
             } else {
-                showAnswer('No insights returned.', requestChatId);
+                showAnswer('No insights returned.', requestChatId, metadata);
             }
             setStatus('Done', 'ready');
             logger.info('screenshot', 'Screenshot analysis completed', {answerLength: result.answer?.length || 0});
@@ -104,12 +119,18 @@ export class ScreenshotController {
             const message = error instanceof Error ? error.message : String(error);
             logger.error('screenshot', 'Screenshot analysis failed', {error: message});
             setStatus('Error', 'error');
-            showError(message, requestChatId);
+            showError(message, requestChatId, metadata);
         } finally {
+            if (releaseActivity) {
+                await releaseActivity().catch((error) => {
+                    logger.warn('screenshot', 'Failed to release screenshot activity lease', {
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                });
+            }
             if (this.cancelToken === cancelToken) {
                 this.cancelToken = null;
                 setProcessing(false);
-                updateButtonsState();
                 hideStopButton();
             }
         }

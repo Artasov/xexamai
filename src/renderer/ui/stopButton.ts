@@ -1,25 +1,14 @@
-// noinspection JSUnusedGlobalSymbols
+import {createExternalStore} from '../state/externalStore';
 
-let stopButton: HTMLButtonElement | null = null;
+const stopVisibilityStore = createExternalStore(false);
 
-export function registerStopButton(button: HTMLButtonElement | null): void {
-    stopButton = button;
-}
-
-export function getStopButton(): HTMLButtonElement | null {
-    return stopButton;
-}
+export const subscribeStopVisibility = stopVisibilityStore.subscribe;
+export const getStopVisibilitySnapshot = stopVisibilityStore.getSnapshot;
 
 export function showStopButton(): void {
-    try {
-        stopButton?.classList.remove('hidden');
-    } catch {
-    }
+    stopVisibilityStore.set(true);
 }
 
 export function hideStopButton(): void {
-    try {
-        stopButton?.classList.add('hidden');
-    } catch {
-    }
+    stopVisibilityStore.set(false);
 }

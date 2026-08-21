@@ -14,23 +14,33 @@ export function loadLogo(logoElement: HTMLImageElement | null): void {
     }
 }
 
-export function startLogoAnimation(logoElement: HTMLImageElement, container: HTMLElement): void {
+export function startLogoAnimation(logoElement: HTMLImageElement, container: HTMLElement): () => void {
+    let started = false;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
     const startAnimation = () => {
-        setTimeout(() => {
+        if (started) return;
+        started = true;
+        timers.add(setTimeout(() => {
             logoElement.classList.add('logo-fade-in');
-        }, 100);
+        }, 100));
 
-        setTimeout(() => {
+        timers.add(setTimeout(() => {
             logoElement.classList.remove('logo-fade-in');
             logoElement.classList.add('logo-final-state');
             container.classList.add('final-state');
-        }, 2500);
+        }, 2500));
     };
 
     if (logoElement.complete && logoElement.naturalHeight !== 0) {
         startAnimation();
     } else {
         logoElement.addEventListener('load', startAnimation);
-        setTimeout(startAnimation, 1000);
+        timers.add(setTimeout(startAnimation, 1000));
     }
+
+    return () => {
+        logoElement.removeEventListener('load', startAnimation);
+        for (const timer of timers) clearTimeout(timer);
+        timers.clear();
+    };
 }

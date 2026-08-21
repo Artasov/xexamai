@@ -1,24 +1,33 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod audio;
+mod activity;
 mod app_log;
+mod audio;
 mod auth;
+mod auth_session;
 mod config;
 mod constants;
+mod google_live;
 mod hotkeys;
+mod ipc_contract;
 mod local_speech;
 mod oauth;
 mod ollama;
+mod provider_proxy;
+mod secret_store;
 mod transcription;
 mod tray;
 mod types;
 mod update;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use activity::{ActivityGate, RendererActivityLeases};
 use audio::AudioManager;
 use auth::AuthQueue;
+use auth_session::AuthSessionState;
 use config::ConfigState;
 use constants::{
     DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH,
@@ -27,13 +36,218 @@ use constants::{
 use hotkeys::HotkeyManager;
 use local_speech::FastWhisperManager;
 use once_cell::sync::Lazy;
+use secret_store::{ProviderSecret, SecretStore};
 use tauri::LogicalSize;
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tray::set_tray_visible;
-use types::{AppConfig, AuthDeepLinkPayload, FastWhisperStatus};
+use types::{AppConfig, AuthDeepLinkPayload, FastWhisperStatus, JsonValue};
 
 static PENDING_DEEP_LINKS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+#[derive(Default)]
+struct ShutdownState {
+    requested: AtomicBool,
+    completed: AtomicBool,
+}
+
+fn ensure_main_window(window: &WebviewWindow) -> Result<(), String> {
+    if window.label() == "main" {
+        Ok(())
+    } else {
+        Err("Command is not available to this window".to_string())
+    }
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct PublicAppConfig {
+    #[serde(flatten)]
+    config: AppConfig,
+    has_openai_api_key: bool,
+    has_google_api_key: bool,
+}
+
+async fn public_config(
+    config: &AppConfig,
+    secrets: &SecretStore,
+) -> Result<PublicAppConfig, String> {
+    let has_openai = secrets
+        .get_provider_secret(ProviderSecret::OpenAi)
+        .await?
+        .is_some_and(|value| !value.trim().is_empty());
+    let has_google = secrets
+        .get_provider_secret(ProviderSecret::Google)
+        .await?
+        .is_some_and(|value| !value.trim().is_empty());
+    Ok(PublicAppConfig {
+        config: config.clone(),
+        has_openai_api_key: has_openai,
+        has_google_api_key: has_google,
+    })
+}
+
+async fn apply_secret_patch(
+    payload: &mut serde_json::Value,
+    secrets: &SecretStore,
+) -> Result<(), String> {
+    let object = payload
+        .as_object_mut()
+        .ok_or_else(|| "Config update must be an object".to_string())?;
+    for (field, provider) in [
+        ("openaiApiKey", ProviderSecret::OpenAi),
+        ("googleApiKey", ProviderSecret::Google),
+    ] {
+        let Some(value) = object.remove(field) else {
+            continue;
+        };
+        let value = match value {
+            serde_json::Value::Null => String::new(),
+            serde_json::Value::String(value) if value.len() <= 32 * 1024 => value,
+            _ => return Err(format!("Invalid {field} value")),
+        };
+        secrets.set_provider_secret(provider, value.trim()).await?;
+    }
+    object.remove("hasOpenaiApiKey");
+    object.remove("hasGoogleApiKey");
+    Ok(())
+}
+
+async fn migrate_legacy_provider_secrets(
+    config_state: &ConfigState,
+    secrets: &SecretStore,
+    config: &AppConfig,
+) -> Result<(), String> {
+    let has_legacy = config.openai_api_key.is_some() || config.google_api_key.is_some();
+    if !has_legacy {
+        return Ok(());
+    }
+    let mut migration_failures = 0_u8;
+    if let Some(value) = config
+        .openai_api_key
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        if secrets
+            .set_provider_secret(ProviderSecret::OpenAi, value)
+            .await
+            .is_err()
+        {
+            migration_failures += 1;
+            log::warn!(target: "config", "Could not migrate the legacy OpenAI credential");
+        }
+    }
+    if let Some(value) = config
+        .google_api_key
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        if secrets
+            .set_provider_secret(ProviderSecret::Google, value)
+            .await
+            .is_err()
+        {
+            migration_failures += 1;
+            log::warn!(target: "config", "Could not migrate the legacy Google credential");
+        }
+    }
+    config_state
+        .clear_legacy_secrets()
+        .await
+        .map_err(|error| format!("Failed to remove legacy credentials from config: {error}"))?;
+    if migration_failures > 0 {
+        return Err(
+            "One or more legacy provider credentials could not be migrated and were removed from plaintext config"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn app_shutdown_complete(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    shutdown: State<'_, Arc<ShutdownState>>,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    shutdown.completed.store(true, Ordering::Release);
+    log::logger().flush();
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn activity_register_session(
+    window: WebviewWindow,
+    leases: State<'_, Arc<RendererActivityLeases>>,
+    session_id: String,
+    generation: u64,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    leases.register_session(&session_id, generation).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn activity_begin(
+    window: WebviewWindow,
+    leases: State<'_, Arc<RendererActivityLeases>>,
+    session_id: String,
+    label: String,
+) -> Result<String, String> {
+    ensure_main_window(&window)?;
+    leases.begin(&session_id, label).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn activity_end(
+    window: WebviewWindow,
+    leases: State<'_, Arc<RendererActivityLeases>>,
+    session_id: String,
+    lease_id: String,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    leases.end(&session_id, &lease_id).await
+}
+
+fn validate_external_url(value: &str) -> Result<url::Url, String> {
+    let parsed = url::Url::parse(value).map_err(|_| "Invalid external URL".to_string())?;
+    if parsed.scheme() != "https"
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.port().is_some()
+    {
+        return Err("External URL is not allowed".to_string());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "External URL is missing a host".to_string())?;
+    if !matches!(
+        host,
+        "artasov.github.io"
+            | "x.com"
+            | "t.me"
+            | "github.com"
+            | "pump.fun"
+            | "dexscreener.com"
+            | "youtube.com"
+            | "www.youtube.com"
+            | "linkedin.com"
+            | "www.linkedin.com"
+            | "discord.gg"
+            | "xlartas.com"
+            | "www.xlartas.com"
+            | "xlartas.ru"
+            | "www.xlartas.ru"
+    ) {
+        return Err("External URL host is not allowed".to_string());
+    }
+    Ok(parsed)
+}
 
 #[cfg(target_os = "windows")]
 static ORIGINAL_WNDPROC_BY_HWND: Lazy<Mutex<std::collections::HashMap<isize, isize>>> =
@@ -119,7 +333,7 @@ fn install_force_default_cursor(window: &tauri::WebviewWindow) {
         SetWindowLongPtrW(
             hwnd,
             GWLP_WNDPROC,
-            force_arrow_cursor_wndproc as usize as isize,
+            force_arrow_cursor_wndproc as *const () as usize as isize,
         )
     };
     if previous == 0 {
@@ -139,17 +353,32 @@ fn install_force_default_cursor(window: &tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-async fn config_get(state: State<'_, Arc<ConfigState>>) -> Result<AppConfig, String> {
-    Ok(state.get().await)
+#[specta::specta]
+async fn config_get(
+    window: WebviewWindow,
+    state: State<'_, Arc<ConfigState>>,
+    secrets: State<'_, Arc<SecretStore>>,
+) -> Result<PublicAppConfig, String> {
+    ensure_main_window(&window)?;
+    public_config(&state.get().await, secrets.inner()).await
 }
 
 #[tauri::command]
+#[specta::specta]
+#[allow(clippy::too_many_arguments)] // Tauri injects each managed state at the IPC boundary.
 async fn config_update(
+    window: WebviewWindow,
     app: tauri::AppHandle,
+    activity: State<'_, Arc<ActivityGate>>,
     state: State<'_, Arc<ConfigState>>,
     hotkeys: State<'_, Arc<HotkeyManager>>,
-    payload: serde_json::Value,
-) -> Result<AppConfig, String> {
+    secrets: State<'_, Arc<SecretStore>>,
+    sessions: State<'_, Arc<AuthSessionState>>,
+    auth_queue: State<'_, Arc<AuthQueue>>,
+    mut payload: JsonValue,
+) -> Result<PublicAppConfig, String> {
+    ensure_main_window(&window)?;
+    let _activity = activity.try_begin_work()?;
     let apply_window_size =
         payload.get("windowWidth").is_some() || payload.get("windowHeight").is_some();
     log::info!(
@@ -159,39 +388,72 @@ async fn config_update(
             .as_object()
             .map(|value| value.keys().cloned().collect::<Vec<_>>())
     );
+    apply_secret_patch(&mut payload, secrets.inner()).await?;
+    let previous_domain = state.get().await.backend_domain;
     let updated = state
-        .update(payload)
+        .update(payload.into_inner())
         .await
         .map_err(|error| error.to_string())?;
-    app.emit("config:updated", &updated)
+    if updated.backend_domain != previous_domain {
+        auth_queue.cancel_all().await;
+        if let Err(error) = sessions
+            .clear_domain(secrets.inner(), &previous_domain)
+            .await
+        {
+            log::warn!(target: "auth", "Failed to clear previous-domain session: {error}");
+        }
+        if let Err(error) = sessions
+            .clear_domain(secrets.inner(), &updated.backend_domain)
+            .await
+        {
+            log::warn!(target: "auth", "Failed to clear target-domain session: {error}");
+        }
+    }
+    let public = public_config(&updated, secrets.inner()).await?;
+    app.emit_to("main", "config:updated", &public)
         .map_err(|error| error.to_string())?;
     handle_config_effects(&app, &updated, hotkeys.inner().clone(), apply_window_size);
-    Ok(updated)
+    Ok(public)
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn config_reset(
+    window: WebviewWindow,
     app: tauri::AppHandle,
+    activity: State<'_, Arc<ActivityGate>>,
     state: State<'_, Arc<ConfigState>>,
     hotkeys: State<'_, Arc<HotkeyManager>>,
-) -> Result<AppConfig, String> {
+    secrets: State<'_, Arc<SecretStore>>,
+) -> Result<PublicAppConfig, String> {
+    ensure_main_window(&window)?;
+    let _activity = activity.try_begin_work()?;
     let updated = state.reset().await.map_err(|error| error.to_string())?;
-    app.emit("config:updated", &updated)
+    let public = public_config(&updated, secrets.inner()).await?;
+    app.emit_to("main", "config:updated", &public)
         .map_err(|error| error.to_string())?;
     handle_config_effects(&app, &updated, hotkeys.inner().clone(), true);
-    Ok(updated)
+    Ok(public)
 }
 
 #[tauri::command]
-async fn config_path(state: State<'_, Arc<ConfigState>>) -> Result<String, String> {
+#[specta::specta]
+async fn config_path(
+    window: WebviewWindow,
+    state: State<'_, Arc<ConfigState>>,
+) -> Result<String, String> {
+    ensure_main_window(&window)?;
     Ok(state.path().await.to_string_lossy().to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn open_config_folder(
+    window: WebviewWindow,
     app: tauri::AppHandle,
     state: State<'_, Arc<ConfigState>>,
 ) -> Result<(), String> {
+    ensure_main_window(&window)?;
     let dir = state.directory().await;
     tauri_plugin_opener::OpenerExt::opener(&app)
         .open_path(dir.to_string_lossy(), None::<String>)
@@ -199,12 +461,16 @@ async fn open_config_folder(
 }
 
 #[tauri::command]
-async fn app_log_path() -> Result<String, String> {
+#[specta::specta]
+async fn app_log_path(window: WebviewWindow) -> Result<String, String> {
+    ensure_main_window(&window)?;
     app_log::current_log_path().map(|path| path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-async fn open_app_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
+#[specta::specta]
+async fn open_app_logs_folder(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    ensure_main_window(&window)?;
     use tauri_plugin_opener::OpenerExt;
     let dir = app_log::current_log_dir()?;
     app.opener()
@@ -213,7 +479,12 @@ async fn open_app_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn log_frontend(entry: serde_json::Value) -> Result<(), String> {
+#[specta::specta]
+async fn log_frontend(window: WebviewWindow, entry: JsonValue) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    if !app_log::allow_frontend_log() {
+        return Ok(());
+    }
     let level = entry
         .get("level")
         .and_then(|value| value.as_str())
@@ -225,21 +496,30 @@ async fn log_frontend(entry: serde_json::Value) -> Result<(), String> {
         .and_then(|value| value.as_str())
         .unwrap_or("renderer")
         .trim()
-        .to_string();
+        .chars()
+        .take(64)
+        .collect::<String>();
     let message = entry
         .get("message")
         .and_then(|value| value.as_str())
         .unwrap_or("")
         .trim()
-        .to_string();
-    let data = entry.get("data").cloned().unwrap_or(serde_json::Value::Null);
+        .chars()
+        .take(2_048)
+        .collect::<String>();
+    let data = app_log::redact_json(
+        &entry
+            .get("data")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
     let data_text = if data.is_null() {
         String::new()
     } else {
         let text = serde_json::to_string(&data).unwrap_or_else(|_| "<unserializable>".to_string());
         format!(" data={}", truncate_log_value(&text, 4000))
     };
-    let line = format!("[{category}] {message}{data_text}");
+    let line = app_log::redact_text(&format!("[{category}] {message}{data_text}"));
 
     match level.as_str() {
         "error" => log::error!(target: "frontend", "{line}"),
@@ -258,34 +538,118 @@ fn truncate_log_value(value: &str, max_len: usize) -> String {
     format!("{truncated}...<truncated>")
 }
 
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsSnapshot {
+    trace_id: String,
+    app_version: String,
+    os: &'static str,
+    architecture: &'static str,
+    backend_domain: String,
+    provider: String,
+    model: String,
+    transcription_mode: String,
+    transcription_model: String,
+    audio_mode: String,
+    log_preview: String,
+}
+
 #[tauri::command]
-async fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+#[specta::specta]
+async fn diagnostics_snapshot(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    config: State<'_, Arc<ConfigState>>,
+) -> Result<DiagnosticsSnapshot, String> {
+    ensure_main_window(&window)?;
+    let config = config.get().await;
+    let provider = if config.llm_host == "local" {
+        "ollama"
+    } else if config.llm_model.to_ascii_lowercase().contains("gemini") {
+        "google"
+    } else {
+        "openai"
+    };
+    Ok(DiagnosticsSnapshot {
+        trace_id: uuid::Uuid::new_v4().to_string(),
+        app_version: app.package_info().version.to_string(),
+        os: std::env::consts::OS,
+        architecture: std::env::consts::ARCH,
+        backend_domain: config.backend_domain,
+        provider: provider.to_string(),
+        model: config.llm_model,
+        transcription_mode: config.transcription_mode,
+        transcription_model: config.transcription_model,
+        audio_mode: config.audio_input_type,
+        log_preview: app_log::redacted_tail(16 * 1024)
+            .unwrap_or_else(|error| format!("<log preview unavailable: {error}>")),
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn open_external_url(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
     use tauri_plugin_opener::OpenerExt;
 
     let normalized = url.trim();
     if normalized.is_empty() {
         return Err("URL is empty".to_string());
     }
-    if !(normalized.starts_with("https://") || normalized.starts_with("http://")) {
-        return Err("Only http(s) URLs are allowed".to_string());
-    }
+    let parsed = validate_external_url(normalized)?;
 
     app.opener()
-        .open_url(normalized.to_string(), None::<String>)
+        .open_url(parsed.to_string(), None::<String>)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn auth_consume_pending(
+    window: WebviewWindow,
     queue: State<'_, Arc<AuthQueue>>,
 ) -> Result<Vec<AuthDeepLinkPayload>, String> {
-    Ok(queue.drain().await)
+    ensure_main_window(&window)?;
+    Ok(queue.mark_renderer_ready_and_drain().await)
 }
 
 #[tauri::command]
+#[specta::specta]
+async fn auth_renderer_not_ready(
+    window: WebviewWindow,
+    queue: State<'_, Arc<AuthQueue>>,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    queue.mark_renderer_not_ready().await;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn auth_cancel_pending(
+    window: WebviewWindow,
+    queue: State<'_, Arc<AuthQueue>>,
+    sessions: State<'_, Arc<AuthSessionState>>,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    sessions.cancel_pending_operations().await;
+    queue.cancel_all().await;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 async fn auth_get_methods(
+    window: WebviewWindow,
+    activity: State<'_, Arc<ActivityGate>>,
     config: State<'_, Arc<ConfigState>>,
 ) -> Result<oauth::AuthMethods, String> {
+    ensure_main_window(&window)?;
+    let _activity = activity.try_begin_work()?;
     let cfg = config.get().await;
     log::info!(
         target: "auth",
@@ -301,12 +665,17 @@ async fn auth_get_methods(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn auth_start_oauth(
+    window: WebviewWindow,
     app: tauri::AppHandle,
+    activity: State<'_, Arc<ActivityGate>>,
     config: State<'_, Arc<ConfigState>>,
     queue: State<'_, Arc<AuthQueue>>,
     provider: String,
 ) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    let _activity = activity.try_begin_work()?;
     use tauri_plugin_opener::OpenerExt;
     let cfg = config.get().await;
     let provider = provider.trim().to_lowercase();
@@ -336,20 +705,30 @@ async fn auth_start_oauth(
         );
         return Err("OAuth provider is not available for your region".to_string());
     }
-    let oauth_state = queue.start_state(&provider).await;
-    let url =
-        oauth::build_oauth_start_url(&provider, Some(cfg.backend_domain.as_str()), &oauth_state)
-            .map_err(|error| error.to_string())?;
+    let oauth_attempt = queue.start_attempt(&provider, &cfg.backend_domain).await;
+    let url = match oauth::build_oauth_start_url_with_pkce(
+        &provider,
+        Some(cfg.backend_domain.as_str()),
+        &oauth_attempt.state,
+        &oauth_attempt.code_challenge,
+    ) {
+        Ok(url) => url,
+        Err(error) => {
+            queue.cancel_state(&oauth_attempt.state).await;
+            return Err(error.to_string());
+        }
+    };
     log::info!(target: "auth", "Opening OAuth URL: provider={provider}");
-    app.opener()
-        .open_url(url, None::<String>)
-        .map_err(|error| {
-            log::error!(target: "auth", "Failed to open OAuth URL: provider={} error={}", provider, error);
-            error.to_string()
-        })
+    if let Err(error) = app.opener().open_url(url, None::<String>) {
+        queue.cancel_state(&oauth_attempt.state).await;
+        log::error!(target: "auth", "Failed to open OAuth URL: provider={} error={}", provider, error);
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_get_status(
     manager: State<'_, Arc<FastWhisperManager>>,
 ) -> Result<FastWhisperStatus, String> {
@@ -357,18 +736,24 @@ async fn local_speech_get_status(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_check_health(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<FastWhisperStatus, String> {
+    let _activity = activity.try_begin_work()?;
     Ok(manager.check_health(&app).await)
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_install(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<FastWhisperStatus, String> {
+    let _activity = activity.try_begin_work()?;
     manager
         .install_and_start(&app)
         .await
@@ -376,10 +761,13 @@ async fn local_speech_install(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_start(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<FastWhisperStatus, String> {
+    let _activity = activity.try_begin_work()?;
     manager
         .start_existing(&app)
         .await
@@ -387,10 +775,13 @@ async fn local_speech_start(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_restart(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<FastWhisperStatus, String> {
+    let _activity = activity.try_begin_work()?;
     manager
         .restart(&app)
         .await
@@ -398,10 +789,13 @@ async fn local_speech_restart(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_reinstall(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<FastWhisperStatus, String> {
+    let _activity = activity.try_begin_work()?;
     manager
         .reinstall(&app)
         .await
@@ -409,19 +803,25 @@ async fn local_speech_reinstall(
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_stop(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<FastWhisperStatus, String> {
+    let _activity = activity.try_begin_work()?;
     manager.stop(&app).await.map_err(|error| error.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn local_speech_check_model_downloaded(
     app: tauri::AppHandle,
     manager: State<'_, Arc<FastWhisperManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
     model: String,
 ) -> Result<bool, String> {
+    let _activity = activity.try_begin_work()?;
     manager
         .is_model_downloaded(&app, &model)
         .await
@@ -429,101 +829,83 @@ async fn local_speech_check_model_downloaded(
 }
 
 #[tauri::command]
-async fn ollama_check_installed() -> Result<bool, String> {
+#[specta::specta]
+async fn ollama_check_installed(activity: State<'_, Arc<ActivityGate>>) -> Result<bool, String> {
+    let _activity = activity.try_begin_work()?;
     crate::ollama::check_installed()
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-async fn ollama_list_models() -> Result<Vec<String>, String> {
+#[specta::specta]
+async fn ollama_list_models(activity: State<'_, Arc<ActivityGate>>) -> Result<Vec<String>, String> {
+    let _activity = activity.try_begin_work()?;
     crate::ollama::list_models()
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-async fn ollama_pull_model(model: String) -> Result<(), String> {
+#[specta::specta]
+async fn ollama_pull_model(
+    activity: State<'_, Arc<ActivityGate>>,
+    model: String,
+) -> Result<(), String> {
+    let _activity = activity.try_begin_work()?;
     crate::ollama::pull_model(&model)
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-async fn ollama_warmup_model(model: String) -> Result<(), String> {
+#[specta::specta]
+async fn ollama_warmup_model(
+    activity: State<'_, Arc<ActivityGate>>,
+    model: String,
+) -> Result<(), String> {
+    let _activity = activity.try_begin_work()?;
     crate::ollama::warmup_model(&model)
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn audio_list_devices(
     manager: State<'_, Arc<AudioManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
 ) -> Result<Vec<audio::AudioDeviceInfo>, String> {
+    let _activity = activity.try_begin_work()?;
     manager.list_devices().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 async fn audio_start_capture(
+    window: WebviewWindow,
     app: tauri::AppHandle,
     manager: State<'_, Arc<AudioManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
     source: String,
     device_id: Option<String>,
+    on_chunk: tauri::ipc::Channel<audio::AudioChunk>,
 ) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    let _activity = activity.try_begin_work()?;
     manager
-        .start(app, &source, device_id)
+        .start(app, &source, device_id, on_chunk)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn audio_stop_capture(manager: State<'_, Arc<AudioManager>>) -> Result<(), String> {
+#[specta::specta]
+async fn audio_stop_capture(
+    manager: State<'_, Arc<AudioManager>>,
+    activity: State<'_, Arc<ActivityGate>>,
+) -> Result<(), String> {
+    let _activity = activity.try_begin_work()?;
     manager.stop().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn ollama_http_request(
-    url: String,
-    method: String,
-    headers: serde_json::Value,
-    body: Option<String>,
-    timeout_secs: Option<u64>,
-) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(timeout_secs.unwrap_or(600)))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut request = match method.as_str() {
-        "GET" => client.get(&url),
-        "POST" => client.post(&url),
-        "PUT" => client.put(&url),
-        "DELETE" => client.delete(&url),
-        _ => return Err(format!("Unsupported method: {}", method)),
-    };
-
-    // Добавляем заголовки
-    if let serde_json::Value::Object(map) = headers {
-        for (key, value) in map {
-            if let Some(val_str) = value.as_str() {
-                request = request.header(&key, val_str);
-            }
-        }
-    }
-
-    // Добавляем тело запроса
-    if let Some(body_str) = body {
-        request = request.body(body_str);
-    }
-
-    let response = request.send().await.map_err(|e| e.to_string())?;
-    let status = response.status();
-    let text = response.text().await.map_err(|e| e.to_string())?;
-
-    if !status.is_success() {
-        return Err(format!("HTTP {}: {}", status.as_u16(), text));
-    }
-
-    Ok(text)
 }
 
 fn handle_config_effects(
@@ -549,11 +931,8 @@ fn apply_window_preferences(
         // Применяем размер окна БЕЗ масштабирования
         // Масштабирование контента происходит через CSS font-size на html
         if apply_window_size {
-            let base_width = config.window_width.max(DEFAULT_WINDOW_MIN_WIDTH).min(4000) as f64;
-            let base_height = config
-                .window_height
-                .max(DEFAULT_WINDOW_MIN_HEIGHT)
-                .min(4000) as f64;
+            let base_width = config.window_width.clamp(DEFAULT_WINDOW_MIN_WIDTH, 4000) as f64;
+            let base_height = config.window_height.clamp(DEFAULT_WINDOW_MIN_HEIGHT, 4000) as f64;
 
             // Используем базовый размер окна без масштабирования
             window
@@ -698,33 +1077,52 @@ fn main() {
         eprintln!("App logger initialization failed: {error}");
     }
     log::info!(target: "app", "Starting XEXAMAI");
+    let ipc = ipc_contract::builder();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_http::init())
+        // Single-instance must be registered before plugins with side effects so
+        // a secondary OAuth activation only forwards its deep link and exits.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            log::info!(target: "deep-link", "Single instance activation: args={:?}", args);
+            // Deep links contain OAuth credentials with the current backend
+            // contract. Never write process arguments to logs.
+            log::info!(target: "deep-link", "Single instance activation: argument_count={}", args.len());
             if let Some(url) = args.into_iter().find(|arg| arg.starts_with("xexamai://")) {
                 log::info!(target: "deep-link", "Single instance received deep link");
                 if let Some(state) = app.try_state::<Arc<AuthQueue>>() {
                     dispatch_deep_link(app, state.inner().clone(), url);
                 } else {
                     log::warn!(target: "deep-link", "AuthQueue is not ready; queueing pending deep link");
-                    PENDING_DEEP_LINKS.lock().unwrap().push(url);
+                    if url.len() <= 64 * 1024 {
+                        let mut pending = PENDING_DEEP_LINKS.lock().unwrap();
+                        if pending.len() == 8 {
+                            pending.remove(0);
+                        }
+                        pending.push(url);
+                    }
                 }
             } else {
                 let _ = show_main_window(app);
             }
         }))
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_handle = app.handle();
-            ensure_deep_links_registered(&app_handle);
+            ensure_deep_links_registered(app_handle);
             let config_state = Arc::new(tauri::async_runtime::block_on(ConfigState::initialize(
-                &app_handle,
+                app_handle,
             ))?);
+            let initial_config = tauri::async_runtime::block_on(config_state.get());
+            let secret_store = Arc::new(SecretStore::new());
+            if let Err(error) = tauri::async_runtime::block_on(migrate_legacy_provider_secrets(
+                config_state.as_ref(),
+                secret_store.as_ref(),
+                &initial_config,
+            )) {
+                log::error!(target: "config", "Legacy secret migration failed: {error}");
+            }
             let initial_config = tauri::async_runtime::block_on(config_state.get());
             log::info!(
                 target: "app",
@@ -737,18 +1135,34 @@ fn main() {
             let hotkeys = Arc::new(HotkeyManager::new());
             let fast_whisper = Arc::new(FastWhisperManager::new());
             let auth_queue = Arc::new(AuthQueue::new());
+            let auth_sessions = Arc::new(AuthSessionState::new());
+            let provider_proxy_state = Arc::new(provider_proxy::ProviderProxyState::new());
+            let transcription_cancellation =
+                Arc::new(transcription::TranscriptionCancellationState::default());
             let audio_manager = Arc::new(AudioManager::new());
+            let activity_gate = Arc::new(ActivityGate::new());
+            let renderer_activity_leases =
+                Arc::new(RendererActivityLeases::new(activity_gate.clone()));
+            let shutdown_state = Arc::new(ShutdownState::default());
 
             app.manage(config_state.clone());
             app.manage(hotkeys.clone());
             app.manage(fast_whisper.clone());
             app.manage(auth_queue.clone());
+            app.manage(auth_sessions);
+            app.manage(provider_proxy_state);
+            app.manage(transcription_cancellation);
+            app.manage(secret_store);
             app.manage(audio_manager.clone());
+            app.manage(activity_gate);
+            app.manage(renderer_activity_leases);
+            app.manage(shutdown_state.clone());
+            app.manage(update::UpdateManager::default());
 
-            tray::setup(&app_handle)?;
-            handle_config_effects(&app_handle, &initial_config, hotkeys, true);
-            flush_pending_deep_links(&app_handle, auth_queue.clone());
-            setup_deep_link_listener(&app_handle, auth_queue);
+            tray::setup(app_handle)?;
+            handle_config_effects(app_handle, &initial_config, hotkeys, true);
+            flush_pending_deep_links(app_handle, auth_queue.clone());
+            setup_deep_link_listener(app_handle, auth_queue);
             update::start_update_poll(app_handle.clone());
 
             if let Some(main_window) = app.get_webview_window("main") {
@@ -756,48 +1170,31 @@ fn main() {
                 install_force_default_cursor(&main_window);
 
                 let app_handle = app_handle.clone();
+                let shutdown_state = shutdown_state.clone();
                 main_window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        app_handle.exit(0);
+                        if shutdown_state.requested.swap(true, Ordering::AcqRel) {
+                            return;
+                        }
+                        let _ = app_handle.emit_to("main", "app:shutdown-requested", ());
+                        let fallback_app = app_handle.clone();
+                        let fallback_state = shutdown_state.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(Duration::from_secs(3)).await;
+                            if !fallback_state.completed.load(Ordering::Acquire) {
+                                log::warn!(target: "app", "Renderer shutdown timed out; exiting");
+                                log::logger().flush();
+                                fallback_app.exit(0);
+                            }
+                        });
                     }
                 });
             }
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            config_get,
-            config_update,
-            config_reset,
-            config_path,
-            open_config_folder,
-            app_log_path,
-            open_app_logs_folder,
-            log_frontend,
-            open_external_url,
-            ollama_http_request,
-            auth_consume_pending,
-            auth_get_methods,
-            auth_start_oauth,
-            local_speech_get_status,
-            local_speech_check_health,
-            local_speech_install,
-            local_speech_start,
-            local_speech_restart,
-            local_speech_reinstall,
-            local_speech_stop,
-            local_speech_check_model_downloaded,
-            ollama_check_installed,
-            ollama_list_models,
-            ollama_pull_model,
-            ollama_warmup_model,
-            audio_list_devices,
-            audio_start_capture,
-            audio_stop_capture,
-            update::check_app_update,
-            transcription::transcribe_audio,
-        ])
+        .invoke_handler(ipc.invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

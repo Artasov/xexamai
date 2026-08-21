@@ -4,7 +4,7 @@ version = "2.4.1"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "2.5.2", features = [] }
+tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 anyhow = "1.0"
@@ -16,14 +16,16 @@ reqwest = { version = "0.12", features = ["json", "multipart", "stream", "gzip",
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = { version = "3.9", features = ["macros"] }
-tauri = { version = "2.9.3", features = ["macos-private-api", "tray-icon", "devtools"] }
-tauri-plugin-deep-link = "2.4.5"
-tauri-plugin-global-shortcut = "2.3.1"
-tauri-plugin-http = "2.5.4"
-tauri-plugin-opener = "2.3.1"
-tauri-plugin-single-instance = "2.3.1"
-tauri-plugin-clipboard-manager = "2.3.2"
+tauri = { version = "2.11.5", features = ["macos-private-api", "tray-icon", "devtools"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+tauri-plugin-deep-link = "2.4.9"
+tauri-plugin-global-shortcut = "2.3.2"
+tauri-plugin-opener = "2.5.4"
+tauri-plugin-single-instance = "2.4.3"
+tauri-plugin-updater = "2.10.1"
 thiserror = "1.0"
+specta = { version = "=2.0.0-rc.25", features = ["bytes", "derive", "serde_json"] }
+specta-typescript = "=0.0.12"
 tokio = { version = "1.39", features = ["rt-multi-thread", "macros", "fs", "time", "sync", "process"] }
 url = "2.5"
 urlencoding = "2.1"
@@ -34,11 +36,13 @@ flate2 = "1.0"
 futures-util = "0.3"
 hex = "0.4"
 image = "0.25"
-cpal = "0.15"
+cpal = "0.17.3"
 crossbeam-channel = "0.5"
 bytemuck = { version = "1.15", features = ["derive"] }
+bytes = "1"
 sha2 = "0.10"
 log = "0.4"
+keyring = "4.1.6"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

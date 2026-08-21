@@ -31,7 +31,9 @@
   "include": [
     "src/renderer/**/*",
     "src/shared/**/*",
-    "vite.config.mts"
+    "vite.config.mts",
+    "vitest.config.mts",
+    "tests/**/*"
   ],
   "exclude": [
     "dist",

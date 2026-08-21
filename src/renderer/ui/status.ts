@@ -1,15 +1,21 @@
+import {createExternalStore} from '../state/externalStore';
+
 export type StatusType = 'ready' | 'recording' | 'sending' | 'processing' | 'error';
+export type StatusSnapshot = {text: string; type: StatusType};
 
-let statusEl: HTMLDivElement | null = null;
+const initialStatus: StatusSnapshot = {text: 'Ready', type: 'ready'};
+const statusStore = createExternalStore<StatusSnapshot>(initialStatus);
 
-export function initStatus(element: HTMLDivElement | null) {
-    statusEl = element;
-}
+export const subscribeStatus = statusStore.subscribe;
+export const getStatusSnapshot = statusStore.getSnapshot;
 
 export function setStatus(text: string, type: StatusType = 'ready') {
-    const target = statusEl ?? (document.getElementById('status') as HTMLDivElement | null);
-    if (!target) return;
-    statusEl = target;
-    target.textContent = text;
-    target.className = `status-badge ${type}`;
+    const current = statusStore.getSnapshot();
+    if (current.text !== text || current.type !== type) {
+        statusStore.set({text, type});
+    }
+}
+
+export function resetStatus(): void {
+    statusStore.reset();
 }

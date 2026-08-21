@@ -19,7 +19,8 @@ use zip::ZipArchive;
 
 use crate::constants::{
     FAST_WHISPER_HEALTH_ENDPOINT, FAST_WHISPER_INSTALL_ENV_VAR, FAST_WHISPER_INSTALL_HINT_FILE,
-    FAST_WHISPER_PORT, FAST_WHISPER_REPO_ARCHIVE_URL, FAST_WHISPER_REPO_NAME, FAST_WHISPER_REPO_URL,
+    FAST_WHISPER_PORT, FAST_WHISPER_REPO_ARCHIVE_URL, FAST_WHISPER_REPO_NAME,
+    FAST_WHISPER_REPO_URL,
 };
 use crate::types::FastWhisperStatus;
 
@@ -30,13 +31,10 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(30);
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn install_hint_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
-        .app_config_dir()
-        .ok()
-        .map(|mut dir| {
-            dir.push(FAST_WHISPER_INSTALL_HINT_FILE);
-            dir
-        })
+    app.path().app_config_dir().ok().map(|mut dir| {
+        dir.push(FAST_WHISPER_INSTALL_HINT_FILE);
+        dir
+    })
 }
 
 fn normalize_install_dir(raw: &str) -> Option<PathBuf> {
@@ -104,7 +102,7 @@ fn load_install_dir_from_hint(app: &AppHandle) -> Option<PathBuf> {
     normalize_install_dir(&contents).map(normalize_saved_path)
 }
 
-fn remember_install_dir(path: &PathBuf) {
+fn remember_install_dir(path: &Path) {
     let value = path.to_string_lossy();
     std::env::set_var(FAST_WHISPER_INSTALL_ENV_VAR, value.as_ref());
 }
@@ -166,28 +164,27 @@ impl FastWhisperManager {
     }
 
     pub async fn get_status(&self) -> FastWhisperStatus {
-        self.status.lock().await.clone()
+        let mut status = self.status.lock().await.clone();
+        status.base_url = Some(Self::base_url());
+        status
     }
 
     pub async fn check_health(self: &Arc<Self>, app: &AppHandle) -> FastWhisperStatus {
         let repo_exists = self.repo_path(app).exists();
         let health_url = self.health_endpoint();
-        
-        // Быстрая проверка здоровья сервера
-        let is_healthy = {
+
+        // A random service returning HTTP 200 on the configured port must not be
+        // mistaken for fast-fast-whisper.
+        let (is_healthy, endpoint_occupied) = {
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(2))
                 .build();
-            
+
             if let Ok(client) = client {
-                client
-                    .get(&health_url)
-                    .send()
-                    .await
-                    .map(|response| response.status() == StatusCode::OK)
-                    .unwrap_or(false)
+                let occupied = client.get(&health_url).send().await.is_ok();
+                (self.probe_identity(&client).await, occupied)
             } else {
-                false
+                (false, false)
             }
         };
 
@@ -200,9 +197,18 @@ impl FastWhisperManager {
                 status.error = None;
             } else {
                 status.running = false;
+                status.error = if endpoint_occupied {
+                    Some("Another or incompatible service is listening on the local speech endpoint.".into())
+                } else {
+                    None
+                };
                 if repo_exists {
                     status.phase = "idle".into();
-                    status.message = "Server is stopped.".into();
+                    status.message = if endpoint_occupied {
+                        "Local speech endpoint belongs to an incompatible service.".into()
+                    } else {
+                        "Server is stopped.".into()
+                    };
                 } else {
                     status.phase = "not-installed".into();
                     status.message = "Local server is not installed.".into();
@@ -251,22 +257,19 @@ impl FastWhisperManager {
     pub async fn stop(self: &Arc<Self>, app: &AppHandle) -> Result<FastWhisperStatus> {
         self.execute(app, |manager, handle| async move {
             manager.stop_server(&handle).await?;
-            manager.update_status(&handle, |status| {
-                status.phase = "idle".into();
-                status.running = false;
-                status.message = "Server is stopped.".into();
-            })
-            .await;
+            manager
+                .update_status(&handle, |status| {
+                    status.phase = "idle".into();
+                    status.running = false;
+                    status.message = "Server is stopped.".into();
+                })
+                .await;
             Ok(manager.get_status().await)
         })
         .await
     }
 
-    pub async fn is_model_downloaded(
-        &self,
-        app: &AppHandle,
-        model: &str,
-    ) -> Result<bool> {
+    pub async fn is_model_downloaded(&self, app: &AppHandle, model: &str) -> Result<bool> {
         let trimmed = model.trim();
         if trimmed.is_empty() {
             return Ok(false);
@@ -340,6 +343,7 @@ impl FastWhisperManager {
         let mut guard = self.status.lock().await;
         update(&mut guard);
         guard.install_dir = Some(install_dir.to_string_lossy().to_string());
+        guard.base_url = Some(Self::base_url());
         guard.updated_at = chrono::Utc::now().timestamp_millis();
         let _ = app.emit("local-speech:status", guard.clone());
     }
@@ -350,10 +354,8 @@ impl FastWhisperManager {
             "[fast-fast-whisper] repository directory: {}",
             repo_dir.display()
         );
-        if force {
-            if repo_dir.exists() {
-                tokio::fs::remove_dir_all(&repo_dir).await?;
-            }
+        if force && repo_dir.exists() {
+            tokio::fs::remove_dir_all(&repo_dir).await?;
         }
         if repo_dir.exists() {
             return Ok(());
@@ -379,7 +381,8 @@ impl FastWhisperManager {
         tokio::fs::create_dir_all(&repo_dir).await?;
         let repo_dir_for_extract = repo_dir.clone();
         let extraction_result =
-            spawn_blocking(move || Self::extract_repository_archive(archive, repo_dir_for_extract)).await;
+            spawn_blocking(move || Self::extract_repository_archive(archive, repo_dir_for_extract))
+                .await;
         let extraction_result = match extraction_result {
             Ok(result) => result,
             Err(join_error) => {
@@ -479,7 +482,11 @@ impl FastWhisperManager {
         Ok(())
     }
 
-    async fn start_server(self: &Arc<Self>, app: &AppHandle, action: &str) -> Result<FastWhisperStatus> {
+    async fn start_server(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        action: &str,
+    ) -> Result<FastWhisperStatus> {
         self.stop_server(app).await.ok();
         self.update_status(app, |state| {
             state.phase = "starting".into();
@@ -515,7 +522,7 @@ impl FastWhisperManager {
             .await;
             return Err(script_error.unwrap_or(error));
         }
-        // health ok even если скрипт ворчал
+        // A healthy service wins even if its launcher script reported a warning.
         if script_error.is_some() {
             self.update_status(app, |state| {
                 state.error = None;
@@ -544,7 +551,13 @@ impl FastWhisperManager {
         Ok(())
     }
 
-    async fn run_script(self: &Arc<Self>, app: &AppHandle, command: &str, args: &[String], label: &str) -> Result<()> {
+    async fn run_script(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        command: &str,
+        args: &[String],
+        label: &str,
+    ) -> Result<()> {
         #[cfg(windows)]
         {
             Self::ensure_windows_batch_scripts(&self.repo_path(app))?;
@@ -593,7 +606,10 @@ impl FastWhisperManager {
             let message = trimmed.to_string();
             self.update_status(app, |state| {
                 state.log_line = Some(message.clone());
-                if matches!(state.phase.as_str(), "installing" | "starting" | "reinstalling") {
+                if matches!(
+                    state.phase.as_str(),
+                    "installing" | "starting" | "reinstalling"
+                ) {
                     state.message = message.clone();
                 }
             })
@@ -609,20 +625,25 @@ impl FastWhisperManager {
     }
 
     async fn wait_for_health(&self, expect_up: bool) -> Result<()> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build()?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()?;
         let started = Instant::now();
         let health_url = self.health_endpoint();
         loop {
-            let healthy = client
-                .get(&health_url)
-                .send()
-                .await
-                .map(|response| response.status() == StatusCode::OK)
-                .unwrap_or(false);
+            let healthy = if expect_up {
+                self.probe_identity(&client).await
+            } else {
+                client.get(&health_url).send().await.is_ok()
+            };
             if healthy == expect_up {
                 return Ok(());
             }
-            let timeout = if expect_up { HEALTH_TIMEOUT } else { STOP_TIMEOUT };
+            let timeout = if expect_up {
+                HEALTH_TIMEOUT
+            } else {
+                STOP_TIMEOUT
+            };
             if started.elapsed() > timeout {
                 break;
             }
@@ -653,7 +674,7 @@ impl FastWhisperManager {
         load_saved_install_root(app)
     }
 
-    fn remember_install_dir(&self, path: &PathBuf) {
+    fn remember_install_dir(&self, path: &Path) {
         remember_install_dir(path);
     }
 
@@ -665,7 +686,13 @@ impl FastWhisperManager {
         if cfg!(target_os = "windows") {
             (
                 "cmd.exe".into(),
-                vec!["/d".into(), "/s".into(), "/c".into(), "call".into(), "start.bat".into()],
+                vec![
+                    "/d".into(),
+                    "/s".into(),
+                    "/c".into(),
+                    "call".into(),
+                    "start.bat".into(),
+                ],
             )
         } else {
             (
@@ -683,7 +710,13 @@ impl FastWhisperManager {
         if cfg!(target_os = "windows") {
             (
                 "cmd.exe".into(),
-                vec!["/d".into(), "/s".into(), "/c".into(), "call".into(), "stop.bat".into()],
+                vec![
+                    "/d".into(),
+                    "/s".into(),
+                    "/c".into(),
+                    "call".into(),
+                    "stop.bat".into(),
+                ],
             )
         } else {
             (
@@ -700,7 +733,10 @@ impl FastWhisperManager {
     fn script_env(&self) -> Vec<(String, String)> {
         let mut env: Vec<(String, String)> = std::env::vars().collect();
         env.push(("PAUSE_SECONDS".into(), "0".into()));
-        env.push(("FAST_FAST_WHISPER_PORT".into(), Self::resolve_port().to_string()));
+        env.push((
+            "FAST_FAST_WHISPER_PORT".into(),
+            Self::resolve_port().to_string(),
+        ));
         env.push(("FAST_FAST_WHISPER_HOST".into(), Self::resolve_host()));
         env
     }
@@ -751,7 +787,7 @@ impl FastWhisperManager {
         candidates
     }
 
-    fn resolve_port() -> u16 {
+    pub fn resolve_port() -> u16 {
         std::env::var("FAST_FAST_WHISPER_PORT")
             .or_else(|_| std::env::var("PORT"))
             .ok()
@@ -759,19 +795,82 @@ impl FastWhisperManager {
             .unwrap_or(FAST_WHISPER_PORT)
     }
 
-    fn resolve_host() -> String {
+    pub fn resolve_host() -> String {
         std::env::var("FAST_FAST_WHISPER_HOST")
             .or_else(|_| std::env::var("HOST"))
             .unwrap_or_else(|_| "127.0.0.1".into())
     }
 
+    pub fn base_url() -> String {
+        let configured_host = Self::resolve_host();
+        let host = match configured_host.as_str() {
+            "0.0.0.0" | "::" | "[::]" => "127.0.0.1".to_string(),
+            value if value.contains(':') && !value.starts_with('[') => format!("[{value}]"),
+            value => value.to_string(),
+        };
+        format!("http://{}:{}", host, Self::resolve_port())
+    }
+
     fn health_endpoint(&self) -> String {
-        let host = Self::resolve_host();
-        let port = Self::resolve_port();
-        if host == "127.0.0.1" && port == FAST_WHISPER_PORT {
+        let base_url = Self::base_url();
+        if base_url == format!("http://127.0.0.1:{FAST_WHISPER_PORT}") {
             FAST_WHISPER_HEALTH_ENDPOINT.into()
         } else {
-            format!("http://{}:{}/health", host, port)
+            format!("{base_url}/health")
+        }
+    }
+
+    async fn probe_identity(&self, client: &reqwest::Client) -> bool {
+        let base_url = Self::base_url();
+        let health_ok = match client.get(format!("{base_url}/health")).send().await {
+            Ok(response) if response.status() == StatusCode::OK => response
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("status")
+                        .and_then(|status| status.as_str())
+                        .map(str::to_owned)
+                })
+                .is_some_and(|status| status.eq_ignore_ascii_case("ok")),
+            _ => false,
+        };
+        if !health_ok {
+            return false;
+        }
+
+        let identity_ok = match client.get(&base_url).send().await {
+            Ok(response) if response.status() == StatusCode::OK => response
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("message")
+                        .and_then(|message| message.as_str())
+                        .map(str::to_owned)
+                })
+                .is_some_and(|message| message.to_ascii_lowercase().contains("fast-fast-whisper")),
+            _ => false,
+        };
+        if !identity_ok {
+            return false;
+        }
+
+        match client.get(format!("{base_url}/v1/models")).send().await {
+            Ok(response) if response.status() == StatusCode::OK => response
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|value| value.get("data").and_then(|data| data.as_array()).cloned())
+                .is_some_and(|models| {
+                    !models.is_empty()
+                        && models
+                            .iter()
+                            .all(|model| model.get("id").and_then(|id| id.as_str()).is_some())
+                }),
+            _ => false,
         }
     }
 }

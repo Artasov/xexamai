@@ -1,4 +1,4 @@
-import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react';
+import {FormEvent, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useAuth} from '@renderer/auth';
 import type {AuthProvider as OAuthProviderType} from '@renderer/types';
 import GoogleIcon from '@mui/icons-material/Google';
@@ -22,6 +22,7 @@ const KNOWN_OAUTH_PROVIDERS: readonly OAuthProviderType[] = [
     'discord',
     'yandex',
 ];
+const OAUTH_UI_TIMEOUT_SECONDS = 3 * 60;
 
 type AuthMethodsLike = {
     allowedOAuthProviders?: string[];
@@ -64,17 +65,32 @@ function YandexIcon(props: SvgIconProps) {
 }
 
 export function LoginView() {
-    const {signIn, startOAuth, status, error, clearError} = useAuth();
+    const {
+        signIn,
+        startOAuth,
+        cancelOAuth,
+        retrySessionRestore,
+        status,
+        error,
+        clearError,
+    } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [localError, setLocalError] = useState<string | null>(null);
     const [oauthProvider, setOauthProvider] = useState<OAuthProviderType | null>(null);
     const [backendDomain, setBackendDomainState] = useState<BackendDomain>(getBackendDomain());
     const [allowedOAuthProviders, setAllowedOAuthProviders] = useState<OAuthProviderType[]>([]);
+    const [emailPasswordAllowed, setEmailPasswordAllowed] = useState(false);
     const [authMethodsLoading, setAuthMethodsLoading] = useState(true);
+    const [authMethodsError, setAuthMethodsError] = useState<string | null>(null);
+    const [oauthSecondsRemaining, setOauthSecondsRemaining] = useState(OAUTH_UI_TIMEOUT_SECONDS);
+    const [showAlternativeSignIn, setShowAlternativeSignIn] = useState(false);
+    const authMethodsRequest = useRef(0);
 
     const isSubmitting = status === 'signing-in';
     const isOAuthInProgress = status === 'oauth';
+    const restoreFailed = status === 'restore-failed';
+    const showAuthMethods = !restoreFailed || showAlternativeSignIn;
 
     const oauthProviders = useMemo(
         () => [
@@ -112,10 +128,13 @@ export function LoginView() {
     );
 
     const syncAuthMethods = useCallback(async () => {
+        const request = ++authMethodsRequest.current;
         setAuthMethodsLoading(true);
+        setAuthMethodsError(null);
         logger.info('auth', 'Loading OAuth auth methods');
         try {
             const methods = await window.api.auth.getMethods();
+            if (request !== authMethodsRequest.current) return;
             const providers = normalizeAllowedOAuthProviders(methods);
             logger.info('auth', 'OAuth auth methods loaded', {
                 countryCode: methods.countryCode,
@@ -124,17 +143,30 @@ export function LoginView() {
                 emailPasswordAllowed: methods.emailPasswordAllowed,
             });
             setAllowedOAuthProviders(providers);
+            setEmailPasswordAllowed(methods.emailPasswordAllowed === true);
         } catch (error) {
+            if (request !== authMethodsRequest.current) return;
             logger.error('auth', 'OAuth auth methods failed', {error});
             setAllowedOAuthProviders([]);
+            setEmailPasswordAllowed(false);
+            setAuthMethodsError('Authentication options could not be loaded. Check your connection and try again.');
         } finally {
-            setAuthMethodsLoading(false);
+            if (request === authMethodsRequest.current) setAuthMethodsLoading(false);
         }
+    }, []);
+
+    useEffect(() => () => {
+        authMethodsRequest.current += 1;
     }, []);
 
     const handleSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setLocalError(null);
+
+        if (!emailPasswordAllowed) {
+            setLocalError('Email and password sign-in is not available for your region');
+            return;
+        }
 
         if (!email.trim() || !password.trim()) {
             setLocalError('Please fill in both fields');
@@ -146,7 +178,7 @@ export function LoginView() {
         } catch {
             // error is handled via context state
         }
-    }, [email, password, signIn]);
+    }, [email, emailPasswordAllowed, password, signIn]);
 
     const handleOAuth = useCallback(async (provider: OAuthProviderType) => {
         setLocalError(null);
@@ -173,8 +205,33 @@ export function LoginView() {
     useEffect(() => {
         if (status !== 'oauth') {
             setOauthProvider(null);
+            setOauthSecondsRemaining(OAUTH_UI_TIMEOUT_SECONDS);
         }
     }, [status]);
+
+    useEffect(() => {
+        if (!isOAuthInProgress) return;
+        setOauthSecondsRemaining(OAUTH_UI_TIMEOUT_SECONDS);
+        const countdown = window.setInterval(() => {
+            setOauthSecondsRemaining((remaining) => Math.max(0, remaining - 1));
+        }, 1_000);
+        const timeout = window.setTimeout(() => {
+            void cancelOAuth().then(() => {
+                setOauthProvider(null);
+                setLocalError('OAuth sign-in timed out. Please try again.');
+            });
+        }, OAUTH_UI_TIMEOUT_SECONDS * 1_000);
+        return () => {
+            window.clearInterval(countdown);
+            window.clearTimeout(timeout);
+        };
+    }, [cancelOAuth, isOAuthInProgress]);
+
+    const handleCancelOAuth = useCallback(async () => {
+        await cancelOAuth();
+        setOauthProvider(null);
+        setLocalError(null);
+    }, [cancelOAuth]);
 
     useEffect(() => {
         let cancelled = false;
@@ -308,7 +365,25 @@ export function LoginView() {
                     className="card flex w-full max-w-[360px] flex-col gap-4 bg-black/30 p-6"
                     onSubmit={handleSubmit}
                 >
-                    <TextField
+                    {restoreFailed && !showAlternativeSignIn ? (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
+                            <div className="font-semibold">Saved session is temporarily unavailable</div>
+                            <p className="mt-1 text-amber-100/80">
+                                Your secure session is still stored on this device. Check your connection and retry.
+                            </p>
+                            {combinedError ? <p className="mt-2 text-xs">{combinedError}</p> : null}
+                            <div className="mt-3 flex gap-2">
+                                <button type="button" className="btn btn-primary btn-sm" onClick={() => void retrySessionRestore()}>
+                                    Retry session
+                                </button>
+                                <button type="button" className="btn btn-sm" onClick={() => setShowAlternativeSignIn(true)}>
+                                    Sign in another way
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {showAuthMethods && emailPasswordAllowed ? <TextField
                         id="auth-email"
                         label="Email"
                         type="email"
@@ -321,10 +396,10 @@ export function LoginView() {
                             }
                             setEmail(event.target.value);
                         }}
-                        disabled={isSubmitting}
-                    />
+                        disabled={isSubmitting || isOAuthInProgress}
+                    /> : null}
 
-                    <TextField
+                    {showAuthMethods && emailPasswordAllowed ? <TextField
                         id="auth-password"
                         label="Password"
                         type="password"
@@ -337,25 +412,25 @@ export function LoginView() {
                             }
                             setPassword(event.target.value);
                         }}
-                        disabled={isSubmitting}
-                    />
+                        disabled={isSubmitting || isOAuthInProgress}
+                    /> : null}
 
-                    {combinedError ? (
+                    {showAuthMethods && combinedError ? (
                         <div
                             className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
                             {combinedError}
                         </div>
                     ) : null}
 
-                    <button
+                    {showAuthMethods && emailPasswordAllowed ? <button
                         className="btn btn-primary mt-2 py-2 text-base"
                         type="submit"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isOAuthInProgress || authMethodsLoading}
                     >
                         {isSubmitting ? 'Signing in…' : 'Sign In'}
-                    </button>
+                    </button> : null}
 
-                    {visibleOAuthProviders.length ? (
+                    {showAuthMethods && visibleOAuthProviders.length ? (
                         <div className="frc gap-3">
                             <div className="flex items-center gap-3">
                                 {visibleOAuthProviders.map((provider) => {
@@ -366,7 +441,7 @@ export function LoginView() {
                                             key={provider.id}
                                             type="button"
                                             className={`oauth-button ${provider.className} ${isActive ? 'oauth-button--active' : ''}`}
-                                            disabled={isSubmitting || authMethodsLoading}
+                                            disabled={isSubmitting || isOAuthInProgress || authMethodsLoading}
                                             onClick={() => handleOAuth(provider.id)}
                                             aria-label={provider.label}
                                         >
@@ -381,8 +456,35 @@ export function LoginView() {
                     {isOAuthInProgress ? (
                         <div
                             className="rounded-md border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
-                            Finish authentication in your browser. This window will update automatically once the flow
-                            completes.
+                            <div>Finish authentication in your browser. This window will update automatically.</div>
+                            <div className="mt-2 flex items-center justify-between gap-3">
+                                <span>{oauthSecondsRemaining}s remaining</span>
+                                <button type="button" className="btn btn-sm" onClick={handleCancelOAuth}>
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {showAuthMethods && !authMethodsLoading && authMethodsError ? (
+                        <div
+                            className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100"
+                            role="alert"
+                        >
+                            <div>{authMethodsError}</div>
+                            <button
+                                type="button"
+                                className="btn btn-sm mt-2"
+                                onClick={() => void syncAuthMethods()}
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    ) : null}
+
+                    {showAuthMethods && !authMethodsLoading && !authMethodsError && !emailPasswordAllowed && !visibleOAuthProviders.length ? (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                            No sign-in method is currently available for your region.
                         </div>
                     ) : null}
                 </form>

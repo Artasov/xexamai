@@ -6,7 +6,10 @@ import {toast} from 'react-toastify';
 import {useSettingsContext} from '../SettingsView/SettingsView';
 import type {AudioDeviceInfo} from '@shared/ipc';
 import {logger} from '../../../utils/logger';
-import {emitSettingsChange} from '../../../utils/settingsEvents';
+import {requestSettingsChange} from '../../../utils/settingsEvents';
+import {
+    migrateLegacyAudioDeviceSelection,
+} from '../../../app/audioSession/deviceSelection';
 import './AudioSettings.scss';
 
 const AUDIO_INPUT_TYPES: { value: 'microphone' | 'system' | 'mixed'; label: string }[] = [
@@ -21,6 +24,7 @@ export const AudioSettings = () => {
     const {settings, patchLocal} = useSettingsContext();
     const [devices, setDevices] = useState<AudioDeviceInfo[]>([]);
     const [loading, setLoading] = useState(false);
+    const [inputSwitching, setInputSwitching] = useState(false);
 
     useEffect(() => {
         void loadDevices();
@@ -36,6 +40,11 @@ export const AudioSettings = () => {
         try {
             const list = await window.api.audio.listDevices();
             setDevices(list);
+            const saved = settings.audioInputDeviceId ?? '';
+            const migratedId = await migrateLegacyAudioDeviceSelection(list, saved);
+            if (migratedId !== saved) {
+                patchLocal({audioInputDeviceId: migratedId});
+            }
         } catch (error) {
             logger.error('settings', 'Failed to load audio devices', {error});
             setDevices([]);
@@ -46,34 +55,57 @@ export const AudioSettings = () => {
     };
 
     const handleInputTypeChange = async (type: 'microphone' | 'system' | 'mixed') => {
+        const previous = settings.audioInputType ?? 'microphone';
+        patchLocal({audioInputType: type});
+        setInputSwitching(true);
         try {
-            await window.api.settings.setAudioInputType(type);
-            patchLocal({audioInputType: type});
-            emitSettingsChange('audioInputType', type);
+            const result = await requestSettingsChange('audioInputType', type);
+            const applied = result.appliedValue === 'system' || result.appliedValue === 'mixed'
+                ? result.appliedValue
+                : result.appliedValue === 'microphone'
+                    ? 'microphone'
+                    : previous;
+            patchLocal({audioInputType: applied});
+            if (!result.success) showMessage(result.error || 'Failed to switch audio input', 'error');
         } catch (error) {
+            patchLocal({audioInputType: previous});
             logger.error('settings', 'Failed to set audio input type', {error});
             showMessage('Failed to update audio input type', 'error');
+        } finally {
+            setInputSwitching(false);
         }
     };
 
     const handleDeviceChange = async (deviceId: string) => {
+        const previous = settings.audioInputDeviceId ?? '';
+        setInputSwitching(true);
         try {
-            await window.api.settings.setAudioInputDevice(deviceId);
-            patchLocal({audioInputDeviceId: deviceId});
+            const result = await requestSettingsChange('audioInputDeviceId', deviceId);
+            const applied = typeof result.appliedValue === 'string' ? result.appliedValue : previous;
+            patchLocal({audioInputDeviceId: applied});
+            if (!result.success) showMessage(result.error || 'Failed to switch microphone', 'error');
         } catch (error) {
+            patchLocal({audioInputDeviceId: previous});
             logger.error('settings', 'Failed to set audio input device', {error});
             showMessage('Failed to update audio input device', 'error');
+        } finally {
+            setInputSwitching(false);
         }
     };
 
-    const deviceOptions = [{value: '', label: 'Default device'}, ...devices.map((device) => ({
+    const currentDeviceId = settings.audioInputDeviceId ?? '';
+    const selectedUnavailable = currentDeviceId && !devices.some((device) => device.id === currentDeviceId);
+    const deviceOptions = [
+        {value: '', label: 'Default device'},
+        ...(selectedUnavailable ? [{value: currentDeviceId, label: `Unavailable: ${currentDeviceId}`}] : []),
+        ...devices.map((device) => ({
         value: device.id,
         label: device.name
-    }))];
-    const currentDeviceId = settings.audioInputDeviceId ?? '';
+        })),
+    ];
     const renderDeviceLabel = (value: string) => {
         if (!value) return 'Default device';
-        return deviceOptions.find((option) => option.value === value)?.label ?? 'Default device';
+        return deviceOptions.find((option) => option.value === value)?.label ?? `Unavailable: ${value}`;
     };
 
     return (
@@ -87,6 +119,7 @@ export const AudioSettings = () => {
                         label="Input type"
                         value={settings.audioInputType ?? 'microphone'}
                         onChange={(event) => handleInputTypeChange(event.target.value as 'microphone' | 'system' | 'mixed')}
+                        disabled={inputSwitching}
                         fullWidth
                     >
                         {AUDIO_INPUT_TYPES.map((option) => (
@@ -105,6 +138,7 @@ export const AudioSettings = () => {
                             label="Device"
                             value={currentDeviceId}
                             onChange={(event) => handleDeviceChange(event.target.value)}
+                            disabled={inputSwitching}
                             fullWidth
                             slotProps={{
                                 select: {

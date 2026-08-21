@@ -1,12 +1,10 @@
-import {invoke} from '@tauri-apps/api/core';
+import {invokeNative as invoke} from '../bridge/nativeInvoke';
+import {beginNativeRendererActivity} from '../state/rendererActivity';
 import {
     AskChatRequest,
     AppSettings,
-    AssistantResponse,
     ChatHistoryMessage,
     ProcessAudioArgs,
-    ScreenProcessRequest,
-    ScreenProcessResponse,
     StopStreamRequest,
 } from '@shared/ipc';
 import {
@@ -20,10 +18,11 @@ import {
     WINKY_TRANSCRIBE_MODELS,
 } from '@shared/constants';
 import {logRequest, previewText} from './nativeAssistant.helpers';
-import {fetchWithTimeout, ollamaAxios} from './nativeAssistant.network';
 import {getSiteBaseUrl, getWsBaseUrl} from '@shared/appUrls';
 import {AuthError, authClient} from './authClient';
 import {uploadMediaFile} from './mediaClient';
+import {decodeBase64Bytes, StreamFrameParser} from '../utils/streamFrames';
+import {providerProxyFetch} from './providerProxyClient';
 
 type StreamEventPayloads = {
     transcript: { requestId?: string; delta: string };
@@ -96,11 +95,6 @@ const DEFAULT_API_TRANSCRIBE = OPENAI_TRANSCRIBE_MODELS[0] ?? 'gpt-4o-mini-trans
 const DEFAULT_API_LLM = OPENAI_LLM_MODELS[0] ?? 'gpt-4.1-nano';
 const DEFAULT_LOCAL_LLM = LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
 
-const OPENAI_BASE =
-    (import.meta.env.VITE_OPENAI_BASE_URL as string | undefined)?.replace(/\/$/, '') ||
-    'https://api.openai.com';
-const SCREEN_OPENAI_MODEL = 'gpt-4o-mini';
-const SCREEN_GEMINI_MODEL = 'gemini-1.5-flash';
 const MAX_HISTORY_MESSAGES = 40;
 const WINKY_CREDITS_TOPUP_PATH = '/profile/general?open_top_up=1';
 
@@ -130,23 +124,7 @@ function emit<K extends keyof StreamEventPayloads>(key: K, payload: StreamEventP
 }
 
 async function loadSettings(): Promise<AppSettings> {
-    return invoke<AppSettings>('config_get');
-}
-
-function ensureOpenAiKey(settings: AppSettings): string {
-    const key = settings.openaiApiKey?.trim();
-    if (!key) {
-        throw new Error('OPENAI_API_KEY is not set');
-    }
-    return key;
-}
-
-function ensureGoogleKey(settings: AppSettings): string {
-    const key = settings.googleApiKey?.trim();
-    if (!key) {
-        throw new Error('Provide a Google AI API key first');
-    }
-    return key;
+    return invoke('config_get');
 }
 
 function assertWinkySession(): void {
@@ -231,20 +209,20 @@ async function transcribeWithOpenAi(
     mime: string,
     filename: string,
     settings: AppSettings,
-    model?: string
+    model?: string,
+    requestId?: string,
 ): Promise<string> {
-    const apiKey = ensureOpenAiKey(settings);
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
     const prompt = buildTranscriptionPrompt(settings);
 
     logRequest('transcribe:openai', 'start', {model: resolvedModel, mime});
 
     try {
-        const result = await invoke<{ text: string }>('transcribe_audio', {
+        const result = await invoke('transcribe_audio', {
             request: {
+                request_id: requestId,
                 mode: 'api',
                 model: resolvedModel,
-                api_key: apiKey,
                 audio_data: Array.from(new Uint8Array(buffer)),
                 mime_type: mime || 'audio/wav',
                 filename,
@@ -344,11 +322,65 @@ const appendStreamingDelta = (current: string, nextChunk: string): { full: strin
     return {full: current + nextChunk, delta: nextChunk};
 };
 
+type StreamTimeouts = { connectMs: number; idleMs: number; totalMs: number };
+
+const resolveStreamTimeouts = (configured?: number): StreamTimeouts => {
+    const totalMs = Math.max(10_000, Math.min(3_600_000, configured || 150_000));
+    return {
+        connectMs: Math.min(15_000, totalMs),
+        idleMs: Math.min(60_000, Math.max(10_000, Math.floor(totalMs / 3))),
+        totalMs,
+    };
+};
+
+async function readStreamingText(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    decoder: TextDecoder,
+    controller: AbortController,
+    timeouts: StreamTimeouts,
+    onText: (text: string) => void,
+): Promise<void> {
+    const deadline = Date.now() + timeouts.totalMs;
+    while (true) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+            controller.abort('total-timeout');
+            throw new Error('Generation exceeded its total timeout.');
+        }
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const read = reader.read();
+        const idleMs = Math.min(timeouts.idleMs, remaining);
+        let result: ReadableStreamReadResult<Uint8Array>;
+        try {
+            result = await Promise.race([
+                read,
+                new Promise<never>((_resolve, reject) => {
+                    timeoutHandle = setTimeout(() => reject(new Error(
+                        remaining <= timeouts.idleMs
+                            ? 'Generation exceeded its total timeout.'
+                            : 'Generation stream became idle.',
+                    )), idleMs);
+                }),
+            ]);
+        } catch (error) {
+            controller.abort('stream-timeout');
+            void reader.cancel().catch(() => undefined);
+            throw error;
+        } finally {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+        }
+        if (result.done) break;
+        if (result.value) onText(decoder.decode(result.value, {stream: true}));
+    }
+    onText(decoder.decode());
+}
+
 async function transcribeWithLocal(
     buffer: ArrayBuffer,
     mime: string,
     filename: string,
-    settings: AppSettings
+    settings: AppSettings,
+    requestId?: string,
 ): Promise<string> {
     // Validate buffer size
     if (buffer.byteLength < 1000) {
@@ -372,11 +404,11 @@ async function transcribeWithLocal(
     logRequest('transcribe:local', 'start', {model, mime, bufferSize: buffer.byteLength});
 
     try {
-        const result = await invoke<{ text: string }>('transcribe_audio', {
+        const result = await invoke('transcribe_audio', {
             request: {
+                request_id: requestId,
                 mode: 'local',
                 model,
-                api_key: undefined,
                 audio_data: Array.from(new Uint8Array(buffer)),
                 mime_type: mime || 'audio/wav',
                 filename,
@@ -428,9 +460,9 @@ async function transcribeWithGoogle(
     buffer: ArrayBuffer,
     mime: string,
     settings: AppSettings,
-    model?: string
+    model?: string,
+    requestId?: string,
 ): Promise<string> {
-    const key = ensureGoogleKey(settings);
     const resolvedModel = model || settings.transcriptionModel || DEFAULT_API_TRANSCRIBE;
 
     // Validate buffer size
@@ -459,11 +491,11 @@ async function transcribeWithGoogle(
     });
 
     try {
-        const result = await invoke<{ text: string }>('transcribe_audio', {
+        const result = await invoke('transcribe_audio', {
             request: {
+                request_id: requestId,
                 mode: 'google',
                 model: resolvedModel,
-                api_key: key,
                 audio_data: Array.from(new Uint8Array(buffer)),
                 mime_type: mime || 'audio/wav',
                 filename: 'audio.wav',
@@ -488,80 +520,6 @@ async function transcribeWithGoogle(
         return text;
     } catch (error: any) {
         logRequest('transcribe:google', 'error', {error: error.message || String(error)});
-        throw error;
-    }
-}
-
-async function chatCompletion(
-    prompt: string,
-    settings: AppSettings,
-    model?: string,
-    history?: ChatHistoryMessage[],
-    signal?: AbortSignal
-): Promise<string> {
-    const apiKey = ensureOpenAiKey(settings);
-    const url = `${OPENAI_BASE}/v1/chat/completions`;
-    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || DEFAULT_API_LLM;
-    const systemPrompt = (settings.llmPrompt || '').trim();
-    const normalizedHistory = normalizeChatHistory(history);
-    const messages: Array<{ role: string; content: string }> = [];
-    if (systemPrompt) {
-        messages.push({role: 'system', content: systemPrompt});
-    }
-    for (const item of normalizedHistory) {
-        messages.push({role: item.role, content: item.content});
-    }
-    messages.push({role: 'user', content: prompt});
-
-    const body: any = {
-        model: resolvedModel,
-        messages,
-    };
-    if (supportsCustomTemperature(resolvedModel)) {
-        body.temperature = 0.3;
-    }
-    logRequest('llm:openai', 'start', {model: body.model, promptPreview: previewText(prompt)});
-    let logged = false;
-    try {
-        const response = await fetchWithTimeout(
-            url,
-            {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(body),
-                signal,
-            },
-            settings.apiLlmTimeoutMs
-        );
-        const data = await response.json().catch(async () => ({text: await response.text()}));
-        if (!response.ok) {
-            logRequest('llm:openai', 'error', {status: response.status, data});
-            logged = true;
-            const message = typeof data === 'string'
-                ? data
-                : data?.error?.message || 'LLM request failed';
-            throw new Error(message);
-        }
-        const content = data?.choices?.[0]?.message?.content?.trim() || '';
-        logRequest('llm:openai', 'ok', {
-            model: body.model,
-            status: response.status,
-            promptPreview: previewText(prompt),
-            responsePreview: previewText(content),
-        });
-        return content;
-    } catch (error) {
-        const aborted = signal?.aborted || (error instanceof DOMException && error.name === 'AbortError');
-        if (!aborted && !logged) {
-            logRequest('llm:openai', 'error', {
-                model: body.model,
-                promptPreview: previewText(prompt),
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
         throw error;
     }
 }
@@ -657,23 +615,16 @@ async function chatWithGemini(
     history?: ChatHistoryMessage[],
     signal?: AbortSignal
 ): Promise<string> {
-    const accessToken = ensureGoogleKey(settings);
-    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${accessToken}`;
+    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.1-pro-preview';
     logRequest('llm:gemini', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
     const body = buildGeminiBody(prompt, settings, history);
     let logged = false;
     try {
-        const response = await fetchWithTimeout(
-            url,
-            {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body),
-                signal,
-            },
-            settings.apiLlmTimeoutMs
-        );
+        const response = await providerProxyFetch('google', 'generateContent', body, {
+            model: resolvedModel,
+            signal,
+            timeoutMs: settings.apiLlmTimeoutMs,
+        });
         const data = await response.json().catch(async () => ({text: await response.text()}));
         if (!response.ok) {
             logRequest('llm:gemini', 'error', {status: response.status, data});
@@ -720,76 +671,6 @@ async function chatWithGemini(
     }
 }
 
-async function chatWithOllama(
-    prompt: string,
-    settings: AppSettings,
-    model?: string,
-    history?: ChatHistoryMessage[],
-    signal?: AbortSignal
-): Promise<string> {
-    const resolvedModel = model || settings.localLlmModel || DEFAULT_LOCAL_LLM;
-    const systemPrompt = (settings.llmPrompt || '').trim();
-    const normalizedHistory = normalizeChatHistory(history);
-    const messages = [
-        ...(systemPrompt ? [{role: 'system', content: systemPrompt}] : []),
-        ...normalizedHistory.map((item) => ({role: item.role, content: item.content})),
-        {role: 'user', content: prompt},
-    ];
-    logRequest('llm:ollama', 'start', {model: resolvedModel, promptPreview: previewText(prompt)});
-    let logged = false;
-    try {
-        const response = await ollamaAxios.post('/v1/chat/completions', {
-            model: resolvedModel,
-            messages,
-        }, {
-            timeout: Math.max(settings.apiLlmTimeoutMs || 0, 600_000),
-            signal,
-        });
-        const data = response.data;
-        const message = (data as any)?.message?.content;
-        let content;
-        if (Array.isArray(message)) {
-            content = message.map((item: any) => item?.text ?? item?.content ?? '').join('\n').trim();
-        } else if (typeof message === 'string') {
-            content = message.trim();
-        } else {
-            const text = (data as any)?.choices?.[0]?.message?.content;
-            if (typeof text === 'string') {
-                content = text.trim();
-            } else {
-                content = extractSpeechText(data);
-            }
-        }
-        logRequest('llm:ollama', 'ok', {
-            model: resolvedModel,
-            status: response.status,
-            promptPreview: previewText(prompt),
-            responsePreview: previewText(content),
-        });
-        return content;
-    } catch (error: any) {
-        const aborted = signal?.aborted || (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED');
-        if (!aborted && !logged) {
-            const errorData = error?.response?.data || error?.response || {};
-            logRequest('llm:ollama', 'error', {
-                model: resolvedModel,
-                status: error?.response?.status,
-                data: errorData,
-                promptPreview: previewText(prompt),
-                error: error instanceof Error ? error.message : String(error),
-            });
-            logged = true;
-        }
-        if (aborted) {
-            throw error;
-        }
-        const message = typeof error?.response?.data === 'string'
-            ? error.response.data
-            : error?.response?.data?.error?.message || error?.message || 'Local LLM request failed';
-        throw new Error(message);
-    }
-}
-
 type WinkyWsEvent =
     | { event: 'start'; chat_id?: string; user_message_id?: string; model_level?: string }
     | { event: 'delta'; text?: string; chat_id?: string; message_id?: string; model_level?: string }
@@ -805,25 +686,32 @@ async function runWinkyLLMStream(
     controller?: AbortController
 ): Promise<string> {
     assertWinkySession();
+    const releaseActivity = await beginNativeRendererActivity('Winky generation');
+    try {
     const wsToken = await authClient.wsTicket();
     if (controller?.signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
     }
-    const wsUrl = `${getWsBaseUrl()}/ws/ai/llm/?token=${encodeURIComponent(wsToken)}`;
+    const wsUrl = `${getWsBaseUrl()}/ws/ai/llm/`;
     const modelLevel = mapWinkyModelToLevel(model);
-    const timeoutMs = Math.max(settings.apiLlmTimeoutMs || 0, 10_000);
+    const timeouts = resolveStreamTimeouts(settings.apiLlmTimeoutMs);
 
-    return new Promise<string>((resolve, reject) => {
+    return await new Promise<string>((resolve, reject) => {
         let full = '';
         let settled = false;
-        let timeoutId: ReturnType<typeof setTimeout> | null = null;
-        const ws = new WebSocket(wsUrl);
+        let connectTimer: ReturnType<typeof setTimeout> | null = null;
+        let idleTimer: ReturnType<typeof setTimeout> | null = null;
+        let totalTimer: ReturnType<typeof setTimeout> | null = null;
+        // Keep the short-lived ticket out of URLs, browser history, reverse-proxy
+        // access logs, crash reports, and referrers.
+        const ws = new WebSocket(wsUrl, [`xexamai-ticket.${wsToken}`]);
 
         const cleanup = () => {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-                timeoutId = null;
-            }
+            if (connectTimer) clearTimeout(connectTimer);
+            if (idleTimer) clearTimeout(idleTimer);
+            if (totalTimer) clearTimeout(totalTimer);
+            connectTimer = idleTimer = totalTimer = null;
+            controller?.signal.removeEventListener('abort', onAbort);
             try {
                 if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
                     ws.close();
@@ -846,10 +734,6 @@ async function runWinkyLLMStream(
             resolve(full);
         };
 
-        timeoutId = setTimeout(() => {
-            fail(new Error('Winky LLM request timed out.'));
-        }, timeoutMs);
-
         const onAbort = () => {
             try {
                 if (ws.readyState === WebSocket.OPEN) {
@@ -861,6 +745,14 @@ async function runWinkyLLMStream(
             fail(abortError as unknown as Error);
         };
 
+        const armIdleTimer = () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => fail(new Error('Winky response stream became idle.')), timeouts.idleMs);
+        };
+
+        connectTimer = setTimeout(() => fail(new Error('Winky connection timed out.')), timeouts.connectMs);
+        totalTimer = setTimeout(() => fail(new Error('Winky generation exceeded its total timeout.')), timeouts.totalMs);
+
         if (controller) {
             if (controller.signal.aborted) {
                 onAbort();
@@ -871,6 +763,9 @@ async function runWinkyLLMStream(
 
         ws.onopen = () => {
             try {
+                if (connectTimer) clearTimeout(connectTimer);
+                connectTimer = null;
+                armIdleTimer();
                 ws.send(JSON.stringify({
                     action: 'generate',
                     prompt,
@@ -883,6 +778,7 @@ async function runWinkyLLMStream(
 
         ws.onmessage = (event) => {
             try {
+                armIdleTimer();
                 const data = JSON.parse(String(event.data || '{}')) as WinkyWsEvent;
                 if (!data || typeof data !== 'object') return;
 
@@ -936,31 +832,9 @@ async function runWinkyLLMStream(
             fail(new Error(event.reason || `Winky socket closed (${event.code})`));
         };
     });
-}
-
-async function chatWithWinky(
-    prompt: string,
-    settings: AppSettings,
-    model: string,
-    history?: ChatHistoryMessage[],
-    controller?: AbortController
-): Promise<string> {
-    const fullPrompt = buildWinkyPrompt(prompt, settings, history);
-    logRequest('llm:winky', 'start', {
-        model,
-        promptPreview: previewText(fullPrompt),
-    });
-    const full = await runWinkyLLMStream(fullPrompt, settings, model, () => {
-    }, controller);
-    if (!full.trim()) {
-        throw new Error('Winky returned an empty response.');
+    } finally {
+        await releaseActivity();
     }
-    logRequest('llm:winky', 'ok', {
-        model,
-        promptPreview: previewText(fullPrompt),
-        responsePreview: previewText(full),
-    });
-    return full;
 }
 
 async function streamGeminiChatCompletion(
@@ -971,22 +845,16 @@ async function streamGeminiChatCompletion(
     history: ChatHistoryMessage[] | undefined,
     controller: AbortController
 ): Promise<void> {
-    const accessToken = ensureGoogleKey(settings);
-    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.0-pro';
-    const url =
-        `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:streamGenerateContent?alt=sse&key=${accessToken}`;
+    const resolvedModel = model || settings.llmModel || settings.apiLlmModel || GEMINI_LLM_MODELS[0] || 'gemini-3.1-pro-preview';
     const body = buildGeminiBody(prompt, settings, history);
+    const timeouts = resolveStreamTimeouts(settings.apiLlmTimeoutMs);
 
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        },
-        settings.apiLlmTimeoutMs
-    );
+    const response = await providerProxyFetch('google', 'streamGenerateContent', body, {
+        model: resolvedModel,
+        stream: true,
+        signal: controller.signal,
+        timeoutMs: settings.apiLlmTimeoutMs,
+    });
     if (!response.ok) {
         const data = await response.json().catch(async () => ({text: await response.text()}));
         const message = typeof data === 'string'
@@ -1001,17 +869,12 @@ async function streamGeminiChatCompletion(
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    const parser = new StreamFrameParser('sse');
     let full = '';
 
-    const flushBuffer = () => {
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const rawLine of lines) {
-            const line = rawLine.trim();
-            if (!line || line === 'data: [DONE]' || line === '[DONE]' || line.startsWith('event:')) continue;
-            const jsonLine = line.startsWith('data:') ? line.slice(5).trim() : line;
-            if (!jsonLine) continue;
+    const consumeFrames = (frames: string[]) => {
+        for (const jsonLine of frames) {
+            if (!jsonLine || jsonLine === '[DONE]') continue;
             try {
                 const json = JSON.parse(jsonLine);
                 const chunk = extractGeminiChunkText(json);
@@ -1026,14 +889,10 @@ async function streamGeminiChatCompletion(
         }
     };
 
-    while (true) {
-        const {value, done} = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, {stream: true});
-        flushBuffer();
-    }
-    buffer += decoder.decode();
-    flushBuffer();
+    await readStreamingText(reader, decoder, controller, timeouts, (text) => {
+        consumeFrames(parser.push(text));
+    });
+    consumeFrames(parser.finish());
 
     if (!full.trim()) {
         throw new Error('Gemini returned an empty response.');
@@ -1066,41 +925,14 @@ async function streamOllamaChatCompletion(
         {role: 'user', content: prompt},
     ];
     logRequest('llm:ollama:stream', 'start', {requestId, model, promptPreview: previewText(prompt)});
-
-    const response = await fetchWithTimeout(
-        'http://localhost:11434/v1/chat/completions',
-        {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({model, messages, stream: true}),
-            signal: controller.signal,
-        },
-        Math.max(settings.apiLlmTimeoutMs || 0, 600_000)
-    );
-    if (!response.ok) {
-        logRequest('llm:ollama:stream', 'error', {requestId, status: response.status});
-        const text = await response.text().catch(() => '');
-        throw new Error(text || `Local LLM streaming failed (status: ${response.status})`);
-    }
-
-    if (!response.body) {
-        logRequest('llm:ollama:stream', 'error', {requestId, status: response.status, error: 'No response body'});
-        throw new Error('Local LLM streaming failed: No response body');
-    }
-
-    const reader = response.body.getReader();
+    const timeouts = resolveStreamTimeouts(settings.apiLlmTimeoutMs);
     const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    const parser = new StreamFrameParser('ndjson');
     let full = '';
 
-    const flushBuffer = () => {
-        const parts = buffer.split('\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-            const line = part.trim();
-            if (!line || line === 'data: [DONE]' || line === '[DONE]') continue;
-            const jsonLine = line.startsWith('data:') ? line.slice(5).trim() : line;
-            if (!jsonLine) continue;
+    const consumeFrames = (frames: string[]) => {
+        for (const jsonLine of frames) {
+            if (!jsonLine || jsonLine === '[DONE]') continue;
             try {
                 const json = JSON.parse(jsonLine);
                 const deltaRaw =
@@ -1117,14 +949,28 @@ async function streamOllamaChatCompletion(
         }
     };
 
-    while (true) {
-        const {value, done} = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, {stream: true});
-        flushBuffer();
+    const onAbort = () => {
+        void window.api.ollama.cancelChat(requestId).catch(() => undefined);
+    };
+    controller.signal.addEventListener('abort', onAbort, {once: true});
+    try {
+        await window.api.ollama.streamChat({
+            requestId,
+            body: JSON.stringify({model, messages, stream: true}),
+            connectTimeoutMs: timeouts.connectMs,
+            idleTimeoutMs: timeouts.idleMs,
+            totalTimeoutMs: timeouts.totalMs,
+        }, (event) => {
+            if (event.kind !== 'chunk' || !event.dataBase64) return;
+            const text = decoder.decode(decodeBase64Bytes(event.dataBase64), {stream: true});
+            consumeFrames(parser.push(text));
+        });
+        consumeFrames(parser.finish(decoder.decode()));
+    } finally {
+        controller.signal.removeEventListener('abort', onAbort);
     }
-    buffer += decoder.decode();
-    flushBuffer();
+    if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    if (!full.trim()) throw new Error('Ollama returned an empty response.');
     emit('done', {requestId, full});
     logRequest('llm:ollama:stream', 'ok', {
         requestId,
@@ -1201,8 +1047,6 @@ async function streamChatCompletion(
         return;
     }
 
-    const apiKey = ensureOpenAiKey(settings);
-    const url = `${OPENAI_BASE}/v1/chat/completions`;
     const systemPrompt = (settings.llmPrompt || '').trim();
     const normalizedHistory = normalizeChatHistory(history);
     const messages: Array<{ role: string; content: string }> = [];
@@ -1222,19 +1066,12 @@ async function streamChatCompletion(
     if (supportsCustomTemperature(model)) {
         body.temperature = 0.3;
     }
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        },
-        settings.apiLlmTimeoutMs
-    );
+    const timeouts = resolveStreamTimeouts(settings.apiLlmTimeoutMs);
+    const response = await providerProxyFetch('openai', 'chatCompletions', body, {
+        stream: true,
+        signal: controller.signal,
+        timeoutMs: settings.apiLlmTimeoutMs,
+    });
     if (!response.ok || !response.body) {
         logRequest('llm:stream', 'error', {requestId, status: response.status});
         const text = await response.text();
@@ -1243,44 +1080,29 @@ async function streamChatCompletion(
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    const parser = new StreamFrameParser('sse');
     let full = '';
 
-    const flushBuffer = () => {
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-            const lines = part.split('\n');
-            for (const rawLine of lines) {
-                const trimmed = rawLine.trim();
-                if (!trimmed || trimmed === 'data: [DONE]' || trimmed === '[DONE]' || trimmed.startsWith('event:')) {
-                    continue;
-                }
-                if (!trimmed.startsWith('data:')) continue;
-
-                const line = trimmed.slice(5).trim();
-                if (!line || line === '[DONE]') continue;
-                try {
-                    const json = JSON.parse(line);
-                    const text = extractOpenAiDelta(json);
-                    if (!text) continue;
-                    full += text;
-                    emit('delta', {requestId, delta: text});
-                } catch (error) {
-                    console.warn('[assistantBridge] failed to parse chunk', error, line);
-                }
+    const consumeFrames = (frames: string[]) => {
+        for (const frame of frames) {
+            if (!frame || frame === '[DONE]') continue;
+            try {
+                const json = JSON.parse(frame);
+                const text = extractOpenAiDelta(json);
+                if (!text) continue;
+                full += text;
+                emit('delta', {requestId, delta: text});
+            } catch (error) {
+                console.warn('[assistantBridge] failed to parse chunk', error, frame);
             }
         }
     };
 
-    while (true) {
-        const {value, done} = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, {stream: true});
-        flushBuffer();
-    }
-    buffer += decoder.decode();
-    flushBuffer();
+    await readStreamingText(reader, decoder, controller, timeouts, (text) => {
+        consumeFrames(parser.push(text));
+    });
+    consumeFrames(parser.finish());
+    if (!full.trim()) throw new Error('The model returned an empty response.');
     emit('done', {requestId, full});
     logRequest('llm:stream', 'ok', {
         requestId,
@@ -1300,6 +1122,7 @@ type TranscriptionRunOptions = {
     mime: string;
     filename: string;
     stream?: boolean;
+    requestId?: string;
 };
 
 type TranscriptionRunResult = {
@@ -1328,8 +1151,9 @@ async function transcribeAudioBuffer({
                                          settings,
                                          buffer,
                                          mime,
-                                         filename,
-                                         stream = false,
+                                          filename,
+                                          stream = false,
+                                          requestId,
                                      }: TranscriptionRunOptions): Promise<TranscriptionRunResult> {
     const {mode: transcriptionMode, model: transcriptionModel} = resolveTranscriptionTarget(settings);
 
@@ -1338,15 +1162,15 @@ async function transcribeAudioBuffer({
 
     const text = await (async () => {
         if (transcriptionMode === 'local') {
-            return transcribeWithLocal(buffer, mime, filename, settings);
+            return transcribeWithLocal(buffer, mime, filename, settings, requestId);
         }
         if (WINKY_TRANSCRIBE_SET.has(transcriptionModel)) {
             return transcribeWithWinky(buffer, mime, settings);
         }
         if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
-            return transcribeWithGoogle(buffer, mime, settings, transcriptionModel);
+            return transcribeWithGoogle(buffer, mime, settings, transcriptionModel, requestId);
         }
-        return transcribeWithOpenAi(buffer, mime, filename, settings, transcriptionModel);
+        return transcribeWithOpenAi(buffer, mime, filename, settings, transcriptionModel, requestId);
     })();
 
     logRequest('transcribe', 'ok', {
@@ -1355,51 +1179,6 @@ async function transcribeAudioBuffer({
     });
 
     return {text, mode: transcriptionMode, model: transcriptionModel};
-}
-
-export async function assistantProcessAudio(args: ProcessAudioArgs): Promise<AssistantResponse> {
-    const settings = await loadSettings();
-    const buffer = args.arrayBuffer;
-    if (buffer.byteLength === 0) {
-        return {ok: false, error: 'Empty audio'};
-    }
-    const {text, mode: transcriptionMode, model: transcriptionModel} = await transcribeAudioBuffer({
-        settings,
-        buffer,
-        mime: args.mime,
-        filename: args.filename || 'lastN.webm',
-    });
-
-    const {host: llmHost, model: llmModel} = resolveLlmTarget(settings);
-    logRequest('llm:select', 'start', {
-        host: llmHost,
-        model: llmModel,
-        rawHost: settings.llmHost,
-        rawApiModel: settings.apiLlmModel,
-        rawLocalModel: settings.localLlmModel,
-        rawLlmModel: settings.llmModel,
-    });
-    let answer = '';
-    if (text) {
-        if (llmHost === 'local') {
-            answer = await chatWithOllama(text, settings, llmModel);
-        } else if (WINKY_LLM_SET.has(llmModel)) {
-            answer = await chatWithWinky(text, settings, llmModel);
-        } else if (GEMINI_LLM_SET.has(llmModel)) {
-            answer = await chatWithGemini(text, settings, llmModel);
-        } else {
-            answer = await chatCompletion(text, settings, llmModel);
-        }
-    }
-    logRequest('transcribe+llm', 'ok', {
-        mode: transcriptionMode,
-        model: transcriptionModel,
-        llmHost,
-        llmModel,
-        textPreview: previewText(text),
-        answerPreview: previewText(answer),
-    });
-    return {ok: true, text, answer};
 }
 
 export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{ ok: true; text: string } | {
@@ -1416,42 +1195,9 @@ export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{
         buffer,
         mime: args.mime,
         filename: args.filename || 'lastN.webm',
+        requestId: args.requestId,
     });
     return {ok: true, text};
-}
-
-export async function assistantProcessAudioStream(args: ProcessAudioArgs): Promise<AssistantResponse> {
-    const settings = await loadSettings();
-    const buffer = args.arrayBuffer;
-    if (buffer.byteLength === 0) {
-        return {ok: false, error: 'Empty audio'};
-    }
-    const requestId = args.requestId || crypto.randomUUID();
-    emit('transcript', {requestId, delta: ''});
-    const {text} = await transcribeAudioBuffer({
-        settings,
-        buffer,
-        mime: args.mime,
-        filename: args.filename || 'lastN.webm',
-        stream: true,
-    });
-    emit('transcript', {requestId, delta: text});
-    const {host: llmHost, model: llmModel} = resolveLlmTarget(settings);
-    logRequest('llm:stream', 'start', {
-        requestId,
-        host: llmHost,
-        model: llmModel,
-        rawHost: settings.llmHost,
-        rawApiModel: settings.apiLlmModel,
-        rawLocalModel: settings.localLlmModel,
-        rawLlmModel: settings.llmModel,
-        promptPreview: previewText(text),
-    });
-
-    runWithActiveStream(requestId, (controller) =>
-        streamChatCompletion(text, requestId, settings, undefined, controller)
-    );
-    return {ok: true, text, answer: ''};
 }
 
 export async function assistantAskChat(args: AskChatRequest) {
@@ -1465,6 +1211,7 @@ export async function assistantAskChat(args: AskChatRequest) {
 
 export async function assistantStopStream(args: StopStreamRequest): Promise<void> {
     const requestId = args.requestId || 'default';
+    await invoke('cancel_transcription', {requestId}).catch(() => undefined);
     const controller = activeStreams.get(requestId);
     if (controller) {
         controller.abort();
@@ -1504,230 +1251,5 @@ export function assistantOffStreamError(cb?: StreamListener<{ requestId?: string
     removeStreamListener('error', cb);
 }
 
-type ScreenPrompts = {
-    systemPrompt: string;
-    userPrompt: string;
-};
-
-const buildScreenPrompts = (settings: AppSettings): ScreenPrompts => {
-    const prompt = (settings.screenProcessingPrompt || '').trim();
-    const systemPrompt = prompt || 'You are an assistant that analyses screenshots.';
-    const userPrompt = 'Analyze the provided screenshot and provide actionable insights.';
-    return {systemPrompt, userPrompt};
-};
-
-const normalizeBase64Image = (value: string): string => {
-    if (!value) return '';
-    const commaIndex = value.indexOf(',');
-    if (commaIndex >= 0) {
-        return value.slice(commaIndex + 1);
-    }
-    return value;
-};
-
-async function processScreenWithOpenAi(
-    payload: ScreenProcessRequest,
-    settings: AppSettings,
-    prompts: ScreenPrompts,
-    history: ChatHistoryMessage[]
-): Promise<{ answer: string; model: string }> {
-    const apiKey = ensureOpenAiKey(settings);
-    const url = `${OPENAI_BASE}/v1/chat/completions`;
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [];
-
-    if (prompts.systemPrompt) {
-        messages.push({
-            role: 'system',
-            content: prompts.systemPrompt,
-        });
-    }
-
-    for (const item of history) {
-        messages.push({
-            role: item.role,
-            content: item.content,
-        });
-    }
-
-    messages.push({
-        role: 'user',
-        content: [
-            {type: 'text', text: prompts.userPrompt},
-            {
-                type: 'image_url',
-                image_url: {
-                    url: `data:${payload.mime || 'image/png'};base64,${payload.imageBase64}`,
-                },
-            },
-        ],
-    });
-
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: SCREEN_OPENAI_MODEL,
-                temperature: 0.2,
-                messages,
-            }),
-        },
-        settings.screenProcessingTimeoutMs
-    );
-    const data = await response.json().catch(async () => ({text: await response.text()}));
-    if (!response.ok) {
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'Screen processing failed';
-        throw new Error(message);
-    }
-    const answer = data?.choices?.[0]?.message?.content;
-    const text = Array.isArray(answer)
-        ? answer.map((entry: any) => entry?.text || entry?.content || '').join('')
-        : answer;
-    const normalized = typeof text === 'string' ? text.trim() : '';
-    if (!normalized) {
-        throw new Error('Empty response from OpenAI screen analysis.');
-    }
-    return {answer: normalized, model: SCREEN_OPENAI_MODEL};
-}
-
-async function processScreenWithGemini(
-    payload: ScreenProcessRequest,
-    settings: AppSettings,
-    prompts: ScreenPrompts,
-    history: ChatHistoryMessage[]
-): Promise<{ answer: string; model: string }> {
-    const accessToken = ensureGoogleKey(settings);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCREEN_GEMINI_MODEL}:generateContent?key=${accessToken}`;
-    const contents: any[] = history.map((item) => ({
-        role: item.role === 'assistant' ? 'model' : 'user',
-        parts: [{text: item.content}],
-    }));
-    contents.push({
-        role: 'user',
-        parts: [
-            {text: prompts.userPrompt},
-            {
-                inline_data: {
-                    mime_type: payload.mime || 'image/png',
-                    data: payload.imageBase64,
-                },
-            },
-        ],
-    });
-
-    const body: any = {
-        contents,
-        generationConfig: {temperature: 0.2},
-    };
-    if (prompts.systemPrompt) {
-        body.systemInstruction = {
-            role: 'system',
-            parts: [{text: prompts.systemPrompt}],
-        };
-    }
-    const response = await fetchWithTimeout(
-        url,
-        {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body),
-        },
-        settings.screenProcessingTimeoutMs
-    );
-    const data = await response.json().catch(async () => ({text: await response.text()}));
-    if (!response.ok) {
-        const message = typeof data === 'string'
-            ? data
-            : data?.error?.message || 'Screen processing failed';
-        throw new Error(message);
-    }
-    let text = '';
-    const candidates = (data as any)?.candidates;
-    if (Array.isArray(candidates) && candidates.length) {
-        const parts = candidates[0]?.content?.parts;
-        if (Array.isArray(parts)) {
-            text = parts
-                .map((part: any) => part?.text || '')
-                .filter(Boolean)
-                .join('\n')
-                .trim();
-        }
-    }
-    if (!text) {
-        const fallback = extractSpeechText(data);
-        if (fallback) {
-            text = fallback.trim();
-        }
-    }
-    if (!text) {
-        throw new Error('Empty response from Google screen analysis.');
-    }
-    return {answer: text, model: SCREEN_GEMINI_MODEL};
-}
-
-export async function processScreenImage(
-    payload: ScreenProcessRequest
-): Promise<ScreenProcessResponse> {
-    const settings = await loadSettings();
-    const userText = (payload.userText || '').trim();
-    const prompts = buildScreenPrompts(settings);
-    const provider = settings.screenProcessingModel === 'google' ? 'google' : 'openai';
-    const history = normalizeChatHistory(payload.history);
-    const effectiveUserPrompt = userText
-        ? `${prompts.userPrompt}\n\nUser request: ${userText}`
-        : prompts.userPrompt;
-    const normalizedPayload: ScreenProcessRequest = {
-        ...payload,
-        imageBase64: normalizeBase64Image(payload.imageBase64),
-    };
-
-    logRequest('screen', 'start', {
-        provider,
-        model: provider === 'google' ? SCREEN_GEMINI_MODEL : SCREEN_OPENAI_MODEL,
-        mime: payload.mime,
-        width: payload.width,
-        height: payload.height,
-        historySize: history.length,
-        hasUserText: !!userText,
-        promptPreview: previewText(effectiveUserPrompt),
-    });
-
-    try {
-        const promptsWithUserText: ScreenPrompts = {
-            systemPrompt: prompts.systemPrompt,
-            userPrompt: effectiveUserPrompt,
-        };
-        const {answer, model} = provider === 'google'
-            ? await processScreenWithGemini(normalizedPayload, settings, promptsWithUserText, history)
-            : await processScreenWithOpenAi(normalizedPayload, settings, promptsWithUserText, history);
-
-        logRequest('screen', 'ok', {
-            provider,
-            model,
-            responsePreview: previewText(answer),
-        });
-
-        return {
-            ok: true,
-            answer,
-        };
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        logRequest('screen', 'error', {
-            provider,
-            mime: payload.mime,
-            error: message,
-        });
-        return {
-            ok: false,
-            error: message,
-        };
-    }
-}
+export {cancelScreenProcessing, processScreenImage} from './screenProcessing';
 

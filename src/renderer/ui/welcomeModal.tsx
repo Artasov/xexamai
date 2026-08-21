@@ -1,5 +1,5 @@
 import {MouseEvent, useEffect, useMemo, useState} from 'react';
-import {invoke} from '@tauri-apps/api/core';
+import {invokeNative as invoke} from '../bridge/nativeInvoke';
 import {
     Box,
     Button,
@@ -13,9 +13,6 @@ import {
     Stack,
     Typography,
 } from '@mui/material';
-import {ThemeProvider} from '@mui/material/styles';
-import {muiTheme} from '../mui/config.mui';
-import {createPortalRoot} from './portalRoot';
 
 type CommunityLink = {
     label: string;
@@ -149,25 +146,11 @@ function CommunityTile({link}: { link: CommunityLink }) {
 
 function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
     const [dismiss, setDismiss] = useState(false);
-    const [controlsVisible, setControlsVisible] = useState(false);
 
     useEffect(() => {
-        let timer: number | null = null;
         if (open) {
             setDismiss(false);
-            setControlsVisible(false);
-            timer = window.setTimeout(() => {
-                setControlsVisible(true);
-            }, 6000);
-        } else {
-            setControlsVisible(false);
         }
-
-        return () => {
-            if (timer !== null) {
-                window.clearTimeout(timer);
-            }
-        };
     }, [open]);
 
     if (!open) {
@@ -175,8 +158,7 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
     }
 
     return (
-        <Dialog open={open} onClose={() => {
-        }} maxWidth="md" fullWidth>
+        <Dialog open={open} onClose={() => onClose({dismiss})} maxWidth="md" fullWidth>
             <DialogTitle>
                 <Typography variant="h5" component="h2">
                     Welcome to XEXAMAI
@@ -216,97 +198,57 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                     sx={{
                         alignSelf: 'stretch',
                         m: 0,
-                        opacity: controlsVisible ? 1 : 0.2,
-                        pointerEvents: controlsVisible ? 'auto' : 'none',
-                        transition: 'opacity 0.3s ease',
+                        opacity: 1,
                     }}
                 />
                 <Stack direction="row" gap={1.5} alignSelf="stretch">
                     <Button
                         variant="outlined"
                         fullWidth
-                        disabled={!controlsVisible}
-                        onClick={() => controlsVisible && onClose({dismiss})}
+                        onClick={() => onClose({dismiss})}
                     >
                         Close
                     </Button>
                     <Button
                         variant="contained"
                         fullWidth
-                        disabled={!controlsVisible}
-                        onClick={() => controlsVisible && onClose({dismiss})}
+                        onClick={() => onClose({dismiss})}
                     >
                         Continue
                     </Button>
                 </Stack>
-                <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    textAlign="center"
-                    sx={{opacity: controlsVisible ? 1 : 0.4}}
-                >
-                    Controls unlock after 6 seconds - take a moment to explore all links.
-                </Typography>
             </DialogActions>
         </Dialog>
     );
 }
 
-let welcomeModalOpen = false;
-const welcomePortal = createPortalRoot();
+export function WelcomeModal() {
+    const [open, setOpen] = useState(false);
 
-function ensureWelcomeModalRoot(): void {
-    welcomePortal.ensure();
-}
+    useEffect(() => {
+        let active = true;
+        void window.api.settings.get()
+            .then((settings) => {
+                if (active && !settings?.welcomeModalDismissed) setOpen(true);
+            })
+            .catch((error) => {
+                console.warn('Unable to read welcome modal setting, falling back to showing the modal', error);
+                if (active) setOpen(true);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
-function destroyWelcomeModalRoot(): void {
-    welcomePortal.destroy();
-    welcomeModalOpen = false;
-}
-
-function renderWelcomeModal(open: boolean, onClose: (options: { dismiss?: boolean }) => void) {
-    if (!welcomePortal.isReady()) return;
-    welcomePortal.render(
-        <ThemeProvider theme={muiTheme}>
-            <WelcomeDialog open={open} onClose={onClose}/>
-        </ThemeProvider>,
-    );
-}
-
-async function handleWelcomeModalClose(options: { dismiss?: boolean }) {
-    if (!welcomeModalOpen) {
-        destroyWelcomeModalRoot();
-        return;
-    }
-
-    if (options.dismiss) {
+    const handleClose = async (options: {dismiss?: boolean}) => {
+        setOpen(false);
+        if (!options.dismiss) return;
         try {
             await window.api.settings.setWelcomeModalDismissed(true);
         } catch (error) {
             console.error('Failed to persist welcome modal dismissal', error);
         }
-    }
+    };
 
-    renderWelcomeModal(false, handleWelcomeModalClose);
-    // Allow Dialog to animate out before unmounting
-    window.setTimeout(() => destroyWelcomeModalRoot(), 250);
-}
-
-async function showWelcomeModal(): Promise<void> {
-    ensureWelcomeModalRoot();
-    welcomeModalOpen = true;
-    renderWelcomeModal(true, handleWelcomeModalClose);
-}
-
-export async function initializeWelcomeModal(): Promise<void> {
-    try {
-        const settings = await window.api.settings.get();
-        if (settings?.welcomeModalDismissed) {
-            return;
-        }
-    } catch (error) {
-        console.warn('Unable to read welcome modal setting, falling back to showing the modal', error);
-    }
-
-    await showWelcomeModal();
+    return <WelcomeDialog open={open} onClose={handleClose}/>;
 }

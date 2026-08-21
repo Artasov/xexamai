@@ -1,5 +1,6 @@
-import axios from 'axios';
+import {sha256 as createSha256} from '@noble/hashes/sha2.js';
 import {authClient} from './authClient';
+import {beginNativeRendererActivity} from '../state/rendererActivity';
 
 export type MediaVisibility = 'private' | 'public';
 
@@ -12,6 +13,8 @@ export type MediaFile = {
     sha256: string;
     visibility: MediaVisibility | string;
     status: string;
+    /** True only when this attempt created a record that may be cleaned up. */
+    cleanupEligible?: boolean;
 };
 
 type DirectUploadResponse = {
@@ -28,19 +31,24 @@ export type UploadMediaFileOptions = {
     visibility?: MediaVisibility;
     fileName?: string;
     contentType?: string;
+    signal?: AbortSignal;
 };
 
-function digestToHex(buffer: ArrayBuffer): string {
-    return Array.from(new Uint8Array(buffer))
+function digestToHex(bytes: Uint8Array): string {
+    return Array.from(bytes)
         .map((value) => value.toString(16).padStart(2, '0'))
         .join('');
 }
 
-async function sha256(blob: Blob): Promise<string> {
-    if (!crypto?.subtle) {
-        throw new Error('Secure hash API is unavailable.');
+async function sha256(blob: Blob, signal?: AbortSignal): Promise<string> {
+    const hasher = createSha256.create();
+    const chunkSize = 1024 * 1024;
+    for (let offset = 0; offset < blob.size; offset += chunkSize) {
+        if (signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+        const chunk = await blob.slice(offset, Math.min(blob.size, offset + chunkSize)).arrayBuffer();
+        hasher.update(new Uint8Array(chunk));
     }
-    return digestToHex(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
+    return digestToHex(hasher.digest());
 }
 
 function fileNameFor(blob: Blob, options: UploadMediaFileOptions): string {
@@ -53,9 +61,13 @@ function contentTypeFor(blob: Blob, options: UploadMediaFileOptions): string {
 }
 
 export async function uploadMediaFile(blob: Blob, options: UploadMediaFileOptions): Promise<MediaFile> {
+    const releaseActivity = await beginNativeRendererActivity('Uploading media');
+    try {
+        if (options.signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
     const originalName = fileNameFor(blob, options);
     const contentType = contentTypeFor(blob, options);
-    const hash = await sha256(blob);
+    const hash = await sha256(blob, options.signal);
+    if (options.signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
     const upload = await authClient.request<DirectUploadResponse>({
         url: '/media/uploads/',
         method: 'POST',
@@ -67,21 +79,45 @@ export async function uploadMediaFile(blob: Blob, options: UploadMediaFileOption
             sha256: hash,
             visibility: options.visibility ?? 'private',
         },
+        signal: options.signal,
     });
 
-    if (!upload.already_uploaded) {
-        if (!upload.upload_url) {
-            throw new Error('Media upload URL is missing.');
+    try {
+        if (!upload.already_uploaded) {
+            // Keep uploads on the authenticated backend origin. A dynamic S3
+            // presigned origin cannot be represented by a strict desktop CSP,
+            // and allowing it in renderer networking would re-introduce SSRF.
+            await authClient.request<void>({
+                url: `/media/uploads/${upload.media_file.id}/content/`,
+                method: 'PUT',
+                data: blob,
+                headers: {
+                    'Content-Type': upload.upload_headers?.['Content-Type'] ?? contentType,
+                },
+                timeout: 150_000,
+                signal: options.signal,
+            });
         }
-        await axios.put(upload.upload_url, blob, {
-            headers: upload.upload_headers ?? {},
-            timeout: 150_000,
-            withCredentials: false,
+        const completed = await authClient.request<MediaFile>({
+            url: `/media/uploads/${upload.media_file.id}/complete/`,
+            method: 'POST',
+            signal: options.signal,
         });
+        return {
+            ...completed,
+            cleanupEligible:
+                !upload.already_uploaded && completed.id === upload.media_file.id,
+        };
+    } catch (error) {
+        if (!upload.already_uploaded) {
+            void authClient.request({
+                url: `/media/uploads/${upload.media_file.id}/`,
+                method: 'DELETE',
+            }).catch(() => undefined);
+        }
+        throw error;
     }
-
-    return authClient.request<MediaFile>({
-        url: `/media/uploads/${upload.media_file.id}/complete/`,
-        method: 'POST',
-    });
+    } finally {
+        await releaseActivity();
+    }
 }

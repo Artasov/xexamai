@@ -1,34 +1,14 @@
-export function ensureWave(): { wrap: HTMLDivElement; canvas: HTMLCanvasElement } {
-    const existingWrap = document.getElementById('waveWrap') as HTMLDivElement | null;
-    const existingCanvas = document.getElementById('waveCanvas') as HTMLCanvasElement | null;
-    if (existingWrap && existingCanvas) return {wrap: existingWrap, canvas: existingCanvas};
+let activeCanvas: HTMLCanvasElement | null = null;
 
-    const waveformContainer = document.getElementById('waveform-container') as HTMLDivElement | null;
-    if (!waveformContainer) {
-        throw new Error('Waveform container not found');
-    }
-
-    const wrap = document.createElement('div');
-    wrap.id = 'waveWrap';
-    wrap.className = 'hidden h-10 overflow-hidden flex-1 rounded-md';
-    wrap.style.background = '#0001';
-    wrap.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,.02)';
-
-    const canvas = document.createElement('canvas');
-    canvas.id = 'waveCanvas';
-    canvas.className = 'w-full h-full';
-    wrap.appendChild(canvas);
-
-    waveformContainer.appendChild(wrap);
-
-    return {wrap, canvas};
+/** Registers the React-owned canvas used by the native level visualizer. */
+export function registerWaveCanvas(canvas: HTMLCanvasElement): () => void {
+    activeCanvas = canvas;
+    return () => {
+        if (activeCanvas === canvas) activeCanvas = null;
+    };
 }
 
-export function showWave(wrap: HTMLElement) {
-    wrap.classList.remove('hidden');
-}
-
-export function hideWave(wrap: HTMLElement) {
-    wrap.classList.add('hidden');
+export function getWaveCanvas(): HTMLCanvasElement | null {
+    return activeCanvas;
 }
 

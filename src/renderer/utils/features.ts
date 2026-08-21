@@ -7,7 +7,9 @@ export function getUserTiersAndFeatures(user: AuthUser | null): TiersAndFeatures
     const preferred = user.tiers_and_features.find(
         (item) => (item.token_ticker || '').toUpperCase() === 'XEXAI'
     );
-    return preferred || user.tiers_and_features[0] || null;
+    // Entitlements are product-specific. Never grant X Exam AI features from
+    // an unrelated token that happened to be first in the backend response.
+    return preferred || null;
 }
 
 export function hasFeatureAccess(user: AuthUser | null, featureCode: 'screen_processing' | 'history' | 'promt_presets'): boolean {
@@ -15,7 +17,7 @@ export function hasFeatureAccess(user: AuthUser | null, featureCode: 'screen_pro
     if (!tiersAndFeatures?.active_features) {
         return false;
     }
-    return Boolean(tiersAndFeatures.active_features[featureCode]);
+    return tiersAndFeatures.active_features[featureCode] === true;
 }
 
 export function getActiveTier(user: AuthUser | null): { tier: string; balance: string; ticker: string } | null {
@@ -40,7 +42,7 @@ export function getMinTierForFeature(
 
     // Find the lowest tier that contains the requested feature (sorted by position)
     const sortedTiers = [...tiersAndFeatures.tiers]
-        .filter((tier) => tier.is_active && tier.features[featureCode])
+        .filter((tier) => tier.is_active && tier.features[featureCode] === true)
         .sort((a, b) => a.position - b.position);
 
     if (sortedTiers.length === 0) {

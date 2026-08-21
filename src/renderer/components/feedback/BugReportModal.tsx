@@ -4,10 +4,12 @@ import {
     Alert,
     Box,
     Button,
+    Checkbox,
     Dialog,
     DialogActions,
     DialogContent,
     DialogTitle,
+    FormControlLabel,
     IconButton,
     List,
     ListItem,
@@ -17,7 +19,13 @@ import {
     Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import {BugReportFormPayload, useBugReportState} from './useBugReportState';
+import {
+    BugReportFormPayload,
+    MAX_BUG_CONTACT_CHARS,
+    MAX_BUG_MESSAGE_CHARS,
+    MAX_BUG_SUBJECT_CHARS,
+    useBugReportState,
+} from './useBugReportState';
 
 export type BugReportModalProps = {
     open: boolean;
@@ -28,13 +36,22 @@ export type BugReportModalProps = {
 
 export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugReportModalProps) {
     const {fields, flags, actions, refs} = useBugReportState(open, onSubmit, onAfterSuccess);
-    const {subject, message, telegram, files} = fields;
-    const {submitting, success, error, isSubmitDisabled} = flags;
-    const {setSubject, setMessage, setTelegram, handleFileChange, handleSubmit, resetAfterClose} = actions;
+    const {subject, message, telegram, files, includeDiagnostics, diagnostics} = fields;
+    const {submitting, success, error, diagnosticsLoading, diagnosticsError, isSubmitDisabled} = flags;
+    const {
+        setSubject,
+        setMessage,
+        setTelegram,
+        setIncludeDiagnostics,
+        handleFileChange,
+        handleSubmit,
+        resetAfterClose,
+        cancelSubmit,
+    } = actions;
     const {fileInputRef} = refs;
 
     const handleClose = () => {
-        if (submitting) return;
+        if (submitting) cancelSubmit();
         resetAfterClose();
         onClose();
     };
@@ -46,7 +63,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                     <Typography variant="h6" component="h3">
                         Report a bug
                     </Typography>
-                    <IconButton aria-label="Close bug report modal" onClick={handleClose} disabled={submitting}>
+                    <IconButton aria-label="Close bug report modal" onClick={handleClose}>
                         <CloseIcon fontSize="small"/>
                     </IconButton>
                 </Box>
@@ -91,6 +108,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                     label="Subject"
                                     value={subject}
                                     onChange={(event) => setSubject(event.target.value)}
+                                    inputProps={{maxLength: MAX_BUG_SUBJECT_CHARS}}
                                     autoFocus
                                 />
 
@@ -102,6 +120,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                     onChange={(event) => setMessage(event.target.value)}
                                     multiline
                                     minRows={5}
+                                    inputProps={{maxLength: MAX_BUG_MESSAGE_CHARS}}
                                 />
 
                                 <TextField
@@ -111,6 +130,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                     value={telegram}
                                     onChange={(event) => setTelegram(event.target.value)}
                                     placeholder="Enter your Telegram (@username) or Email for follow-up"
+                                    inputProps={{maxLength: MAX_BUG_CONTACT_CHARS}}
                                 />
 
                                 <Stack spacing={1}>
@@ -131,7 +151,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                         onChange={handleFileChange}
                                     />
                                     <Typography variant="caption" color="text.secondary">
-                                        Attach up to 5 screenshots (images only).
+                                        PNG, JPEG, WebP or GIF; up to 5 files, 15 MB each / 40 MB total.
                                     </Typography>
                                     {files.length > 0 ? (
                                         <List dense disablePadding>
@@ -152,6 +172,58 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                                         </List>
                                     ) : null}
                                 </Stack>
+                                <FormControlLabel
+                                    control={(
+                                        <Checkbox
+                                            checked={includeDiagnostics}
+                                            onChange={(event) => setIncludeDiagnostics(event.target.checked)}
+                                        />
+                                    )}
+                                    label="Include app/device settings and a cleaned excerpt of recent logs"
+                                />
+                                <Typography variant="caption" color="text.secondary">
+                                    Optional. Credential-like values are heuristically redacted. Review the exact snapshot below before sending sensitive context.
+                                </Typography>
+                                {diagnosticsLoading ? (
+                                    <Typography variant="caption" color="text.secondary" role="status">
+                                        Preparing diagnostic snapshot…
+                                    </Typography>
+                                ) : null}
+                                {diagnosticsError ? <Alert severity="warning">{diagnosticsError}</Alert> : null}
+                                {includeDiagnostics && diagnostics ? (
+                                    <Box
+                                        component="details"
+                                        sx={{
+                                            border: '1px solid rgba(255,255,255,.12)',
+                                            borderRadius: 1,
+                                            p: 1,
+                                        }}
+                                    >
+                                        <Typography component="summary" variant="body2" sx={{cursor: 'default'}}>
+                                            Review diagnostic snapshot
+                                        </Typography>
+                                        <Typography component="pre" variant="caption" sx={{
+                                            mt: 1,
+                                            mb: 0,
+                                            maxHeight: 220,
+                                            overflow: 'auto',
+                                            whiteSpace: 'pre-wrap',
+                                            overflowWrap: 'anywhere',
+                                            userSelect: 'text',
+                                        }}>
+                                            {[
+                                                `Trace: ${diagnostics.traceId}`,
+                                                `App: ${diagnostics.appVersion}; OS: ${diagnostics.os}/${diagnostics.architecture}`,
+                                                `Backend: ${diagnostics.backendDomain}`,
+                                                `LLM: ${diagnostics.provider}/${diagnostics.model}`,
+                                                `Transcription: ${diagnostics.transcriptionMode}/${diagnostics.transcriptionModel}`,
+                                                `Audio: ${diagnostics.audioMode}`,
+                                                '',
+                                                diagnostics.logPreview,
+                                            ].join('\n')}
+                                        </Typography>
+                                    </Box>
+                                ) : null}
                             </Stack>
                         )}
 
@@ -160,7 +232,7 @@ export function BugReportModal({open, onClose, onSubmit, onAfterSuccess}: BugRep
                 </DialogContent>
 
                 <DialogActions>
-                    <Button onClick={handleClose} disabled={submitting}>
+                    <Button onClick={handleClose}>
                         {success ? 'Close' : 'Cancel'}
                     </Button>
                     {!success ? (

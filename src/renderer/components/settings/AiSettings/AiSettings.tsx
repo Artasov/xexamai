@@ -14,7 +14,7 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
-import {listen, type UnlistenFn} from '@tauri-apps/api/event';
+import {listen} from '@tauri-apps/api/event';
 import {
     GEMINI_LLM_MODELS,
     GOOGLE_TRANSCRIBE_MODELS,
@@ -53,6 +53,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import {formatLlmLabel, formatTranscribeLabel} from './formatters';
+import {PromptSettingsSection} from './PromptSettingsSection';
+import {TimeoutSettingsSection} from './TimeoutSettingsSection';
+import {ProviderCredentialsSection} from './ProviderCredentialsSection';
+import {AsyncListenerSlot} from '../../../bridge/asyncListenerSlot';
 import './AiSettings.scss';
 
 type LocalAction = 'install' | 'start' | 'restart' | 'reinstall' | 'stop';
@@ -66,6 +70,9 @@ const DEFAULT_LOCAL_LLM_MODEL =
     LOCAL_LLM_MODELS.find((value) => value === 'gpt-oss:20b') ?? LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
 const FAST_WHISPER_INSTALL_SIZE_HINT = '~4.3GB';
 const WARMUP_VISIBILITY_DELAY_MS = 1200;
+const clampTimeout = (value: number) => Number.isFinite(value)
+    ? Math.max(1_000, Math.min(600_000, Math.round(value)))
+    : 150_000;
 
 const OPENAI_TRANSCRIBE_SET = new Set<string>(OPENAI_TRANSCRIBE_MODELS as readonly string[]);
 const GOOGLE_TRANSCRIBE_SET = new Set<string>(GOOGLE_TRANSCRIBE_MODELS as readonly string[]);
@@ -92,8 +99,10 @@ const SCREEN_MODEL_OPTIONS: WithLabel[] = [
 export const AiSettings = () => {
     const {settings, patchLocal} = useSettingsContext();
 
-    const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey ?? '');
-    const [googleKey, setGoogleKey] = useState(settings.googleApiKey ?? '');
+    // Provider secrets are write-only in the renderer. Persisted values stay in
+    // the OS credential store; only the boolean status flags come back via IPC.
+    const [openaiKey, setOpenaiKey] = useState('');
+    const [googleKey, setGoogleKey] = useState('');
     const [apiSttTimeout, setApiSttTimeout] = useState(settings.apiSttTimeoutMs ?? 150000);
     const [apiLlmTimeout, setApiLlmTimeout] = useState(settings.apiLlmTimeoutMs ?? 150000);
     const [screenTimeout, setScreenTimeout] = useState(settings.screenProcessingTimeoutMs ?? 150000);
@@ -102,8 +111,13 @@ export const AiSettings = () => {
     const [screenProcessingPrompt, setScreenProcessingPrompt] = useState(settings.screenProcessingPrompt ?? '');
     const timeoutSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const promptSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const openAiSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const googleSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const latestTimeoutsRef = useRef({apiSttTimeout, apiLlmTimeout, screenTimeout});
+    const latestPromptsRef = useRef({transcriptionPrompt, llmPrompt, screenProcessingPrompt});
+    const [providerTesting, setProviderTesting] = useState<'openai' | 'google' | null>(null);
+    const [providerTestMessage, setProviderTestMessage] = useState<Record<'openai' | 'google', string>>({
+        openai: '',
+        google: '',
+    });
 
     const [localStatus, setLocalStatus] = useState<FastWhisperStatus | null>(null);
     const [localAction, setLocalAction] = useState<LocalAction | null>(null);
@@ -129,17 +143,34 @@ export const AiSettings = () => {
     const lastLocalWarmupRef = useRef<string | null>(null);
     const localStatusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const showApiKeys = !(settings.transcriptionMode === 'local' && settings.llmHost === 'local');
+    const hasOpenAiKey = settings.hasOpenaiApiKey === true;
+    const hasGoogleKey = settings.hasGoogleApiKey === true;
+    latestTimeoutsRef.current = {apiSttTimeout, apiLlmTimeout, screenTimeout};
+    latestPromptsRef.current = {transcriptionPrompt, llmPrompt, screenProcessingPrompt};
+
+    useEffect(() => () => {
+        if (timeoutSaveRef.current) clearTimeout(timeoutSaveRef.current);
+        if (promptSaveRef.current) clearTimeout(promptSaveRef.current);
+        const timeouts = latestTimeoutsRef.current;
+        const prompts = latestPromptsRef.current;
+        void Promise.all([
+            window.api.settings.setApiSttTimeoutMs(clampTimeout(timeouts.apiSttTimeout)),
+            window.api.settings.setApiLlmTimeoutMs(clampTimeout(timeouts.apiLlmTimeout)),
+            window.api.settings.setScreenProcessingTimeoutMs(clampTimeout(timeouts.screenTimeout)),
+            window.api.settings.setTranscriptionPrompt(prompts.transcriptionPrompt || ''),
+            window.api.settings.setLlmPrompt(prompts.llmPrompt || ''),
+            window.api.settings.setScreenProcessingPrompt(prompts.screenProcessingPrompt || ''),
+        ]).catch((error) => logger.error('settings', 'Failed to flush pending settings', {error}));
+    }, []);
 
     useEffect(() => {
-        setOpenaiKey(settings.openaiApiKey ?? '');
-        setGoogleKey(settings.googleApiKey ?? '');
         setApiSttTimeout(settings.apiSttTimeoutMs ?? 150000);
         setApiLlmTimeout(settings.apiLlmTimeoutMs ?? 150000);
         setScreenTimeout(settings.screenProcessingTimeoutMs ?? 150000);
         setTranscriptionPrompt(settings.transcriptionPrompt ?? '');
         setLlmPrompt(settings.llmPrompt ?? '');
         setScreenProcessingPrompt(settings.screenProcessingPrompt ?? '');
-    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.googleApiKey, settings.openaiApiKey, settings.screenProcessingTimeoutMs, settings.transcriptionPrompt, settings.llmPrompt, settings.screenProcessingPrompt]);
+    }, [settings.apiLlmTimeoutMs, settings.apiSttTimeoutMs, settings.screenProcessingTimeoutMs, settings.transcriptionPrompt, settings.llmPrompt, settings.screenProcessingPrompt]);
 
     const showMessage = (text: string, tone: 'success' | 'error' = 'success') => {
         if (tone === 'success') return;
@@ -150,7 +181,12 @@ export const AiSettings = () => {
         const key = value.trim();
         try {
             await window.api.settings.setOpenaiApiKey(key);
-            patchLocal({openaiApiKey: key});
+            patchLocal({hasOpenaiApiKey: Boolean(key)});
+            setOpenaiKey('');
+            setProviderTestMessage((current) => ({
+                ...current,
+                openai: key ? 'Saved securely. Test the selected model to verify access.' : 'Stored key removed.',
+            }));
             logger.info('settings', 'OpenAI API key saved');
         } catch (error) {
             logger.error('settings', 'Failed to save OpenAI API key', {error});
@@ -162,7 +198,12 @@ export const AiSettings = () => {
         const key = value.trim();
         try {
             await window.api.settings.setGoogleApiKey(key);
-            patchLocal({googleApiKey: key});
+            patchLocal({hasGoogleApiKey: Boolean(key)});
+            setGoogleKey('');
+            setProviderTestMessage((current) => ({
+                ...current,
+                google: key ? 'Saved securely. Test the selected model to verify access.' : 'Stored key removed.',
+            }));
             logger.info('settings', 'Google API key saved');
         } catch (error) {
             logger.error('settings', 'Failed to save Google API key', {error});
@@ -171,7 +212,7 @@ export const AiSettings = () => {
     }, [patchLocal]);
 
     const requireOpenAi = () => {
-        const has = Boolean(settings.openaiApiKey && settings.openaiApiKey.trim().length > 0);
+        const has = hasOpenAiKey;
         if (!has) {
             showMessage('Add an OpenAI API key first', 'error');
         }
@@ -179,59 +220,12 @@ export const AiSettings = () => {
     };
 
     const requireGoogle = () => {
-        const has = Boolean(settings.googleApiKey && settings.googleApiKey.trim().length > 0);
+        const has = hasGoogleKey;
         if (!has) {
             showMessage('Add a Google API key first', 'error');
         }
         return has;
     };
-
-    useEffect(() => {
-        if (openAiSaveTimeout.current) {
-            clearTimeout(openAiSaveTimeout.current);
-            openAiSaveTimeout.current = null;
-        }
-
-        const trimmed = openaiKey.trim();
-        const current = settings.openaiApiKey ?? '';
-
-        if (trimmed === current) {
-            return;
-        }
-
-        openAiSaveTimeout.current = setTimeout(() => {
-            void saveOpenAi(trimmed);
-        }, 500);
-        return () => {
-            if (openAiSaveTimeout.current) {
-                clearTimeout(openAiSaveTimeout.current);
-                openAiSaveTimeout.current = null;
-            }
-        };
-    }, [openaiKey, saveOpenAi, settings.openaiApiKey]);
-
-    useEffect(() => {
-        if (googleSaveTimeout.current) {
-            clearTimeout(googleSaveTimeout.current);
-            googleSaveTimeout.current = null;
-        }
-        const trimmed = googleKey.trim();
-        const current = settings.googleApiKey ?? '';
-
-        if (trimmed === current) {
-            return;
-        }
-
-        googleSaveTimeout.current = setTimeout(() => {
-            void saveGoogle(trimmed);
-        }, 500);
-        return () => {
-            if (googleSaveTimeout.current) {
-                clearTimeout(googleSaveTimeout.current);
-                googleSaveTimeout.current = null;
-            }
-        };
-    }, [googleKey, saveGoogle, settings.googleApiKey]);
 
     const refreshLocalStatus = useCallback(async (checkHealth = true) => {
         if (!window.api?.localSpeech) return;
@@ -246,30 +240,26 @@ export const AiSettings = () => {
     }, []);
 
     useEffect(() => {
-        let unlisten: UnlistenFn | null = null;
+        const statusListener = new AsyncListenerSlot<FastWhisperStatus>();
         let mounted = true;
 
         void refreshLocalStatus(true);
 
-        (async () => {
-            try {
-                unlisten = await listen<FastWhisperStatus>('local-speech:status', (event) => {
+        statusListener.replace(
+            (emit) => listen<FastWhisperStatus>('local-speech:status', (event) => emit(event.payload)),
+            (next) => {
+                if (!mounted) return;
+                // Debounce rapid status updates to avoid flickering UI.
+                if (localStatusDebounceRef.current) {
+                    clearTimeout(localStatusDebounceRef.current);
+                    localStatusDebounceRef.current = null;
+                }
+                localStatusDebounceRef.current = setTimeout(() => {
                     if (!mounted) return;
-                    // Debounce rapid status updates to avoid flickering UI
-                    if (localStatusDebounceRef.current) {
-                        clearTimeout(localStatusDebounceRef.current);
-                        localStatusDebounceRef.current = null;
-                    }
-                    const next = event.payload;
-                    localStatusDebounceRef.current = setTimeout(() => {
-                        if (!mounted) return;
-                        setLocalStatus(next);
-                    }, 150);
-                });
-            } catch (error) {
-                logger.error('settings', 'Failed to subscribe to local speech status', {error});
+                    setLocalStatus(next);
+                }, 150);
             }
-        })();
+        );
 
         const handleVisibility = () => {
             if (!document.hidden) {
@@ -285,9 +275,7 @@ export const AiSettings = () => {
                 clearTimeout(localStatusDebounceRef.current);
                 localStatusDebounceRef.current = null;
             }
-            if (unlisten) {
-                void unlisten();
-            }
+            statusListener.clear();
             window.removeEventListener('focus', handleVisibility);
             document.removeEventListener('visibilitychange', handleVisibility);
         };
@@ -693,14 +681,14 @@ export const AiSettings = () => {
             void (async () => {
                 try {
                     await Promise.all([
-                        window.api.settings.setApiSttTimeoutMs(apiSttTimeout),
-                        window.api.settings.setApiLlmTimeoutMs(apiLlmTimeout),
-                        window.api.settings.setScreenProcessingTimeoutMs(screenTimeout),
+                        window.api.settings.setApiSttTimeoutMs(clampTimeout(apiSttTimeout)),
+                        window.api.settings.setApiLlmTimeoutMs(clampTimeout(apiLlmTimeout)),
+                        window.api.settings.setScreenProcessingTimeoutMs(clampTimeout(screenTimeout)),
                     ]);
                     patchLocal({
-                        apiSttTimeoutMs: apiSttTimeout,
-                        apiLlmTimeoutMs: apiLlmTimeout,
-                        screenProcessingTimeoutMs: screenTimeout,
+                        apiSttTimeoutMs: clampTimeout(apiSttTimeout),
+                        apiLlmTimeoutMs: clampTimeout(apiLlmTimeout),
+                        screenProcessingTimeoutMs: clampTimeout(screenTimeout),
                     });
                 } catch (error) {
                     logger.error('settings', 'Failed to save timeout values', {error});
@@ -761,12 +749,17 @@ export const AiSettings = () => {
             }
         };
     }, [transcriptionPrompt, llmPrompt, screenProcessingPrompt, patchLocal, settings.llmPrompt, settings.transcriptionPrompt, settings.screenProcessingPrompt]);
-    const hasOpenAiKey = Boolean(settings.openaiApiKey?.trim());
-    const hasGoogleKey = Boolean(settings.googleApiKey?.trim());
+    const isTranscribeAllowed = useCallback((model: string) => {
+        if (OPENAI_TRANSCRIBE_SET.has(model)) return hasOpenAiKey;
+        if (GOOGLE_TRANSCRIBE_SET.has(model)) return hasGoogleKey;
+        return true;
+    }, [hasGoogleKey, hasOpenAiKey]);
 
-    const isTranscribeAllowed = useCallback((_model: string) => true, []);
-
-    const isLlmAllowed = useCallback((_model: string) => true, []);
+    const isLlmAllowed = useCallback((model: string) => {
+        if (OPENAI_LLM_SET.has(model)) return hasOpenAiKey;
+        if (GEMINI_LLM_SET.has(model)) return hasGoogleKey;
+        return true;
+    }, [hasGoogleKey, hasOpenAiKey]);
 
     const apiTranscribeOptions = useMemo(() => {
         const models: string[] = [
@@ -791,6 +784,30 @@ export const AiSettings = () => {
     const apiLlmModel = settings.apiLlmModel ?? settings.llmModel ?? DEFAULT_API_LLM_MODEL;
     const localLlmModel = settings.localLlmModel ?? settings.llmModel ?? DEFAULT_LOCAL_LLM_MODEL;
 
+    const testProvider = useCallback(async (provider: 'openai' | 'google') => {
+        const configured = provider === 'openai' ? hasOpenAiKey : hasGoogleKey;
+        if (!configured) {
+            setProviderTestMessage((current) => ({...current, [provider]: 'Save an API key first.'}));
+            return;
+        }
+        const model = provider === 'openai'
+            ? (OPENAI_LLM_SET.has(apiLlmModel) ? apiLlmModel : DEFAULT_API_LLM_MODEL)
+            : (GEMINI_LLM_SET.has(apiLlmModel) ? apiLlmModel : 'gemini-3.7-flash');
+        setProviderTesting(provider);
+        setProviderTestMessage((current) => ({...current, [provider]: `Checking ${model}…`}));
+        try {
+            const result = await window.api.providers.testModel(provider, model);
+            setProviderTestMessage((current) => ({...current, [provider]: result.message}));
+        } catch (error) {
+            setProviderTestMessage((current) => ({
+                ...current,
+                [provider]: error instanceof Error ? error.message : String(error),
+            }));
+        } finally {
+            setProviderTesting(null);
+        }
+    }, [apiLlmModel, hasGoogleKey, hasOpenAiKey]);
+
     const transcribeOptions = useMemo(() => {
         if (settings.transcriptionMode === 'local') {
             return LOCAL_TRANSCRIBE_MODELS.map((model) => ({value: model, label: formatTranscribeLabel(model)}));
@@ -801,13 +818,17 @@ export const AiSettings = () => {
             ...(GOOGLE_TRANSCRIBE_MODELS as unknown as string[]),
         ];
         return models.map((model) => {
+            const allowed = isTranscribeAllowed(model);
             return {
                 value: model,
                 label: formatTranscribeLabel(model),
-                disabled: false,
+                disabled: !allowed,
+                description: allowed ? undefined : (OPENAI_TRANSCRIBE_SET.has(model)
+                    ? 'Requires a saved OpenAI key'
+                    : 'Requires a saved Google AI key'),
             };
         });
-    }, [settings.transcriptionMode, hasGoogleKey, hasOpenAiKey]);
+    }, [settings.transcriptionMode, isTranscribeAllowed]);
 
     const llmOptions = useMemo(() => {
         if (settings.llmHost === 'local') {
@@ -819,13 +840,17 @@ export const AiSettings = () => {
             ...(GEMINI_LLM_MODELS as unknown as string[]),
         ];
         return models.map((model) => {
+            const allowed = isLlmAllowed(model);
             return {
                 value: model,
                 label: formatLlmLabel(model),
-                disabled: false,
+                disabled: !allowed,
+                description: allowed ? undefined : (OPENAI_LLM_SET.has(model)
+                    ? 'Requires a saved OpenAI key'
+                    : 'Requires a saved Google AI key'),
             };
         });
-    }, [settings.llmHost, hasGoogleKey, hasOpenAiKey]);
+    }, [settings.llmHost, isLlmAllowed]);
 
     const screenModelOptions = useMemo(() => SCREEN_MODEL_OPTIONS.map((option) => ({
         ...option,
@@ -1324,108 +1349,37 @@ export const AiSettings = () => {
             </section>
 
             {showApiKeys ? (
-                <section className="settings-card card">
-                    <h3 className="settings-card__title">API Keys</h3>
-                    <div className="ai-settings__grid">
-                        <div className="settings-field">
-                            <TextField
-                                label="OpenAI"
-                                type="password"
-                                size="small"
-                                value={openaiKey}
-                                placeholder="Enter your OpenAI API key"
-                                onChange={(event) => setOpenaiKey(event.target.value)}
-                                fullWidth
-                            />
-                        </div>
-                        <div className="settings-field">
-                            <TextField
-                                label="Google AI"
-                                type="password"
-                                size="small"
-                                value={googleKey}
-                                placeholder="Enter your Google API key"
-                                onChange={(event) => setGoogleKey(event.target.value)}
-                                fullWidth
-                            />
-                        </div>
-                    </div>
-                </section>
+                <ProviderCredentialsSection
+                    openaiKey={openaiKey}
+                    googleKey={googleKey}
+                    hasOpenAiKey={hasOpenAiKey}
+                    hasGoogleKey={hasGoogleKey}
+                    testing={providerTesting}
+                    messages={providerTestMessage}
+                    onOpenAiChange={setOpenaiKey}
+                    onGoogleChange={setGoogleKey}
+                    onOpenAiSave={saveOpenAi}
+                    onGoogleSave={saveGoogle}
+                    onTest={testProvider}
+                />
             ) : null}
 
-            <section className="settings-card card">
-                <h3 className="settings-card__title">Prompts</h3>
-                <div className="ai-settings__grid">
-                    <div className="settings-field">
-                        <TextField
-                            label="Transcription prompt"
-                            value={transcriptionPrompt}
-                            onChange={(event) => setTranscriptionPrompt(event.target.value)}
-                            fullWidth
-                            multiline
-                            minRows={3}
-                            placeholder="Optional: appended to transcription requests"
-                        />
-                    </div>
-                    <div className="settings-field">
-                        <TextField
-                            label="LLM prompt"
-                            value={llmPrompt}
-                            onChange={(event) => setLlmPrompt(event.target.value)}
-                            fullWidth
-                            multiline
-                            minRows={3}
-                            placeholder="Optional: system message for the LLM"
-                        />
-                    </div>
-                    <div className="settings-field">
-                        <TextField
-                            label="Screen processing prompt"
-                            value={screenProcessingPrompt}
-                            onChange={(event) => setScreenProcessingPrompt(event.target.value)}
-                            fullWidth
-                            multiline
-                            minRows={3}
-                            placeholder="Optional: global instruction for screenshot analysis"
-                        />
-                    </div>
-                </div>
-            </section>
-            <section className="settings-card card">
-                <h3 className="settings-card__title">API timeouts (ms)</h3>
-                <div className="ai-settings__grid ai-settings__grid--timeouts">
-                    <div className="settings-field">
-                        <TextField
-                            label="Transcription"
-                            type="number"
-                            value={apiSttTimeout}
-                            size="small"
-                            onChange={(event) => setApiSttTimeout(Number(event.target.value))}
-                            inputProps={{min: 1000, max: 600000, step: 500}}
-                        />
-                    </div>
-                    <div className="settings-field">
-                        <TextField
-                            label="LLM"
-                            type="number"
-                            value={apiLlmTimeout}
-                            size="small"
-                            onChange={(event) => setApiLlmTimeout(Number(event.target.value))}
-                            inputProps={{min: 1000, max: 600000, step: 500}}
-                        />
-                    </div>
-                    <div className="settings-field">
-                        <TextField
-                            label="Screen processing"
-                            type="number"
-                            size="small"
-                            value={screenTimeout}
-                            onChange={(event) => setScreenTimeout(Number(event.target.value))}
-                            inputProps={{min: 1000, max: 600000, step: 500}}
-                        />
-                    </div>
-                </div>
-            </section>
+            <PromptSettingsSection
+                transcriptionPrompt={transcriptionPrompt}
+                llmPrompt={llmPrompt}
+                screenPrompt={screenProcessingPrompt}
+                onChangeTranscription={setTranscriptionPrompt}
+                onChangeLlm={setLlmPrompt}
+                onChangeScreen={setScreenProcessingPrompt}
+            />
+            <TimeoutSettingsSection
+                apiSttTimeout={apiSttTimeout}
+                apiLlmTimeout={apiLlmTimeout}
+                screenTimeout={screenTimeout}
+                onChangeApiStt={(value) => setApiSttTimeout(clampTimeout(value))}
+                onChangeApiLlm={(value) => setApiLlmTimeout(clampTimeout(value))}
+                onChangeScreen={(value) => setScreenTimeout(clampTimeout(value))}
+            />
             <Dialog
                 open={infoDialog === 'transcribe'}
                 onClose={() => setInfoDialog(null)}

@@ -8,15 +8,6 @@ export type SttProcessRequest = {
     requestId?: string;
 };
 
-export type AssistantResponse = {
-    ok: true;
-    text: string;
-    answer: string;
-} | {
-    ok: false;
-    error: string;
-};
-
 export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'large-v2' | 'large-v3';
 
 export type TranscriptionMode = 'api' | 'local';
@@ -39,7 +30,7 @@ export type AppSettings = {
     windowWidth?: number;
     windowHeight?: number;
     windowScale?: number;
-    audioInputDeviceId?: string;
+    audioInputDeviceId?: string | null;
     audioInputType?: 'microphone' | 'system' | 'mixed';
     transcriptionModel?: string;
     transcriptionPrompt?: string;
@@ -55,10 +46,14 @@ export type AppSettings = {
     apiLlmTimeoutMs?: number;
     screenProcessingTimeoutMs?: number;
     googleApiKey?: string;
+    hasOpenaiApiKey?: boolean;
+    hasGoogleApiKey?: boolean;
     streamSendHotkey?: string;
     screenProcessingModel?: ScreenProcessingProvider;
     screenProcessingPrompt?: string;
     backendDomain?: BackendDomain;
+    /** Default for the per-report redacted diagnostics checkbox; never enables content logging. */
+    diagnosticsEnabled?: boolean;
 };
 
 export const DEFAULT_LLM_PROMPT =
@@ -88,11 +83,10 @@ export const DefaultSettings: AppSettings = {
     apiLlmTimeoutMs: 150000,
     screenProcessingTimeoutMs: 150000,
     backendDomain: 'xlartas.com',
+    diagnosticsEnabled: false,
 };
 
 export const IPCChannels = {
-    AssistantProcess: 'assistant:process',
-    AssistantProcessStream: 'assistant:process:stream',
     AssistantTranscribeOnly: 'assistant:transcribe:only',
     AssistantAskChat: 'assistant:ask:chat',
     AssistantStopStream: 'assistant:stop:stream',
@@ -159,6 +153,7 @@ export type TranscribeOnlyArgs = {
     mime: string;
     filename?: string;
     audioSeconds?: number;
+    requestId?: string;
 };
 
 export type AskChatRequest = {
@@ -177,6 +172,7 @@ export type StopStreamRequest = {
 };
 
 export type ScreenProcessRequest = {
+    requestId?: string;
     imageBase64: string;
     mime: string;
     width?: number;
@@ -206,14 +202,6 @@ export type AudioDevice = {
     kind: 'audioinput' | 'audiooutput';
 };
 
-export type AudioDeviceInfo = {
-    id: string;
-    name: string;
-    kind: 'mic' | 'system' | 'other';
-    channels: number;
-    sample_rate: number;
-};
-
 export type LogEntry = {
     timestamp: string;
     level: 'info' | 'warn' | 'error' | 'debug';
@@ -233,30 +221,8 @@ export type AuthMethodsResponse = {
     allowedEmailDomains: string[];
 };
 
-export type AuthTokensPayload = {
-    access: string;
-    refresh?: string | null;
-};
-
-export type AuthDeepLinkPayload =
-    | {
-    kind: 'success';
-    provider: AuthProvider | string;
-    tokens: AuthTokensPayload;
-    state?: string | null;
-    user?: Record<string, unknown> | null;
-}
-    | {
-    kind: 'error';
-    provider: AuthProvider | string;
-    error: string;
-    state?: string | null;
-};
-
 export type AssistantAPI = {
     assistant: {
-        processAudio: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
-        processAudioStream: (args: ProcessAudioArgs) => Promise<AssistantResponse>;
         transcribeOnly: (args: TranscribeOnlyArgs) => Promise<{ ok: true; text: string } | {
             ok: false;
             error: string
@@ -312,6 +278,7 @@ export type AssistantAPI = {
         setWindowScale: (scale: number) => Promise<void>;
         setHideApp: (hideApp: boolean) => Promise<void>;
         setBackendDomain: (domain: BackendDomain) => Promise<void>;
+        setDiagnosticsEnabled: (enabled: boolean) => Promise<void>;
     };
     window: {
         minimize: () => Promise<void>;
@@ -326,22 +293,31 @@ export type AssistantAPI = {
     screen: {
         capture: () => Promise<{ base64: string; width: number; height: number; mime: string }>;
         process: (payload: ScreenProcessRequest) => Promise<ScreenProcessResponse>;
+        cancel: (requestId: string) => void;
     };
     google: {
+        getLiveCapability: () => Promise<{ supported: boolean; configured: boolean; reason?: string | null; model: string }>;
         startLive: (opts: {
-            apiKey: string;
             response: 'TEXT' | 'AUDIO';
             transcribeInput?: boolean;
             transcribeOutput?: boolean
         }) => Promise<void>;
         sendAudioChunk: (params: { data: string; mime: string }) => void;
-        stopLive: () => void;
-        onMessage: (cb: (message: any) => void) => void;
-        onError: (cb: (error: string) => void) => void;
+        stopLive: () => Promise<void>;
+        onMessage: (cb: (message: any) => void) => () => void;
+        onError: (cb: (error: string) => void) => () => void;
+    };
+    providers: {
+        testModel: (provider: 'openai' | 'google', model: string) => Promise<{
+            available: boolean;
+            status: number;
+            message: string;
+        }>;
     };
     auth: {
         getMethods: () => Promise<AuthMethodsResponse>;
         startOAuth: (provider: AuthProvider) => Promise<void>;
+        cancelPendingOAuth: () => Promise<void>;
         onOAuthPayload: (cb: (payload: AuthDeepLinkPayload) => void) => () => void;
         consumePendingOAuthPayloads: () => Promise<AuthDeepLinkPayload[]>;
     };
@@ -363,23 +339,39 @@ export type AssistantAPI = {
         listModels: () => Promise<string[]>;
         pullModel: (model: string) => Promise<void>;
         warmupModel: (model: string) => Promise<void>;
+        streamChat: (
+            args: {
+                requestId: string;
+                body: string;
+                connectTimeoutMs?: number;
+                idleTimeoutMs?: number;
+                totalTimeoutMs?: number;
+            },
+            onEvent: (event: OllamaStreamEvent) => void,
+        ) => Promise<void>;
+        cancelChat: (requestId: string) => Promise<void>;
     };
     audio: {
         listDevices: () => Promise<AudioDeviceInfo[]>;
-        startCapture: (source: 'mic' | 'system' | 'mixed', deviceId?: string) => Promise<void>;
+        startCapture: (
+            source: 'mic' | 'system' | 'mixed',
+            deviceId: string | undefined,
+            onChunk: (packet: ArrayBuffer | Uint8Array) => void,
+        ) => Promise<void>;
         stopCapture: () => Promise<void>;
+    };
+    diagnostics: {
+        snapshot: () => Promise<DiagnosticsSnapshot>;
     };
     log: (entry: LogEntry) => Promise<void>;
 };
 
-export type FastWhisperStatus = {
-    installed: boolean;
-    running: boolean;
-    phase: string;
-    message: string;
-    error?: string | null;
-    lastAction?: string | null;
-    lastSuccessAt?: number | null;
-    logLine?: string | null;
-    updatedAt: number;
-};
+import type {
+    AudioDeviceInfo,
+    AuthDeepLinkPayload,
+    DiagnosticsSnapshot,
+    FastWhisperStatus,
+    OllamaStreamEvent,
+} from './generated/NativeBindings';
+
+export type {AudioDeviceInfo, AuthDeepLinkPayload, DiagnosticsSnapshot, FastWhisperStatus};

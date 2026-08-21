@@ -17,8 +17,12 @@ import './GeneralSettings.scss';
 
 const MIN_WINDOW_WIDTH = 400;
 const MIN_WINDOW_HEIGHT = 500;
+const MAX_WINDOW_WIDTH = 7680;
+const MAX_WINDOW_HEIGHT = 4320;
 const DEFAULT_WINDOW_WIDTH = 420;
 const DEFAULT_WINDOW_HEIGHT = 780;
+const clampWindowDimension = (value: number, min: number, max: number, fallback: number) =>
+    Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
 
 const baseCheckboxIcon = (
     <span className="winky-checkbox__control">
@@ -49,6 +53,7 @@ export const GeneralSettings = () => {
         settings.backendDomain ?? getBackendDomain()
     );
     const sizeSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const latestSizeRef = useRef({width: windowWidth, height: windowHeight});
     const lastWindowSizeRef = useRef<{ width: number; height: number }>({
         width: settings.windowWidth ?? DEFAULT_WINDOW_WIDTH,
         height: settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT,
@@ -135,8 +140,8 @@ export const GeneralSettings = () => {
     };
 
     const saveWindowSize = useCallback(async (widthValue: number, heightValue: number) => {
-        const width = Math.max(MIN_WINDOW_WIDTH, Math.round(widthValue));
-        const height = Math.max(MIN_WINDOW_HEIGHT, Math.round(heightValue));
+        const width = clampWindowDimension(widthValue, MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH, DEFAULT_WINDOW_WIDTH);
+        const height = clampWindowDimension(heightValue, MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT, DEFAULT_WINDOW_HEIGHT);
         setWindowWidth(width);
         setWindowHeight(height);
         try {
@@ -149,14 +154,26 @@ export const GeneralSettings = () => {
         }
     }, [patchLocal]);
 
+    latestSizeRef.current = {width: windowWidth, height: windowHeight};
+    useEffect(() => () => {
+        if (!sizeSaveTimeout.current) return;
+        clearTimeout(sizeSaveTimeout.current);
+        sizeSaveTimeout.current = null;
+        const latest = latestSizeRef.current;
+        void window.api.settings.setWindowSize({
+            width: clampWindowDimension(latest.width, MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH, DEFAULT_WINDOW_WIDTH),
+            height: clampWindowDimension(latest.height, MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT, DEFAULT_WINDOW_HEIGHT),
+        }).catch((error) => logger.error('settings', 'Failed to flush window size', {error}));
+    }, []);
+
     useEffect(() => {
         if (sizeSaveTimeout.current) {
             clearTimeout(sizeSaveTimeout.current);
         }
         sizeSaveTimeout.current = null;
 
-        const normalizedWidth = Math.max(MIN_WINDOW_WIDTH, Math.round(windowWidth));
-        const normalizedHeight = Math.max(MIN_WINDOW_HEIGHT, Math.round(windowHeight));
+        const normalizedWidth = clampWindowDimension(windowWidth, MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH, DEFAULT_WINDOW_WIDTH);
+        const normalizedHeight = clampWindowDimension(windowHeight, MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT, DEFAULT_WINDOW_HEIGHT);
         const currentWidth = settings.windowWidth ?? DEFAULT_WINDOW_WIDTH;
         const currentHeight = settings.windowHeight ?? DEFAULT_WINDOW_HEIGHT;
 
@@ -192,6 +209,19 @@ export const GeneralSettings = () => {
         } catch (error) {
             logger.error('settings', 'Failed to open logs folder', {error});
             showMessage('Unable to open logs folder', 'error');
+        }
+    };
+
+    const toggleDiagnostics = async (enabled: boolean) => {
+        try {
+            await window.api.settings.setDiagnosticsEnabled(enabled);
+            patchLocal({diagnosticsEnabled: enabled});
+            showMessage(enabled
+                ? 'Bug reports will offer diagnostics by default'
+                : 'Bug reports will not preselect diagnostics');
+        } catch (error) {
+            logger.error('settings', 'Failed to update bug-report diagnostics preference', {error});
+            showMessage('Failed to update diagnostics preference', 'error');
         }
     };
 
@@ -251,7 +281,7 @@ export const GeneralSettings = () => {
                     <span className="settings-slider__label">Window opacity</span>
                     <div className="settings-slider__control -mt-2">
                         <Slider
-                            min={5}
+                            min={10}
                             max={100}
                             value={windowOpacity}
                             onChange={(_event, value) => updateOpacity(Number(value))}
@@ -312,8 +342,8 @@ export const GeneralSettings = () => {
                             type="number"
                             value={windowWidth}
                             size={'small'}
-                            onChange={(event) => setWindowWidth(Number(event.target.value))}
-                            inputProps={{min: MIN_WINDOW_WIDTH}}
+                            onChange={(event) => setWindowWidth(clampWindowDimension(Number(event.target.value), MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH, DEFAULT_WINDOW_WIDTH))}
+                            inputProps={{min: MIN_WINDOW_WIDTH, max: MAX_WINDOW_WIDTH}}
                         />
                     </div>
                     <div className="settings-field">
@@ -322,8 +352,8 @@ export const GeneralSettings = () => {
                             type="number"
                             size={'small'}
                             value={windowHeight}
-                            onChange={(event) => setWindowHeight(Number(event.target.value))}
-                            inputProps={{min: MIN_WINDOW_HEIGHT}}
+                            onChange={(event) => setWindowHeight(clampWindowDimension(Number(event.target.value), MIN_WINDOW_HEIGHT, MAX_WINDOW_HEIGHT, DEFAULT_WINDOW_HEIGHT))}
+                            inputProps={{min: MIN_WINDOW_HEIGHT, max: MAX_WINDOW_HEIGHT}}
                         />
                     </div>
                 </div>
@@ -338,6 +368,22 @@ export const GeneralSettings = () => {
 
             <section className="settings-card card">
                 <h3 className="settings-card__title">Logs</h3>
+                <FormControlLabel
+                    control={
+                        <Checkbox
+                            size="small"
+                            checked={settings.diagnosticsEnabled === true}
+                            onChange={(event) => void toggleDiagnostics(event.target.checked)}
+                            icon={baseCheckboxIcon}
+                            checkedIcon={checkedCheckboxIcon}
+                            disableRipple
+                        />
+                    }
+                    label="Preselect cleaned diagnostics in bug reports"
+                />
+                <p className="mb-2 text-xs text-gray-400">
+                    The report form always shows this choice, and you can turn it off before sending. This does not enable content logging.
+                </p>
                 <button type="button" className="btn btn-sm" onClick={openLogsFolder}>
                     Open logs folder
                 </button>

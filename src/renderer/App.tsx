@@ -1,182 +1,118 @@
 import {useEffect, useRef, useState} from 'react';
-import {Accordion, AccordionDetails, AccordionSummary, CssBaseline, TextField, ThemeProvider, Typography} from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import {initializeRenderer} from './renderer';
-import {setStatus} from './ui/status';
-import {SettingsView} from './components/settings/SettingsView/SettingsView';
-import {WindowResizer} from './components/common/WindowResizer/WindowResizer';
-import {toast, ToastContainer} from 'react-toastify';
+import {CssBaseline, ThemeProvider} from '@mui/material';
+import {ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './styles/toast.sass';
+import {WindowResizer} from './components/common/WindowResizer/WindowResizer';
 import {AuthProvider, useAuth} from './auth';
 import {LoginView} from './components/auth/LoginView/LoginView';
 import {LoadingScreen} from './components/auth/LoadingScreen/LoadingScreen';
-import {ProfileView} from './components/auth/ProfileView/ProfileView';
 import {BetaFeedbackWidget} from './components/feedback/BetaFeedbackWidget';
+import {UpdateCenter} from './components/update/UpdateCenter';
+import {MainWorkspace} from './components/main/MainWorkspace';
+import {SettingsView} from './components/settings/SettingsView/SettingsView';
+import {ProfileView} from './components/auth/ProfileView/ProfileView';
+import {HistoryDrawer} from './components/history/HistoryDrawer';
 import {muiTheme} from './mui/config.mui';
 import {setCurrentUser} from './utils/featureAccess';
-import {listen, UnlistenFn} from '@tauri-apps/api/event';
+import {showFeatureAccessModal} from './ui/featureAccessModal';
+import {useRendererSession} from './hooks/useRendererSession';
+import {useRendererUiState} from './hooks/useRendererUiState';
+import {loadLogo, startLogoAnimation} from './ui/logoAnimation';
+import {useAnswerFontSize} from './hooks/useAnswerFontSize';
+import {WelcomeModal} from './ui/welcomeModal';
+import {initializeRendererActivitySession} from './state/rendererActivity';
+import {hasFeatureAccess} from './utils/features';
 
-type UpdateAvailablePayload = {
-    version: string;
-    currentVersion: string;
-    fileName: string;
-};
-
-type UpdateProgressPayload = {
-    percent: number;
-    downloadedBytes: number;
-    totalBytes?: number | null;
-};
-
-type UpdateStartedPayload = {
-    version: string;
-    fileName: string;
-};
-
-type UpdateErrorPayload = {
-    message: string;
-};
-
-const UPDATE_TOAST_ID = 'xexamai-update';
-
-function formatBytes(bytes: number): string {
-    if (!Number.isFinite(bytes) || bytes <= 0) {
-        return '0 MB';
-    }
-    const mb = bytes / 1_048_576;
-    return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
-}
-
-function useUpdateNotifications() {
-    useEffect(() => {
-        let unlisteners: UnlistenFn[] = [];
-        let cancelled = false;
-
-        const register = async () => {
-            try {
-                const nextUnlisteners = await Promise.all([
-                    listen<UpdateAvailablePayload>('update-available', (event) => {
-                        toast.info(`Update ${event.payload.version} is available. Downloading...`, {
-                            toastId: UPDATE_TOAST_ID,
-                            autoClose: false,
-                        });
-                    }),
-                    listen<UpdateProgressPayload>('update-download-progress', (event) => {
-                        const {percent, downloadedBytes, totalBytes} = event.payload;
-                        const details = totalBytes
-                            ? `${percent}% (${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)})`
-                            : formatBytes(downloadedBytes);
-                        if (toast.isActive(UPDATE_TOAST_ID)) {
-                            toast.update(UPDATE_TOAST_ID, {
-                                render: `Downloading update: ${details}`,
-                                type: 'info',
-                                autoClose: false,
-                            });
-                        } else {
-                            toast.info(`Downloading update: ${details}`, {
-                                toastId: UPDATE_TOAST_ID,
-                                autoClose: false,
-                            });
-                        }
-                    }),
-                    listen<UpdateStartedPayload>('update-started', (event) => {
-                        const message = `Installing update ${event.payload.version}. XEXAMAI will close to finish setup.`;
-                        if (toast.isActive(UPDATE_TOAST_ID)) {
-                            toast.update(UPDATE_TOAST_ID, {
-                                render: message,
-                                type: 'info',
-                                autoClose: false,
-                            });
-                        } else {
-                            toast.info(message, {
-                                toastId: UPDATE_TOAST_ID,
-                                autoClose: false,
-                            });
-                        }
-                    }),
-                    listen<UpdateErrorPayload>('update-error', (event) => {
-                        const message = `Update failed: ${event.payload.message}`;
-                        if (toast.isActive(UPDATE_TOAST_ID)) {
-                            toast.update(UPDATE_TOAST_ID, {
-                                render: message,
-                                type: 'error',
-                                autoClose: 8000,
-                            });
-                        } else {
-                            toast.error(message, {autoClose: 8000});
-                        }
-                    }),
-                ]);
-                if (cancelled) {
-                    nextUnlisteners.forEach((unlisten) => void unlisten());
-                    return;
-                }
-                unlisteners = nextUnlisteners;
-            } catch (error) {
-                console.warn('[update] failed to subscribe to update events', error);
-            }
-        };
-
-        void register();
-        return () => {
-            cancelled = true;
-            unlisteners.forEach((unlisten) => void unlisten());
-        };
-    }, []);
-}
+type AppTab = 'main' | 'settings' | 'profile';
+const TABS: AppTab[] = ['main', 'settings', 'profile'];
 
 function AuthenticatedApp() {
-    const initializedRef = useRef(false);
-    const [activeTab, setActiveTab] = useState<'main' | 'settings' | 'profile'>('main');
-    const [chatsAccordionExpanded, setChatsAccordionExpanded] = useState(false);
+    const {user} = useAuth();
+    const [activeTab, setActiveTab] = useState<AppTab>('main');
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const answerFontSizeNotice = useAnswerFontSize();
+    const renderer = useRendererSession();
+    const {app, status, stopVisible} = useRendererUiState();
+    const tabRefs = useRef<Record<AppTab, HTMLButtonElement | null>>({main: null, settings: null, profile: null});
+    const mainLogoRef = useRef<HTMLImageElement | null>(null);
+    const logoContainerRef = useRef<HTMLDivElement | null>(null);
+    const headerLogoRef = useRef<HTMLImageElement | null>(null);
 
     useEffect(() => {
-        if (initializedRef.current) return;
-        initializedRef.current = true;
-        initializeRenderer().catch((error) => {
-            console.error(error);
-            setStatus('Initialization error', 'error');
-        });
+        loadLogo(mainLogoRef.current);
+        loadLogo(headerLogoRef.current);
+        if (!mainLogoRef.current || !logoContainerRef.current) return;
+        return startLogoAnimation(mainLogoRef.current, logoContainerRef.current);
     }, []);
+
+    useEffect(() => {
+        if (!hasFeatureAccess(user, 'history')) setHistoryOpen(false);
+    }, [user]);
+
+    const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const current = TABS.indexOf(activeTab);
+        const nextIndex = event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+                ? TABS.length - 1
+                : (current + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
+        const next = TABS[nextIndex];
+        setActiveTab(next);
+        requestAnimationFrame(() => tabRefs.current[next]?.focus({preventScroll: true}));
+    };
+
+    const openHistory = () => {
+        // History remains local data, but its UI availability follows the
+        // account's advertised product entitlement.
+        if (!hasFeatureAccess(user, 'history')) {
+            showFeatureAccessModal('history');
+            return;
+        }
+        setHistoryOpen(true);
+    };
 
     return (
         <div className="app-grid disable-tap-select relative fc h-screen min-w-[330px] text-gray-100">
             <WindowResizer/>
-            <div
-                className="rainbow pointer-events-none"
-                style={{position: 'absolute', width: '500px', height: '500px'}}
-            />
+            <div className="rainbow pointer-events-none" style={{position: 'absolute', width: 500, height: 500}}/>
 
             <div
+                ref={logoContainerRef}
                 className="logo-container pointer-events-none fccc"
                 style={{width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2}}
             >
-                <img id="main-logo" alt="xexamai" style={{width: '70vmin'}}/>
+                <img ref={mainLogoRef} id="main-logo" alt="xexamai" style={{width: '70vmin'}}/>
             </div>
 
             <header className="app-header frbc px-3 py-2 text-gray-100 drag-region">
                 <div className="frsc gap-3">
-                    <div className="relative" style={{width: '32px', height: '32px'}}>
+                    <div className="relative" style={{width: 32, height: 32}}>
                         <img
+                            ref={headerLogoRef}
                             id="header-logo"
                             alt="xexamai"
                             style={{width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 2}}
                         />
-                        <div
-                            className="rainbow"
-                            style={{position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)'}}
-                        />
+                        <div className="rainbow" style={{position: 'absolute', top: 0, left: 0, filter: 'blur(25px) saturate(1.5)'}}/>
                     </div>
                     <h1 className="text-lg font-semibold">xexamai</h1>
-                    <div id="status" className="status-badge ready">
-                        Ready
+                    <div className={`status-badge ${status.type}`} role="status" aria-live="polite" aria-atomic="true">
+                        {status.text}
                     </div>
                 </div>
                 <div className="no-drag"/>
                 <div className="window-controls no-drag -mr-1">
-                    <button id="closeBtn" className="close mr-[11px]" type="button">
-                        <svg width="12" height="12" viewBox="0 0 12 12">
+                    <button
+                        className="close mr-[11px]"
+                        type="button"
+                        aria-label="Close XEXAMAI"
+                        onClick={() => void window.api.window.close()}
+                        onFocus={(event) => event.currentTarget.blur()}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
                             <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" fill="none"/>
                         </svg>
                     </button>
@@ -185,176 +121,40 @@ function AuthenticatedApp() {
 
             <main className="flex flex-1 flex-col overflow-auto px-4 pb-4 pt-1">
                 <div className="tabs-container">
-                    <div className="tabs">
-                        <button
-                            className={`tab ${activeTab === 'main' ? 'active' : ''}`}
-                            type="button"
-                            onClick={() => setActiveTab('main')}
-                        >
-                            Main
-                        </button>
-                        <button
-                            className={`tab ${activeTab === 'settings' ? 'active' : ''}`}
-                            type="button"
-                            onClick={() => setActiveTab('settings')}
-                        >
-                            Settings
-                        </button>
-                        <button
-                            className={`tab ${activeTab === 'profile' ? 'active' : ''}`}
-                            type="button"
-                            onClick={() => setActiveTab('profile')}
-                        >
-                            Profile
-                        </button>
+                    <div className="tabs" role="tablist" aria-label="Application sections" aria-orientation="horizontal">
+                        {TABS.map((tab) => (
+                            <button
+                                key={tab}
+                                ref={(element) => { tabRefs.current[tab] = element; }}
+                                className={`tab ${activeTab === tab ? 'active' : ''}`}
+                                type="button"
+                                role="tab"
+                                id={`tab-${tab}`}
+                                aria-selected={activeTab === tab}
+                                aria-controls={`panel-${tab}`}
+                                tabIndex={activeTab === tab ? 0 : -1}
+                                onKeyDown={handleTabKeyDown}
+                                onClick={() => setActiveTab(tab)}
+                            >
+                                {tab === 'main' ? 'Main' : tab === 'settings' ? 'Settings' : 'Profile'}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                <div className="content-area flex flex-col gap-4 overflow-auto" hidden={activeTab !== 'main'}>
-                    <section className="flex flex-col gap-4 overflow-auto md:flex-row">
-                        <div className="card h-min flex-grow md:max-w-[320px] min-w-[305px]">
-                            <div id="send-last-container" className="send-last-container">
-                                <div className="label mb-2">Send the last:</div>
-                                <div id="durations" className="flex flex-wrap gap-2"/>
-                            </div>
-
-                            <div className="mt-2 flex items-center gap-4">
-                                <button id="btnRecord" className="btn" data-state="idle" type="button">
-                                    Start Audio Loop
-                                </button>
-                                <button id="btnToggleInput" type="button">
-                                    <img
-                                        id="toggleInputIcon"
-                                        src="img/icons/mic.png"
-                                        alt="MIC"
-                                        className="h-5 w-5"
-                                        style={{filter: 'invert(1)', opacity: '80%'}}
-                                    />
-                                </button>
-                                <div id="waveform-container" className="flex-1"/>
-                                <button
-                                    id="btnScreenshot"
-                                    type="button"
-                                    className="btn btn-secondary"
-                                >
-                                    <img src="img/icons/image.png" alt="Screenshot" className="h-5 w-5 invert"/>
-                                </button>
-                            </div>
-
-                            <div className="mt-2 flex flex-col">
-                                <div className="flex items-end gap-2">
-                                    <div className="flex-grow">
-                                        <TextField
-                                            id="textInput"
-                                            placeholder="Ask a question..."
-                                            fullWidth
-                                            variant="outlined"
-                                            size="small"
-                                            multiline
-                                            minRows={1}
-                                            maxRows={7}
-                                            sx={{
-                                                '& .MuiInputBase-root': {
-                                                    alignItems: 'flex-start',
-                                                },
-                                            }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <button
-                                            id="btnSendText"
-                                            className="btn btn-primary"
-                                            type="button"
-                                            disabled
-                                        >
-                                            Send
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="mt-2 flex items-center gap-2">
-                                    <button
-                                        id="btnStopStream"
-                                        className="btn btn-secondary hidden !px-2 !py-1 text-xs"
-                                        type="button"
-                                    >
-                                        Stop
-                                    </button>
-                                    <button
-                                        id="btnNewChat"
-                                        className="btn btn-secondary !px-2 !py-1 text-xs"
-                                        type="button"
-                                    >
-                                        New chat
-                                    </button>
-                                </div>
-                                <Accordion
-                                    id="chatSessionsPanel"
-                                    className="chat-sessions-panel mt-2"
-                                    disableGutters
-                                    elevation={0}
-                                    square
-                                    expanded={chatsAccordionExpanded}
-                                    onChange={(_event, expanded) => setChatsAccordionExpanded(expanded)}
-                                    sx={{
-                                        background: '#0001',
-                                        border: '1px solid #ffffff10',
-                                        borderRadius: '8px !important',
-                                        '&::before': {display: 'none'},
-                                    }}
-                                >
-                                    <AccordionSummary
-                                        id="chatSessionsToggle"
-                                        expandIcon={<ExpandMoreIcon sx={{fontSize: 16, color: '#9ca3af'}}/>}
-                                        sx={{
-                                            minHeight: 28,
-                                            px: 1.1,
-                                            '& .MuiAccordionSummary-content': {my: 0.2},
-                                            '&.Mui-expanded': {minHeight: 28},
-                                        }}
-                                    >
-                                        <Typography sx={{fontSize: '0.72rem', color: '#9ca3af'}}>Chats</Typography>
-                                    </AccordionSummary>
-                                    <AccordionDetails sx={{pt: 0, pb: 0.8, px: 0.8}}>
-                                        <div id="chatSessionsList" className="chat-sessions-list"/>
-                                    </AccordionDetails>
-                                </Accordion>
-                            </div>
-
-                            <div id="streamResultsSection" className="mt-2 hidden">
-                                <div className="label mb-2">Stream Results:</div>
-                                <div className="flex gap-2">
-                                    <TextField
-                                        id="streamResultsTextarea"
-                                        placeholder="Stream transcription will appear here..."
-                                        variant="outlined"
-                                        multiline
-                                        minRows={4}
-                                        fullWidth
-                                    />
-                                    <button
-                                        id="btnSendStreamText"
-                                        className="btn btn-primary self-start"
-                                        type="button"
-                                        disabled
-                                    >
-                                        Send
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="card flex flex-grow flex-col overflow-y-auto">
-                            <div className="label mb-2">Conversation</div>
-                            <div id="chatOut" className="chat-history enable-tap-select-text flex-grow overflow-auto"/>
-                        </div>
-                    </section>
+                <div id="panel-main" role="tabpanel" aria-labelledby="tab-main" className="content-area flex flex-col gap-4 overflow-auto" hidden={activeTab !== 'main'}>
+                    <MainWorkspace
+                        renderer={renderer}
+                        appState={app}
+                        stopVisible={stopVisible}
+                        onOpenHistory={openHistory}
+                    />
                 </div>
-
-                <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'settings'}>
-                    <SettingsView/>
+                <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'settings'}>
+                    {activeTab === 'settings' ? <SettingsView/> : null}
                 </div>
-                <div className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'profile'}>
-                    <ProfileView/>
+                <div id="panel-profile" role="tabpanel" aria-labelledby="tab-profile" className="content-area flex flex-col overflow-auto" hidden={activeTab !== 'profile'}>
+                    {activeTab === 'profile' ? <ProfileView/> : null}
                 </div>
             </main>
 
@@ -364,19 +164,18 @@ function AuthenticatedApp() {
             >
                 <div className="pointer-events-auto space-x-1 text-gray-300">
                     <span className="opacity-70">by Nikita Artasov</span>
-                    <a
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#c3a5ff]"
-                        href="https://t.me/artasov"
-                    >
-                        @artasov
-                    </a>
+                    <a target="_blank" rel="noreferrer" className="text-[#c3a5ff]" href="https://t.me/artasov">@artasov</a>
                 </div>
-                <div className="pointer-events-auto">
-                    <BetaFeedbackWidget/>
-                </div>
+                <div className="pointer-events-auto"><BetaFeedbackWidget/></div>
             </footer>
+
+            {historyOpen ? <HistoryDrawer open onClose={() => setHistoryOpen(false)}/> : null}
+            <WelcomeModal/>
+            {answerFontSizeNotice !== null ? (
+                <div className="font-size-notification" role="status" aria-live="polite">
+                    Font size: {answerFontSizeNotice}px
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -391,21 +190,27 @@ function AppContent() {
     if (status === 'initializing' || status === 'checking') {
         return <LoadingScreen message={status === 'checking' ? 'Restoring session…' : 'Launching…'}/>;
     }
-
-    if (!isAuthenticated) {
-        return <LoginView/>;
-    }
-
+    if (!isAuthenticated) return <LoginView/>;
     return <AuthenticatedApp/>;
 }
 
-export function App() {
-    useUpdateNotifications();
+function RendererInfrastructure() {
+    useEffect(() => {
+        void initializeRendererActivitySession().catch(() => {
+            // A native operation will retry registration and surface a useful error.
+        });
+    }, []);
+    return <UpdateCenter/>;
+}
 
+export function App() {
     return (
         <ThemeProvider theme={muiTheme}>
             <CssBaseline/>
             <AuthProvider>
+                <div className="global-update-center">
+                    <RendererInfrastructure/>
+                </div>
                 <AppContent/>
                 <ToastContainer
                     position="top-center"

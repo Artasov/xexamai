@@ -24,13 +24,9 @@ const MENU_QUIT: &str = "quit";
 static TRAY_ICON: OnceCell<Mutex<Option<TrayIcon>>> = OnceCell::new();
 
 fn store_tray_icon(icon: TrayIcon) {
-    TRAY_ICON
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .ok()
-        .map(|mut guard| {
-            *guard = Some(icon);
-        });
+    if let Ok(mut guard) = TRAY_ICON.get_or_init(|| Mutex::new(None)).lock() {
+        *guard = Some(icon);
+    }
 }
 
 pub fn set_tray_visible(visible: bool) {
@@ -47,9 +43,9 @@ pub fn set_tray_visible(visible: bool) {
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
-        .item(&MenuItemBuilder::with_id(MENU_SHOW, "Показать окно").build(app)?)
-        .item(&MenuItemBuilder::with_id(MENU_HIDE, "Скрыть окно").build(app)?)
-        .item(&MenuItemBuilder::with_id(MENU_QUIT, "Выход").build(app)?)
+        .item(&MenuItemBuilder::with_id(MENU_SHOW, "Show window").build(app)?)
+        .item(&MenuItemBuilder::with_id(MENU_HIDE, "Hide window").build(app)?)
+        .item(&MenuItemBuilder::with_id(MENU_QUIT, "Quit").build(app)?)
         .build()?;
 
     let loaded_icon: Option<Image<'static>> = if let Some(default_icon) = app.default_window_icon()
@@ -72,23 +68,19 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
             }
         }
         if found_icon.is_none() {
-            found_icon = app
-                .path()
-                .resource_dir()
-                .ok()
-                .and_then(|dir| {
-                    let ico = dir.join("icons").join("icon.ico");
-                    if ico.exists() {
-                        load_image_from_path(&ico)
+            found_icon = app.path().resource_dir().ok().and_then(|dir| {
+                let ico = dir.join("icons").join("icon.ico");
+                if ico.exists() {
+                    load_image_from_path(&ico)
+                } else {
+                    let png = dir.join("icons").join("icon.png");
+                    if png.exists() {
+                        load_image_from_path(&png)
                     } else {
-                        let png = dir.join("icons").join("icon.png");
-                        if png.exists() {
-                            load_image_from_path(&png)
-                        } else {
-                            None
-                        }
+                        None
                     }
-                });
+                }
+            });
         }
         found_icon
     };

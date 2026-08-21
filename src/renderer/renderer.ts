@@ -1,362 +1,305 @@
-import {initControls, updateDurations} from './ui/controls';
 import {listen} from '@tauri-apps/api/event';
-import {initStatus, setStatus} from './ui/status';
-import {
-    CHAT_RETRY_EVENT_NAME,
-    createNewChat,
-    initOutputs,
-    subscribeChatSessions,
-    switchChat,
-    type ChatSessionSummary
-} from './ui/outputs';
+import {invokeNative} from './bridge/nativeInvoke';
 import {settingsStore} from './state/settingsStore';
-import {initializeWelcomeModal} from './ui/welcomeModal';
-import {setupAnswerFontSizeControls} from './app/fontSizeControls';
+import {setDuration, setProcessing, setRecording, state} from './state/appState';
+import {setStatus} from './ui/status';
+import {hideStopButton} from './ui/stopButton';
+import {CHAT_RETRY_EVENT_NAME} from './ui/outputs';
 import {awaitPreloadBridge} from './app/preloadBridge';
-import {StreamController} from './app/streamController';
+import {AudioInputType, StreamController} from './app/streamController';
 import {ScreenshotController} from './app/screenshotController';
-import {loadLogo, startLogoAnimation} from './ui/logoAnimation';
 import {checkFeatureAccess, showFeatureAccessModal} from './ui/featureAccessModal';
-import {hideStopButton, registerStopButton} from './ui/stopButton';
-import {state} from './state/appState';
 import {checkOllamaModelDownloaded} from './services/ollama';
 import {normalizeLocalWhisperModel} from './services/localSpeechModels';
+import {registerRendererShutdownHandler, shutdownRendererSession} from './app/sessionShutdown';
+import {DisposableScope} from './app/disposableScope';
+import {ensureTranscriptionReady} from './utils/transcriptionGuards';
+import {logger} from './utils/logger';
+import type {SettingsChangeDetail, SettingsChangeResult} from './utils/settingsEvents';
 
-function renderChatSessionsList(
-    listElement: HTMLElement | null,
-    sessions: ChatSessionSummary[],
-    activeId: string,
-) {
-    if (!listElement) return;
-    listElement.innerHTML = '';
-    for (const session of sessions) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = `chat-session-item ${session.id === activeId ? 'active' : ''}`;
-        button.dataset['chatId'] = session.id;
+export type RendererSettingsSnapshot = {
+    durations: number[];
+    durationHotkeys: Record<number, string>;
+};
 
-        const title = document.createElement('div');
-        title.className = 'chat-session-item__title';
-        title.textContent = session.title || 'New chat';
+export type RendererSessionUi = {
+    updateRealtimeTranscript: (previous: string, next: string) => void;
+    restoreQuestionIfEmpty: (text: string) => void;
+    getQuestion: () => string;
+    clearQuestionIfUnchanged: (text: string) => void;
+    setAudioInputPresentation: (type: AudioInputType, switching: boolean) => void;
+    setSettingsSnapshot: (snapshot: RendererSettingsSnapshot) => void;
+    setReady: (ready: boolean) => void;
+};
 
-        const meta = document.createElement('div');
-        meta.className = 'chat-session-item__meta';
-        meta.textContent = `${new Date(session.updatedAt).toLocaleString()} • ${session.messageCount}`;
+const DEFAULT_DURATIONS = [5, 10, 15, 20, 30, 60];
 
-        button.appendChild(title);
-        button.appendChild(meta);
-        listElement.appendChild(button);
-    }
-}
-
-function bindChatSessionsUi() {
-    const list = document.getElementById('chatSessionsList') as HTMLDivElement | null;
-    const newChatButton = document.getElementById('btnNewChat') as HTMLButtonElement | null;
-
-    list?.addEventListener('click', (event) => {
-        const target = event.target as HTMLElement | null;
-        const item = target?.closest('.chat-session-item') as HTMLButtonElement | null;
-        const chatId = item?.dataset['chatId'];
-        if (!chatId) return;
-        switchChat(chatId);
-    });
-
-    newChatButton?.addEventListener('click', () => {
-        createNewChat();
-    });
-
-    const unsubscribe = subscribeChatSessions((sessions, activeId) => {
-        renderChatSessionsList(list, sessions, activeId);
-    });
-
-    return () => {
-        unsubscribe();
-    };
-}
-
-// Preload models when local mode is enabled
-async function preloadLocalModelsIfNeeded() {
+async function preloadLocalModelsIfNeeded(): Promise<void> {
     try {
         const settings = await settingsStore.load();
-        const mode = settings.transcriptionMode || 'api';
+        if ((settings.transcriptionMode || 'api') !== 'local') return;
 
-        if (mode === 'local') {
-            console.info('[renderer] Preloading local models and checking server status...');
-
-            // Check local transcription model
-            if (window.api?.localSpeech) {
-                try {
-                    // Use checkHealth to fully validate server status and refresh cache
-                    const status = await window.api.localSpeech.checkHealth();
-                    console.info('[renderer] Local speech server status:', {
-                        installed: status?.installed,
-                        running: status?.running,
-                    });
-
-                    if (status?.installed && status?.running) {
-                        const model = normalizeLocalWhisperModel(settings.localWhisperModel || 'base') || 'base';
-                        const downloaded = await window.api.localSpeech.checkModelDownloaded(model);
-                        console.info('[renderer] Local transcription model checked:', {
-                            model,
-                            downloaded,
-                        });
-                    } else {
-                        console.warn('[renderer] Local speech server not ready:', {
-                            installed: status?.installed,
-                            running: status?.running,
-                        });
-                    }
-                } catch (error) {
-                    console.warn('[renderer] Failed to check local speech server:', error);
+        if (window.api?.localSpeech) {
+            try {
+                const status = await window.api.localSpeech.checkHealth();
+                if (status?.installed && status?.running) {
+                    const model = normalizeLocalWhisperModel(settings.localWhisperModel || 'base') || 'base';
+                    await window.api.localSpeech.checkModelDownloaded(model);
                 }
+            } catch (error) {
+                logger.warn('renderer', 'Failed to preload local speech model', {error});
             }
+        }
 
-            // Check local LLM model when local host is selected
-            if (settings.llmHost === 'local') {
-                try {
-                    const llmModel = settings.localLlmModel || settings.llmModel || 'gpt-oss:20b';
-                    const downloaded = await checkOllamaModelDownloaded(llmModel, {force: true});
-                    console.info('[renderer] Local LLM model checked:', {
-                        model: llmModel,
-                        downloaded,
-                    });
-                } catch (error) {
-                    console.warn('[renderer] Failed to check local LLM model:', error);
-                }
+        if (settings.llmHost === 'local') {
+            try {
+                const model = settings.localLlmModel || settings.llmModel || 'gpt-oss:20b';
+                await checkOllamaModelDownloaded(model, {force: true});
+            } catch (error) {
+                logger.warn('renderer', 'Failed to preload local LLM', {error});
             }
         }
     } catch (error) {
-        console.warn('[renderer] Failed to preload local models:', error);
+        logger.warn('renderer', 'Failed to read settings for model preload', {error});
     }
 }
 
-async function setupTranscriptionDebugListener() {
-    try {
-        await listen('transcription:debug:saved', (event: any) => {
-            const {path, size, mode, filename} = event.payload;
-            console.log('[transcription] Saved audio file:', {
-                path,
-                size: `${size} bytes`,
-                mode,
-                filename,
-            });
+export class RendererSession {
+    private readonly scope = new DisposableScope();
+    private readonly streamController: StreamController;
+    private readonly screenshotController: ScreenshotController;
+    private started = false;
+    private streamSendHotkey = '~';
+
+    constructor(private readonly ui: RendererSessionUi) {
+        this.streamController = new StreamController({
+            updateRealtimeTranscript: ui.updateRealtimeTranscript,
+            restoreQuestionIfEmpty: ui.restoreQuestionIfEmpty,
+            setAudioInputPresentation: ui.setAudioInputPresentation,
         });
-    } catch (error) {
-        // Silently fail - this is optional
+        this.screenshotController = new ScreenshotController({
+            getQuestion: ui.getQuestion,
+            clearQuestionIfUnchanged: ui.clearQuestionIfUnchanged,
+        });
     }
-}
 
-export async function initializeRenderer() {
-    // Setup transcription debug listener (optional)
-    setupTranscriptionDebugListener().catch(() => {
-    });
+    async start(): Promise<void> {
+        if (this.started || this.scope.isClosed) return;
+        this.started = true;
+        setStatus('Ready', 'ready');
+        void listen('transcription:debug:saved', (event: any) => {
+            const payload = event.payload || {};
+            logger.info('transcription', 'Debug audio saved', {
+                path: payload.path,
+                size: payload.size,
+                mode: payload.mode,
+                filename: payload.filename,
+            });
+        }).then((unlisten) => this.scope.add(unlisten)).catch(() => undefined);
 
-    // System audio capture is now handled by Rust WASAPI loopback
-    // No need to request getDisplayMedia permission
+        const bridge = await awaitPreloadBridge();
+        if (this.scope.isClosed) return;
+        if (!bridge) {
+            setStatus('Application bridge unavailable', 'error');
+            throw new Error('Application bridge unavailable');
+        }
 
-    setupAnswerFontSizeControls();
+        this.streamController.initialize();
+        this.scope.add(() => this.streamController.dispose());
+        await this.streamController.syncInitialSettings();
+        if (this.scope.isClosed) return;
 
-    initStatus(document.getElementById('status') as HTMLDivElement | null);
-    initOutputs({
-        chat: document.getElementById('chatOut') as HTMLDivElement | null,
-    });
+        this.scope.add(registerRendererShutdownHandler((reason) => this.shutdownActiveWork(reason === 'update-install')));
+        const shutdownUnlisten = await listen('app:shutdown-requested', () => {
+            void shutdownRendererSession('app-exit')
+                .finally(() => invokeNative('app_shutdown_complete'));
+        });
+        this.scope.add(shutdownUnlisten);
+        if (this.scope.isClosed) return;
 
-    const bridge = await awaitPreloadBridge();
-    if (!bridge) {
-        setStatus('Preload script unavailable', 'error');
-        return;
+        const retryListener = (event: Event) => {
+            const detail = (event as CustomEvent<{chatId?: string; messageId?: string; text?: string}>).detail;
+            if (!detail?.text?.trim() || !detail.chatId || !detail.messageId) return;
+            void this.streamController.retryFailedMessage(detail);
+        };
+        window.addEventListener(CHAT_RETRY_EVENT_NAME, retryListener);
+        this.scope.add(() => window.removeEventListener(CHAT_RETRY_EVENT_NAME, retryListener));
+
+        const settings = await settingsStore.load();
+        if (this.scope.isClosed) return;
+        this.streamSendHotkey = settings.streamSendHotkey || '~';
+        this.publishSettings(settings.durations, settings.durationHotkeys);
+
+        const keydownListener = (event: KeyboardEvent) => {
+            if (!event.ctrlKey || this.eventKey(event) !== this.normalizedHotkey(this.streamSendHotkey)) return;
+            const question = this.ui.getQuestion().trim();
+            if (!question || state.isProcessing) return;
+            event.preventDefault();
+            void this.sendQuestion(question).then((started) => {
+                if (started) this.ui.clearQuestionIfUnchanged(question);
+            });
+        };
+        document.addEventListener('keydown', keydownListener);
+        this.scope.add(() => document.removeEventListener('keydown', keydownListener));
+
+        window.api.hotkeys.onDuration((_event: unknown, payload: {sec: number}) => {
+            void this.askWindow(payload.sec);
+        });
+        this.scope.add(() => window.api.hotkeys.offDuration());
+        window.api.hotkeys.onToggleInput(() => {
+            void this.streamController.handleHotkeyToggleRequest();
+        });
+        this.scope.add(() => window.api.hotkeys.offToggleInput());
+
+        const settingsListener = (event: Event) => {
+            const detail = (event as CustomEvent<SettingsChangeDetail>).detail;
+            if (!detail?.key) return;
+            detail.handled = true;
+            void this.handleSettingsEvent(detail)
+                .then((result) => detail.complete?.(result))
+                .catch((error) => detail.complete?.({
+                    success: false,
+                    appliedValue: detail.value,
+                    error: error instanceof Error ? error.message : String(error),
+                }));
+        };
+        window.addEventListener('xexamai:settings-changed', settingsListener);
+        this.scope.add(() => window.removeEventListener('xexamai:settings-changed', settingsListener));
+
+        void preloadLocalModelsIfNeeded();
+        this.ui.setReady(true);
     }
-    console.info('[renderer] Preload bridge ready for use');
 
-    // Automatically check model availability after the bridge initializes to ensure the API is ready
-    preloadLocalModelsIfNeeded().catch((error) => {
-        console.warn('[renderer] Failed to preload local models:', error);
-    });
+    async toggleRecording(): Promise<void> {
+        if (state.isProcessing || this.scope.isClosed) return;
+        const shouldStart = !state.isRecording;
+        if (shouldStart && !(await ensureTranscriptionReady())) return;
 
-    const streamController = new StreamController();
-    const screenshotController = new ScreenshotController();
-    bindChatSessionsUi();
+        logger.info('ui', 'Record button clicked', {shouldStart});
+        setRecording(shouldStart);
+        try {
+            await this.streamController.handleRecordToggle(shouldStart);
+            setStatus(shouldStart ? 'Recording...' : 'Ready', shouldStart ? 'recording' : 'ready');
+        } catch {
+            setRecording(false);
+        }
+    }
 
-    const streamModeContainer = document.getElementById('streamResultsSection');
-    const streamResults = document.getElementById('streamResultsTextarea') as HTMLTextAreaElement | null;
-    const btnSendStream = document.getElementById('btnSendStreamText') as HTMLButtonElement | null;
-    const btnToggleInput = document.getElementById('btnToggleInput') as HTMLButtonElement | null;
-    const toggleInputIcon = document.getElementById('toggleInputIcon') as HTMLImageElement | null;
-    const durationsContainer = document.getElementById('send-last-container') as HTMLDivElement | null;
-    streamController.initialize({
-        streamModeContainer: streamModeContainer as HTMLElement | null,
-        streamResults,
-        streamSendButton: btnSendStream,
-        toggleInputButton: btnToggleInput,
-        toggleInputIcon,
-        durationsContainer,
-    });
-    await streamController.syncInitialSettings();
+    async askWindow(seconds: number): Promise<void> {
+        if (this.scope.isClosed) return;
+        setStatus(`Sending last ${seconds}s...`, 'sending');
+        await this.streamController.handleAskWindow(seconds);
+    }
 
-    window.addEventListener(CHAT_RETRY_EVENT_NAME, (event: Event) => {
-        const detail = (event as CustomEvent<{ text?: string }>).detail;
-        const text = detail?.text?.trim();
-        if (!text) return;
-        void streamController.retryFailedMessage(text);
-    });
+    async sendQuestion(text: string): Promise<boolean> {
+        if (this.scope.isClosed || state.isProcessing) return false;
+        return this.streamController.handleTextSend(text);
+    }
 
-    const btnScreenshot = document.getElementById('btnScreenshot') as HTMLButtonElement | null;
-    const btnStop = document.getElementById('btnStopStream') as HTMLButtonElement | null;
-    registerStopButton(btnStop);
+    async toggleAudioInput(): Promise<void> {
+        if (this.scope.isClosed) return;
+        await this.streamController.handleAudioInputToggleRequest();
+    }
 
-    if (btnScreenshot) {
-        btnScreenshot.addEventListener('click', async () => {
-            if (checkFeatureAccess('screen_processing')) {
-                await screenshotController.start();
+    async captureScreenshot(): Promise<void> {
+        if (this.scope.isClosed || state.isProcessing) return;
+        if (!checkFeatureAccess('screen_processing')) {
+            showFeatureAccessModal('screen_processing');
+            return;
+        }
+        await this.screenshotController.start();
+    }
+
+    async stopActiveOperation(): Promise<void> {
+        if (await this.streamController.stopActiveOperation()) return;
+        if (this.screenshotController.cancelActive()) return;
+        hideStopButton();
+    }
+
+    async dispose(): Promise<void> {
+        this.ui.setReady(false);
+        await this.shutdownActiveWork().catch(() => undefined);
+        await this.scope.dispose();
+        setRecording(false);
+        setProcessing(false);
+        hideStopButton();
+    }
+
+    private async shutdownActiveWork(requireIdle = false): Promise<void> {
+        this.screenshotController.cancelActive();
+        await this.streamController.stopActiveOperation().catch(() => false);
+        if (state.isRecording) {
+            await this.streamController.handleRecordToggle(false).catch(() => undefined);
+            setRecording(false);
+        }
+        try {
+            await Promise.resolve(window.api.google.stopLive());
+        } catch {
+        }
+        if (requireIdle && (state.isRecording || state.isProcessing)) {
+            throw new Error('Active renderer work could not be stopped safely');
+        }
+    }
+
+    private publishSettings(durationsValue: unknown, hotkeysValue: unknown): void {
+        const durations = Array.isArray(durationsValue) && durationsValue.length
+            ? durationsValue.filter((value): value is number => Number.isFinite(value) && value > 0)
+            : DEFAULT_DURATIONS;
+        const durationHotkeys = hotkeysValue && typeof hotkeysValue === 'object'
+            ? hotkeysValue as Record<number, string>
+            : {};
+        if (durations.length) setDuration(Math.max(...durations));
+        this.ui.setSettingsSnapshot({durations, durationHotkeys});
+    }
+
+    private async handleSettingsEvent(detail: SettingsChangeDetail): Promise<SettingsChangeResult> {
+        try {
+            const {key, value} = detail;
+            const handled = this.streamController.handleSettingsChange(key, value);
+            const applied = handled instanceof Promise ? await handled : handled;
+            if (key === 'audioInputType' || key === 'audioInputDeviceId') {
+                const appliedValue = key === 'audioInputType'
+                    ? settingsStore.get().audioInputType || 'microphone'
+                    : settingsStore.get().audioInputDeviceId || '';
+                return {
+                    success: applied,
+                    appliedValue,
+                    error: applied ? undefined : 'Audio input could not be switched safely',
+                };
+            }
+            if (applied) return {success: true, appliedValue: value};
+
+            if (key === 'durations') {
+                settingsStore.patch({durations: Array.isArray(value) ? value as number[] : []});
+            } else if (key === 'durationHotkeys') {
+                settingsStore.patch({durationHotkeys: (value || {}) as Record<number, string>});
+            } else if (key === 'streamSendHotkey') {
+                this.streamSendHotkey = typeof value === 'string' && value ? value : '~';
+                settingsStore.patch({streamSendHotkey: this.streamSendHotkey});
+                return {success: true, appliedValue: this.streamSendHotkey};
             } else {
-                showFeatureAccessModal('screen_processing');
+                return {success: false, appliedValue: value, error: 'Unsupported setting'};
             }
-        });
-    }
-
-    if (btnStop) {
-        btnStop.addEventListener('click', async () => {
-            if (await streamController.stopActiveOperation()) {
-                return;
-            }
-            if (screenshotController.cancelActive()) {
-                return;
-            }
-            hideStopButton();
-        });
-    }
-
-    const mainLogoElement = document.getElementById('main-logo') as HTMLImageElement | null;
-    const logoContainer = document.querySelector('.logo-container') as HTMLElement | null;
-    loadLogo(mainLogoElement);
-    if (mainLogoElement && logoContainer) {
-        startLogoAnimation(mainLogoElement, logoContainer);
-    }
-    const headerLogoElement = document.getElementById('header-logo') as HTMLImageElement | null;
-    loadLogo(headerLogoElement);
-
-    await initializeWelcomeModal();
-
-    const settings = await settingsStore.load();
-    const durations = Array.isArray(settings.durations) && settings.durations.length
-        ? settings.durations
-        : [5, 10, 15, 20, 30, 60];
-    const durationHotkeys = settings.durationHotkeys;
-    if (Array.isArray(durations) && durations.length) {
-        try {
-            (state as any).durationSec = Math.max(...durations);
-        } catch {
-        }
-    }
-
-    initControls({
-        durations,
-        onRecordToggle: async (shouldRecord) => {
-            await streamController.handleRecordToggle(shouldRecord);
-        },
-        onDurationChange: (sec) => {
-            streamController.handleAskWindow(sec);
-        },
-        onTextSend: (text) => {
-            streamController.handleTextSend(text);
-        },
-    });
-
-    try {
-        const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
-        if (durationsEl && durationHotkeys) {
-            const buttons = durationsEl.querySelectorAll('button');
-            buttons.forEach((btn) => {
-                const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
-                const key = (durationHotkeys as any)[sec];
-                if (!key) return;
-                const old = btn.querySelector('.hk');
-                if (old) old.remove();
-                const label = document.createElement('span');
-                label.className = 'hk text-xs text-gray-400 font-extralight';
-                label.textContent = `Ctrl-${String(key).toUpperCase()}`;
-                btn.appendChild(label);
-            });
-        }
-    } catch {
-    }
-
-    window.api.hotkeys.onDuration((_e: unknown, payload: { sec: number }) => {
-        try {
-            streamController.handleAskWindow(payload.sec);
-        } catch {
-        }
-    });
-
-    window.api.hotkeys.onToggleInput(async () => {
-        await streamController.handleHotkeyToggleRequest();
-    });
-
-    window.addEventListener('xexamai:settings-changed' as any, async (ev: any) => {
-        try {
-            const {key, value} = ev?.detail || {};
-            const handled = streamController.handleSettingsChange(key, value);
-            const finalized = handled instanceof Promise ? await handled : handled;
-            if (finalized) {
-                return;
-            }
-            switch (key) {
-                case 'durations': {
-                    const nextDurations: number[] = Array.isArray(value) ? value : [];
-                    settingsStore.patch({durations: nextDurations});
-                    updateDurations(nextDurations, (sec) => {
-                        streamController.handleAskWindow(sec);
-                    });
-                    try {
-                        (state as any).durationSec = Math.max(...nextDurations);
-                    } catch {
-                    }
-                    break;
-                }
-                case 'durationHotkeys': {
-                    const map = (value ?? {}) as Record<number, string>;
-                    settingsStore.patch({durationHotkeys: map});
-                    const durationsEl = document.getElementById('durations') as HTMLDivElement | null;
-                    if (!durationsEl) break;
-                    const buttons = durationsEl.querySelectorAll('button');
-                    buttons.forEach((btn) => {
-                        const old = btn.querySelector('.hk');
-                        if (old) old.remove();
-                        const sec = Number((btn as HTMLButtonElement).dataset['sec'] || '0');
-                        const hotkey = map?.[sec];
-                        if (!hotkey) return;
-                        const label = document.createElement('span');
-                        label.className = 'hk text-xs text-gray-400 font-extralight';
-                        label.textContent = `Ctrl-${String(hotkey).toUpperCase()}`;
-                        btn.appendChild(label);
-                    });
-                    break;
-                }
-                default:
-                    break;
-            }
+            const settings = settingsStore.get();
+            this.publishSettings(settings.durations, settings.durationHotkeys);
+            return {success: true, appliedValue: value};
         } catch (error) {
-            console.error('settings change handler failed', error);
+            logger.error('settings', 'Settings change handler failed', {error});
+            return {
+                success: false,
+                appliedValue: detail.value,
+                error: error instanceof Error ? error.message : String(error),
+            };
         }
-    });
-
-    const minimizeBtn = document.getElementById('minimizeBtn');
-    const closeBtn = document.getElementById('closeBtn');
-
-    if (minimizeBtn) {
-        minimizeBtn.addEventListener('click', () => {
-            window.api.window.minimize();
-        });
     }
 
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            window.api.window.close();
-        });
-        closeBtn.blur();
-        closeBtn.addEventListener('focus', () => {
-            closeBtn.blur();
-        });
+    private normalizedHotkey(value: string): string {
+        const key = value.toLowerCase();
+        return key === '~' || key === '`' ? 'backquote' : key;
+    }
+
+    private eventKey(event: KeyboardEvent): string {
+        if (event.code === 'Backquote') return 'backquote';
+        return event.key.toLowerCase();
     }
 }
-

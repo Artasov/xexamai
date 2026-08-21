@@ -1,33 +1,60 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use futures_util::StreamExt;
+use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
 
 use crate::constants::{
-    BACKEND_DOMAIN_RU, DEFAULT_BACKEND_DOMAIN, OAUTH_APP_NAME, OAUTH_SCHEME, SITE_BASE_URL,
+    BACKEND_DOMAIN_COM, BACKEND_DOMAIN_RU, DEFAULT_BACKEND_DOMAIN, OAUTH_APP_NAME, OAUTH_SCHEME,
+    SITE_BASE_URL,
 };
 
 const AUTH_METHODS_TIMEOUT_MS: u64 = 10_000;
+const MAX_AUTH_METHODS_RESPONSE_BYTES: usize = 64 * 1024;
 const SUPPORTED_OAUTH_PROVIDERS: &[&str] = &["google", "github", "discord", "yandex"];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthMethods {
-    #[serde(alias = "country_code")]
     pub country_code: String,
-    #[serde(alias = "country_known")]
     pub country_known: bool,
+    #[serde(rename = "allowedOAuthProviders")]
+    pub allowed_oauth_providers: Vec<String>,
+    pub email_password_allowed: bool,
+    pub allowed_email_domains: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthMethodsWire {
+    #[serde(alias = "country_code")]
+    country_code: String,
+    #[serde(alias = "country_known")]
+    country_known: bool,
     #[serde(
         default,
         rename = "allowedOAuthProviders",
         alias = "allowed_oauth_providers",
         alias = "allowedOauthProviders"
     )]
-    pub allowed_oauth_providers: Vec<String>,
+    allowed_oauth_providers: Vec<String>,
     #[serde(alias = "email_password_allowed")]
-    pub email_password_allowed: bool,
+    email_password_allowed: bool,
     #[serde(default, alias = "allowed_email_domains")]
-    pub allowed_email_domains: Vec<String>,
+    allowed_email_domains: Vec<String>,
+}
+
+impl From<AuthMethodsWire> for AuthMethods {
+    fn from(value: AuthMethodsWire) -> Self {
+        Self {
+            country_code: value.country_code,
+            country_known: value.country_known,
+            allowed_oauth_providers: value.allowed_oauth_providers,
+            email_password_allowed: value.email_password_allowed,
+            allowed_email_domains: value.allowed_email_domains,
+        }
+    }
 }
 
 fn normalize_base(input: Option<String>) -> Option<String> {
@@ -36,11 +63,22 @@ fn normalize_base(input: Option<String>) -> Option<String> {
         return None;
     }
     let mut url = url::Url::parse(&raw).ok()?;
+    if !is_trusted_https_url(&url) || url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
     let trimmed_path = url.path().trim_end_matches('/').to_string();
     url.set_path(&trimmed_path);
     url.set_query(None);
     url.set_fragment(None);
     Some(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn is_trusted_https_url(url: &url::Url) -> bool {
+    url.scheme() == "https"
+        && matches!(url.host_str(), Some(BACKEND_DOMAIN_COM | BACKEND_DOMAIN_RU))
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
 }
 
 fn env(key: &str) -> Option<String> {
@@ -108,6 +146,7 @@ pub async fn load_auth_methods(backend_domain: Option<&str>) -> Result<AuthMetho
         backend_domain
     );
     let client = reqwest::Client::builder()
+        .redirect(Policy::none())
         .timeout(Duration::from_millis(AUTH_METHODS_TIMEOUT_MS))
         .build()?;
     let response = client
@@ -126,7 +165,16 @@ pub async fn load_auth_methods(backend_domain: Option<&str>) -> Result<AuthMetho
         ));
     }
 
-    let methods = response.json::<AuthMethods>().await?;
+    let mut bytes = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if bytes.len().saturating_add(chunk.len()) > MAX_AUTH_METHODS_RESPONSE_BYTES {
+            return Err(anyhow!("Auth methods response is too large"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let methods = serde_json::from_slice::<AuthMethodsWire>(&bytes)?.into();
     let methods = normalize_auth_methods(methods);
     log::info!(
         target: "auth",
@@ -144,10 +192,34 @@ fn desktop_oauth_redirect_uri() -> String {
     format!("{OAUTH_SCHEME}://auth/callback")
 }
 
-fn with_desktop_oauth_query(mut url: url::Url, state: &str) -> String {
+fn with_desktop_oauth_query(
+    mut url: url::Url,
+    state: &str,
+    code_challenge: &str,
+) -> Result<String> {
+    if !is_trusted_https_url(&url)
+        || url.fragment().is_some()
+        || state.len() < 16
+        || state.len() > 256
+        || !state
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        || code_challenge.len() != 43
+        || !code_challenge
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(anyhow!("Invalid desktop OAuth PKCE parameters"));
+    }
     let existing_query: Vec<(String, String)> = url
         .query_pairs()
-        .filter(|(key, _)| key != "app_auth" && key != "redirect_uri" && key != "state")
+        .filter(|(key, _)| {
+            key != "app_auth"
+                && key != "redirect_uri"
+                && key != "state"
+                && key != "desktop_code_challenge"
+                && key != "desktop_code_challenge_method"
+        })
         .map(|(key, value)| (key.into_owned(), value.into_owned()))
         .collect();
     let redirect_uri = desktop_oauth_redirect_uri();
@@ -160,22 +232,29 @@ fn with_desktop_oauth_query(mut url: url::Url, state: &str) -> String {
         query.append_pair("app_auth", OAUTH_APP_NAME);
         query.append_pair("redirect_uri", &redirect_uri);
         query.append_pair("state", state);
+        query.append_pair("desktop_code_challenge", code_challenge);
+        query.append_pair("desktop_code_challenge_method", "S256");
     }
-    url.to_string()
+    Ok(url.to_string())
 }
 
-pub fn build_oauth_start_url(
+pub fn build_oauth_start_url_with_pkce(
     provider: &str,
     backend_domain: Option<&str>,
     state: &str,
+    code_challenge: &str,
 ) -> Result<String> {
     let provider_lower = provider.to_lowercase();
+    if !is_supported_provider(&provider_lower) {
+        return Err(anyhow!("Unsupported OAuth provider"));
+    }
     let key = format!("OAUTH_PROVIDER_URL_{}", provider_lower.to_uppercase());
     if let Some(override_url) = env(&key) {
-        let url = with_desktop_oauth_query(
-            url::Url::parse(&override_url)?,
-            state,
-        );
+        let parsed = url::Url::parse(&override_url)?;
+        if !is_trusted_https_url(&parsed) {
+            return Err(anyhow!("Unsupported OAuth origin"));
+        }
+        let url = with_desktop_oauth_query(parsed, state, code_challenge)?;
         log::info!(
             target: "auth",
             "Built OAuth start URL from provider override: provider={} key={} redirect_uri={}",
@@ -198,7 +277,7 @@ pub fn build_oauth_start_url(
         });
     let mut url = url::Url::parse(&base)?;
     url.set_path(&format!("/auth/oauth/{}/start", provider_lower));
-    let result = with_desktop_oauth_query(url, state);
+    let result = with_desktop_oauth_query(url, state, code_challenge)?;
     log::info!(
         target: "auth",
         "Built OAuth start URL: provider={} base={} redirect_uri={}",
@@ -207,4 +286,57 @@ pub fn build_oauth_start_url(
         desktop_oauth_redirect_uri()
     );
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_start_url_contains_bound_s256_challenge() {
+        let state = "0123456789abcdef0123456789abcdef";
+        let challenge = "abcdefghijklmnopqrstuvwxyzABCDEFGH012345678";
+        assert_eq!(challenge.len(), 43);
+        let url = build_oauth_start_url_with_pkce(
+            "google",
+            Some(DEFAULT_BACKEND_DOMAIN),
+            state,
+            challenge,
+        )
+        .unwrap();
+        let parsed = url::Url::parse(&url).unwrap();
+        let query = parsed
+            .query_pairs()
+            .into_owned()
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(query.get("state").map(String::as_str), Some(state));
+        assert_eq!(
+            query.get("desktop_code_challenge").map(String::as_str),
+            Some(challenge)
+        );
+        assert_eq!(
+            query
+                .get("desktop_code_challenge_method")
+                .map(String::as_str),
+            Some("S256")
+        );
+    }
+
+    #[test]
+    fn oauth_urls_reject_untrusted_origins() {
+        let state = "0123456789abcdef0123456789abcdef";
+        let challenge = "abcdefghijklmnopqrstuvwxyzABCDEFGH012345678";
+        assert!(with_desktop_oauth_query(
+            url::Url::parse("https://xlartas.com.attacker.example/auth").unwrap(),
+            state,
+            challenge,
+        )
+        .is_err());
+        assert!(with_desktop_oauth_query(
+            url::Url::parse("http://xlartas.com/auth").unwrap(),
+            state,
+            challenge,
+        )
+        .is_err());
+    }
 }

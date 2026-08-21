@@ -21,8 +21,10 @@ export const OPENAI_TRANSCRIBE_MODELS = [
 ] as const;
 
 export const GOOGLE_TRANSCRIBE_MODELS = [
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
     'gemini-2.5-flash',
-    'gemini-2.0-flash',
 ] as const;
 
 export const WINKY_TRANSCRIBE_MODELS = [
@@ -64,14 +66,16 @@ export const OPENAI_LLM_MODELS = [
 ] as const;
 
 export const GEMINI_LLM_MODELS = [
-    'gemini-3.0-pro',
-    'gemini-3.0-flash',
+    'gemini-3.7-flash',
+    'gemini-3.1-pro-preview',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3-flash-preview',
     'gemini-2.5-pro',
     'gemini-2.5-flash',
-    'gemini-2.0-pro',
-    'gemini-2.0-flash',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
+    'gemini-2.5-flash-lite',
 ] as const;
 
 export const WINKY_LLM_MODELS = [

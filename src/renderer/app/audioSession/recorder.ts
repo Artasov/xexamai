@@ -1,81 +1,56 @@
 // noinspection JSUnusedGlobalSymbols
 
 import {AudioVisualizer} from '../../audio/visualizer';
-import {PcmRingBuffer} from '../../audio/pcmRingBuffer';
-import {ensureWave, hideWave, showWave} from '../../ui/waveform';
+import {PcmRingBuffer, type PcmWindow} from '../../audio/pcmRingBuffer';
+import {getWaveCanvas} from '../../ui/waveform';
 import {state as appState} from '../../state/appState';
 import {logger} from '../../utils/logger';
 import {audioSessionState} from './internalState';
-import {AudioSourceKind, onAudioChunk, startAudioCapture, stopAudioCapture} from '../../services/nativeAudio';
+import {
+    AudioSourceKind,
+    onAudioChunk,
+    onAudioState,
+    startAudioCapture,
+    stopAudioCapture,
+} from '../../services/nativeAudio';
 import {settingsStore} from '../../state/settingsStore';
 import {setStatus} from '../../ui/status';
 
 let audioUnsubscribe: (() => void) | null = null;
+let audioStateUnsubscribe: (() => void) | null = null;
 
 export async function startRecording(): Promise<void> {
     logger.info('recording', 'Starting recording');
 
-    cleanupRecorder();
-    await cleanupAudioGraph();
+    audioSessionState.pcmRing = null;
 
-    const wave = ensureWave();
-    audioSessionState.waveWrap = wave.wrap;
-    audioSessionState.waveCanvas = wave.canvas;
-    showWave(audioSessionState.waveWrap);
+    const waveCanvas = getWaveCanvas();
+    if (!waveCanvas) throw new Error('Waveform canvas is unavailable');
     if (!audioSessionState.visualizer) {
         audioSessionState.visualizer = new AudioVisualizer();
     }
-    audioSessionState.visualizer.startFromLevels(audioSessionState.waveCanvas, {bars: 72, smoothing: 0.75});
+    audioSessionState.visualizer.startFromLevels(waveCanvas, {bars: 72, smoothing: 0.75});
 
     // Use native Rust capture for all modes (WASAPI loopback for system and mixed)
     await startNativeRecording();
 }
 
 
-async function startNativeRecording(): Promise<void> {
+async function startNativeRecording(options: {reuseBuffer?: boolean; allowMixedFallback?: boolean} = {}): Promise<void> {
     const inputType = audioSessionState.currentAudioInputType;
 
-    // Initialize shared buffer regardless of mode
-    audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
-    audioSessionState.ring = null;
-
+    if (!options.reuseBuffer || !audioSessionState.pcmRing) {
+        audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
+    } else {
+        audioSessionState.pcmRing.setWindowSeconds(appState.durationSec);
+    }
     logger.info('audioSession', 'Initialized pcmRing for native recording', {
         inputType,
         durationSec: appState.durationSec,
         hasPcmRing: !!audioSessionState.pcmRing
     });
 
-    if (audioUnsubscribe) {
-        audioUnsubscribe();
-        audioUnsubscribe = null;
-    }
-    // Set listener before starting capture to avoid missing early chunks
-    audioUnsubscribe = onAudioChunk((chunk) => {
-        try {
-            const frames = chunk.samples[0]?.length || 0;
-            if (!audioSessionState.pcmRing) {
-                logger.warn('audioSession', 'Received audio chunk but pcmRing is null', {
-                    inputType,
-                    frames,
-                    channels: chunk.channels
-                });
-                return;
-            }
-            audioSessionState.pcmRing.push(chunk.samples, frames, chunk.sampleRate);
-            audioSessionState.rmsLevel = chunk.rms;
-            const visualizerLevel =
-                inputType === 'system'
-                    ? chunk.rms * 0.1
-                    : chunk.rms;
-            audioSessionState.visualizer?.ingestLevel(visualizerLevel);
-        } catch (error) {
-            logger.error('audioSession', 'failed to push pcm chunk', {error, inputType});
-            console.error('[audioSession] failed to push pcm chunk', error);
-        }
-    });
-
-    // Ensure listener is registered before starting capture
-    await new Promise(resolve => setTimeout(resolve, 50));
+    subscribeToNativeAudio(inputType);
 
     const source: AudioSourceKind =
         inputType === 'system'
@@ -103,7 +78,7 @@ async function startNativeRecording(): Promise<void> {
         await startAudioCapture(source, deviceId);
         logger.info('audioSession', 'Native audio capture started successfully', {source, inputType});
     } catch (error) {
-        if (source === 'mixed') {
+        if (source === 'mixed' && options.allowMixedFallback !== false) {
             logger.warn('audioSession', 'Mixed capture failed, retrying with microphone only', {
                 error: error instanceof Error ? error.message : String(error),
                 deviceId,
@@ -125,6 +100,13 @@ async function startNativeRecording(): Promise<void> {
     }
 }
 
+/** Restarts only the native source, preserving the ring and visualizer across a live switch. */
+export async function restartRecordingCapture(): Promise<void> {
+    // Rust keeps the current capture alive until the replacement source has
+    // completed its readiness handshake, then atomically swaps generations.
+    await startNativeRecording({reuseBuffer: true, allowMixedFallback: false});
+}
+
 async function fallbackToMicrophone(deviceId: string | undefined, originalError: unknown): Promise<void> {
     audioSessionState.currentAudioInputType = 'microphone';
     settingsStore.patch({audioInputType: 'microphone'});
@@ -144,24 +126,25 @@ async function fallbackToMicrophone(deviceId: string | undefined, originalError:
 export async function stopRecording(): Promise<void> {
     logger.info('recording', 'Stopping recording');
 
-    if (audioUnsubscribe) {
-        audioUnsubscribe();
-        audioUnsubscribe = null;
+    let stopError: unknown;
+    try {
+        // Rust flushes and emits producer tails before the stopped state handshake.
+        await stopAudioCapture();
+    } catch (error) {
+        stopError = error;
+        logger.error('audioSession', 'Native audio shutdown failed', {error});
+    } finally {
+        unsubscribeFromNativeAudio();
     }
 
-    await stopAudioCapture();
-
-    audioSessionState.currentStream = null;
-    await cleanupAudioGraph();
+    audioSessionState.pcmRing = null;
     if (audioSessionState.visualizer) {
         audioSessionState.visualizer.stop();
     }
-    if (audioSessionState.waveWrap) {
-        hideWave(audioSessionState.waveWrap);
-    }
+    if (stopError) throw stopError;
 }
 
-export function getLastSecondsFloats(seconds: number): { channels: Float32Array[]; sampleRate: number } | null {
+export function getLastSecondsFloats(seconds: number): PcmWindow | null {
     const inputType = audioSessionState.currentAudioInputType;
     const ring = audioSessionState.pcmRing;
 
@@ -185,13 +168,10 @@ export function getLastSecondsFloats(seconds: number): { channels: Float32Array[
     return result;
 }
 
-export async function recordFromStream(): Promise<Blob> {
-    throw new Error('recordFromStream is not supported with native capture');
-}
-
 export function updateVisualizerBars(options: { bars: number; smoothing: number }) {
-    if (!audioSessionState.visualizer || !audioSessionState.waveCanvas) return;
-    audioSessionState.visualizer.startFromLevels(audioSessionState.waveCanvas, {
+    const waveCanvas = getWaveCanvas();
+    if (!audioSessionState.visualizer || !waveCanvas) return;
+    audioSessionState.visualizer.startFromLevels(waveCanvas, {
         bars: options.bars,
         smoothing: options.smoothing,
     });
@@ -208,75 +188,44 @@ export async function rebuildRecorderWithStream(): Promise<void> {
         audioSessionState.pcmRing = new PcmRingBuffer(48_000, 2, appState.durationSec);
     }
 
-    // Clear previous subscriptions
-    if (audioUnsubscribe) {
-        audioUnsubscribe();
-        audioUnsubscribe = null;
-    }
+    subscribeToNativeAudio(inputType);
+}
 
-    // All modes now use Rust capture; resubscribe to native chunks
-    if (inputType === 'mixed') {
-        // Mixed mode: Rust mixes streams, so use a single buffer
-        audioUnsubscribe = onAudioChunk((chunk) => {
-            try {
-                const frames = chunk.samples[0]?.length || 0;
-                audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
-                audioSessionState.rmsLevel = chunk.rms;
-                audioSessionState.visualizer?.ingestLevel(chunk.rms);
-            } catch (error) {
-                console.error('[audioSession] failed to push pcm chunk', error);
+function subscribeToNativeAudio(inputType: typeof audioSessionState.currentAudioInputType): void {
+    unsubscribeFromNativeAudio();
+    audioUnsubscribe = onAudioChunk((chunk) => {
+        try {
+            const frames = chunk.samples[0]?.length || 0;
+            if (!audioSessionState.pcmRing) {
+                logger.warn('audioSession', 'Received audio chunk but pcmRing is null', {
+                    inputType,
+                    frames,
+                    channels: chunk.channels,
+                });
+                return;
             }
+            audioSessionState.pcmRing.push(chunk.samples, frames, chunk.sampleRate);
+            const visualizerLevel = inputType === 'system' ? chunk.rms * 0.1 : chunk.rms;
+            audioSessionState.visualizer?.ingestLevel(visualizerLevel);
+        } catch (error) {
+            logger.error('audioSession', 'failed to push pcm chunk', {error, inputType});
+        }
+    });
+    audioStateUnsubscribe = onAudioState((captureState) => {
+        if (captureState.state !== 'error') return;
+        const message = captureState.message || 'Native audio capture stopped unexpectedly';
+        logger.error('audioSession', 'Native audio worker failed', {
+            generation: captureState.generation,
+            source: captureState.source,
+            message,
         });
-    } else {
-        // Mic and system modes
-        audioUnsubscribe = onAudioChunk((chunk) => {
-            try {
-                const frames = chunk.samples[0]?.length || 0;
-                audioSessionState.pcmRing?.push(chunk.samples, frames, chunk.sampleRate);
-                audioSessionState.rmsLevel = chunk.rms;
-                const visualizerLevel =
-                    inputType === 'system'
-                        ? chunk.rms * 0.1
-                        : chunk.rms;
-                audioSessionState.visualizer?.ingestLevel(visualizerLevel);
-            } catch (error) {
-                console.error('[audioSession] failed to push pcm chunk', error);
-            }
-        });
-    }
+        if (appState.isRecording) setStatus(message, 'error');
+    });
 }
 
-export async function rebuildAudioGraph(): Promise<void> {
-    // no-op for native capture
-}
-
-function cleanupRecorder() {
-    try {
-        audioSessionState.media?.stop();
-    } catch {
-    }
-    try {
-        audioSessionState.media?.stream.getTracks().forEach((t) => t.stop());
-    } catch {
-    }
-    audioSessionState.media = null;
-}
-
-async function cleanupAudioGraph() {
-    try {
-        audioSessionState.scriptNode?.disconnect();
-    } catch {
-    }
-    try {
-        audioSessionState.srcNode?.disconnect();
-    } catch {
-    }
-    try {
-        await audioSessionState.audioCtx?.close();
-    } catch {
-    }
-    audioSessionState.audioCtx = null;
-    audioSessionState.srcNode = null;
-    audioSessionState.scriptNode = null;
-    audioSessionState.pcmRing = null;
+function unsubscribeFromNativeAudio(): void {
+    audioUnsubscribe?.();
+    audioStateUnsubscribe?.();
+    audioUnsubscribe = null;
+    audioStateUnsubscribe = null;
 }

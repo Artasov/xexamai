@@ -46,15 +46,20 @@ if (match && match[1] !== pkg.version) {
 
 // Update Cargo.lock if Cargo.toml was updated
 if (cargoTomlUpdated) {
-    try {
-        console.log('[sync-tauri-version] Updating Cargo.lock...');
-        execSync('cargo check', {
-            cwd: path.join(root, 'src-tauri'),
-            stdio: 'inherit'
-        });
-        console.log('[sync-tauri-version] Cargo.lock updated successfully.');
-    } catch (error) {
-        console.warn('[sync-tauri-version] Failed to update Cargo.lock:', error.message);
-        console.warn('[sync-tauri-version] Cargo.lock will be updated on next cargo build.');
-    }
+    console.log('[sync-tauri-version] Updating Cargo.lock...');
+    execSync('cargo check', {
+        cwd: path.join(root, 'src-tauri'),
+        stdio: 'inherit'
+    });
+    console.log('[sync-tauri-version] Cargo.lock updated successfully.');
+}
+
+const cargoLock = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.lock'), 'utf8');
+const cargoLockVersion = cargoLock.match(
+    /\[\[package\]\]\s+name\s*=\s*"xexamai"\s+version\s*=\s*"([^"]+)"/,
+)?.[1];
+if (cargoLockVersion !== pkg.version) {
+    throw new Error(
+        `[sync-tauri-version] Cargo.lock root version is ${cargoLockVersion ?? '<missing>'}, expected ${pkg.version}`,
+    );
 }

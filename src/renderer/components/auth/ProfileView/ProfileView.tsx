@@ -1,8 +1,8 @@
-import {useMemo} from 'react';
+import {useCallback, useMemo, useRef, useState} from 'react';
 import {useAuth} from '../../../auth';
 import {getActiveTier, getUserTiersAndFeatures} from '../../../utils/features';
-import {IconButton, Tooltip} from "@mui/material";
-import {Logout} from "@mui/icons-material";
+import {IconButton, Tooltip} from '@mui/material';
+import {Logout, Refresh} from '@mui/icons-material';
 
 
 function formatBalance(balance: string): string {
@@ -12,7 +12,26 @@ function formatBalance(balance: string): string {
 }
 
 export function ProfileView() {
-    const {user, signOut} = useAuth();
+    const {user, signOut, reloadUser} = useAuth();
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshError, setRefreshError] = useState<string | null>(null);
+    const refreshInFlight = useRef(false);
+
+    const refreshProfile = useCallback(async () => {
+        if (refreshInFlight.current) return;
+        refreshInFlight.current = true;
+        setRefreshing(true);
+        setRefreshError(null);
+        try {
+            const refreshed = await reloadUser({throwOnFailure: true});
+            if (!refreshed) setRefreshError('Could not refresh account information.');
+        } catch (caught) {
+            setRefreshError(caught instanceof Error ? caught.message : 'Could not refresh account information.');
+        } finally {
+            refreshInFlight.current = false;
+            setRefreshing(false);
+        }
+    }, [reloadUser]);
 
     const tiersAndFeatures = useMemo(() => getUserTiersAndFeatures(user), [user]);
     const activeTierInfo = useMemo(() => getActiveTier(user), [user]);
@@ -40,6 +59,32 @@ export function ProfileView() {
                                     {user.username || user.email}
                                 </h2>
                                 <div className="frcc mt-2">
+                                    <Tooltip title="Refresh account" arrow>
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                disabled={refreshing}
+                                                onClick={() => void refreshProfile()}
+                                                aria-label="Refresh account"
+                                                sx={{
+                                                    mb: '4px',
+                                                    color: 'rgba(255, 255, 255, 0.7)',
+                                                    '&:hover': {
+                                                        color: 'rgba(255, 255, 255, 0.9)',
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                                    },
+                                                }}
+                                            >
+                                                <Refresh
+                                                    className={refreshing ? 'animate-spin' : undefined}
+                                                    sx={{
+                                                        width: 16,
+                                                        height: 16,
+                                                    }}
+                                                />
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
                                     <Tooltip title="Log out" arrow>
                                         <IconButton
                                             size={'small'}
@@ -59,6 +104,7 @@ export function ProfileView() {
                                 </div>
                             </div>
                             <p className="text-sm text-gray-400">{user.email}</p>
+                            {refreshError ? <p className="text-xs text-amber-300">{refreshError}</p> : null}
                         </div>
                         <div className="frcc flex-wrap gap-2 text-xs text-gray-300">
                             {user.is_email_confirmed &&

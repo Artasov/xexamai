@@ -9,8 +9,6 @@ const DEFAULT_API_MODEL = 'gpt-4o-mini-transcribe';
 const DEFAULT_LOCAL_MODEL = 'base';
 const WINKY_TRANSCRIBE_SET = new Set<string>(WINKY_TRANSCRIBE_MODELS as readonly string[]);
 
-const hasText = (value?: string | null): boolean => Boolean((value ?? '').trim().length);
-
 export const ensureTranscriptionReady = async (): Promise<boolean> => {
     let settings: any;
     try {
@@ -31,11 +29,11 @@ export const ensureTranscriptionReady = async (): Promise<boolean> => {
         }
         const needsOpenAi = apiModel.startsWith('gpt');
         const needsGoogle = apiModel.startsWith('gemini');
-        if (needsOpenAi && !hasText(settings.openaiApiKey)) {
+        if (needsOpenAi && settings.hasOpenaiApiKey !== true) {
             setStatus('Add an OpenAI API key first', 'error');
             return false;
         }
-        if (needsGoogle && !hasText(settings.googleApiKey)) {
+        if (needsGoogle && settings.hasGoogleApiKey !== true) {
             setStatus('Add a Google AI API key first', 'error');
             return false;
         }

@@ -1,14 +1,19 @@
-import {invoke} from '@tauri-apps/api/core';
+import {Channel} from '@tauri-apps/api/core';
+import {invokeNative as invoke} from './nativeInvoke';
 import {getCurrentWindow, LogicalPosition, LogicalSize,} from '@tauri-apps/api/window';
 import {
     AssistantAPI,
     AuthDeepLinkPayload,
     AuthMethodsResponse,
+    DiagnosticsSnapshot,
     FastWhisperStatus,
     ScreenProcessRequest,
     ScreenProcessResponse,
 } from '@shared/ipc';
 import {listen, UnlistenFn} from '@tauri-apps/api/event';
+import {AsyncListenerSlot} from './asyncListenerSlot';
+import {GOOGLE_LIVE_ENDPOINT, GOOGLE_LIVE_MODEL} from '../services/googleLiveContract';
+import type {OllamaStreamEvent} from '@shared/generated/NativeBindings';
 import {
     assistantAskChat,
     assistantOffStreamDelta,
@@ -19,10 +24,9 @@ import {
     assistantOnStreamDone,
     assistantOnStreamError,
     assistantOnStreamTranscript,
-    assistantProcessAudio,
-    assistantProcessAudioStream,
     assistantStopStream,
     assistantTranscribeOnly,
+    cancelScreenProcessing,
     processScreenImage as assistantProcessScreenImage,
 } from '../services/nativeAssistant';
 
@@ -37,30 +41,6 @@ const makeSettingSetter =
         async (value: T) => {
             await patchSettings({[key]: value});
         };
-
-async function replaceListener<T>(
-    current: UnlistenFn | null,
-    event: string,
-    handler: (event: any) => void
-): Promise<UnlistenFn> {
-    if (current) {
-        try {
-            await current();
-        } catch {
-        }
-    }
-    return listen<T>(event, handler);
-}
-
-function clearListener(current: UnlistenFn | null): null {
-    if (current) {
-        try {
-            void current();
-        } catch {
-        }
-    }
-    return null;
-}
 
 const settingsApi: AssistantAPI['settings'] = {
     get: () => invoke('config_get'),
@@ -136,7 +116,7 @@ const settingsApi: AssistantAPI['settings'] = {
     openLogsFolder: async () => {
         await invoke('open_app_logs_folder');
     },
-    getLogPath: () => invoke<string>('app_log_path'),
+    getLogPath: () => invoke('app_log_path'),
     setScreenProcessingModel: makeSettingSetter('screenProcessingModel'),
     setScreenProcessingPrompt: makeSettingSetter('screenProcessingPrompt'),
     setScreenProcessingTimeoutMs: makeSettingSetter('screenProcessingTimeoutMs'),
@@ -144,28 +124,39 @@ const settingsApi: AssistantAPI['settings'] = {
     setGoogleApiKey: makeSettingSetter('googleApiKey'),
     setStreamSendHotkey: makeSettingSetter<string>('streamSendHotkey'),
     setBackendDomain: makeSettingSetter('backendDomain'),
+    setDiagnosticsEnabled: makeSettingSetter<boolean>('diagnosticsEnabled'),
 };
 
 const audioApi: AssistantAPI['audio'] = {
     listDevices: () => invoke('audio_list_devices'),
-    startCapture: (source: 'mic' | 'system' | 'mixed', deviceId?: string) =>
-        invoke('audio_start_capture', {source, deviceId}),
+    startCapture: (source, deviceId, onChunk) => {
+        const channel = new Channel<ArrayBuffer | Uint8Array>();
+        channel.onmessage = onChunk;
+        return invoke('audio_start_capture', {source, deviceId, onChunk: channel});
+    },
     stopCapture: () => invoke('audio_stop_capture'),
+};
+
+const diagnosticsApi: AssistantAPI['diagnostics'] = {
+    snapshot: () => invoke('diagnostics_snapshot'),
 };
 
 const windowApi: AssistantAPI['window'] = {
     minimize: () => currentWindow.minimize(),
     close: () => currentWindow.close(),
     async getBounds() {
-        const [position, size] = await Promise.all([
+        const [position, size, scaleFactor] = await Promise.all([
             currentWindow.outerPosition(),
             currentWindow.outerSize(),
+            currentWindow.scaleFactor(),
         ]);
+        const logicalPosition = position.toLogical(scaleFactor);
+        const logicalSize = size.toLogical(scaleFactor);
         return {
-            x: position.x as number,
-            y: position.y as number,
-            width: size.width as number,
-            height: size.height as number,
+            x: logicalPosition.x,
+            y: logicalPosition.y,
+            width: logicalSize.width,
+            height: logicalSize.height,
         };
     },
     async setBounds(bounds) {
@@ -175,8 +166,6 @@ const windowApi: AssistantAPI['window'] = {
 };
 
 const assistantApi: AssistantAPI['assistant'] = {
-    processAudio: assistantProcessAudio,
-    processAudioStream: assistantProcessAudioStream,
     transcribeOnly: assistantTranscribeOnly,
     askChat: assistantAskChat,
     stopStream: assistantStopStream,
@@ -190,34 +179,25 @@ const assistantApi: AssistantAPI['assistant'] = {
     offStreamError: () => assistantOffStreamError(),
 };
 
-let durationUnlisten: UnlistenFn | null = null;
-let toggleUnlisten: UnlistenFn | null = null;
+type DurationHotkeyEvent = {event: unknown; payload: {sec: number}};
+const durationListener = new AsyncListenerSlot<DurationHotkeyEvent>();
+const toggleListener = new AsyncListenerSlot<void>();
 
 const hotkeysApi: AssistantAPI['hotkeys'] = {
     onDuration: (cb) => {
-        void (async () => {
-            durationUnlisten = await replaceListener<{ sec: number }>(
-                durationUnlisten,
-                'hotkeys:duration',
-                (event) => cb(event, event.payload)
-            );
-        })();
+        durationListener.replace(
+            (emit) => listen<{sec: number}>('hotkeys:duration', (event) => emit({event, payload: event.payload})),
+            ({event, payload}) => cb(event, payload),
+        );
     },
-    offDuration: () => {
-        durationUnlisten = clearListener(durationUnlisten);
-    },
+    offDuration: () => durationListener.clear(),
     onToggleInput: (cb) => {
-        void (async () => {
-            toggleUnlisten = await replaceListener(
-                toggleUnlisten,
-                'hotkeys:toggle-input',
-                () => cb()
-            );
-        })();
+        toggleListener.replace(
+            (emit) => listen('hotkeys:toggle-input', () => emit()),
+            () => cb(),
+        );
     },
-    offToggleInput: () => {
-        toggleUnlisten = clearListener(toggleUnlisten);
-    },
+    offToggleInput: () => toggleListener.clear(),
 };
 
 const loopbackApi: AssistantAPI['loopback'] = {
@@ -232,29 +212,200 @@ const screenApi: AssistantAPI['screen'] = {
     process: async (payload: ScreenProcessRequest): Promise<ScreenProcessResponse> => {
         return assistantProcessScreenImage(payload);
     },
+    cancel: (requestId: string) => cancelScreenProcessing(requestId),
 };
 
 const authListeners = new Set<(payload: AuthDeepLinkPayload) => void>();
 let authUnlisten: UnlistenFn | null = null;
+let authListenPromise: Promise<void> | null = null;
+
+const googleLiveMessageListeners = new Set<(message: any) => void>();
+const googleLiveErrorListeners = new Set<(error: string) => void>();
+let googleLiveSocket: WebSocket | null = null;
+let googleLiveReady = false;
+
+const notifyGoogleLiveError = (message: string) => {
+    for (const listener of googleLiveErrorListeners) {
+        try {
+            listener(message);
+        } catch {
+        }
+    }
+};
+
+const closeGoogleLiveSocket = (sendAudioEnd = true) => {
+    const socket = googleLiveSocket;
+    googleLiveSocket = null;
+    googleLiveReady = false;
+    if (!socket) return;
+    try {
+        if (sendAudioEnd && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({realtimeInput: {audioStreamEnd: true}}));
+        }
+        socket.close(1000, 'client stop');
+    } catch {
+    }
+};
+
+const stopGoogleLiveGracefully = async () => {
+    const socket = googleLiveSocket;
+    if (!socket) return;
+    if (socket.readyState === WebSocket.OPEN) {
+        try {
+            socket.send(JSON.stringify({realtimeInput: {audioStreamEnd: true}}));
+            // Keep message listeners alive briefly so the final input
+            // transcription/turn-complete frame is not discarded.
+            await new Promise((resolve) => window.setTimeout(resolve, 400));
+        } catch {
+        }
+    }
+    if (googleLiveSocket === socket) closeGoogleLiveSocket(false);
+    else {
+        try {
+            socket.close(1000, 'client stop');
+        } catch {
+        }
+    }
+};
 
 const googleApi: AssistantAPI['google'] = {
-    startLive: async () => {
-        throw new Error('Google live is not implemented');
+    getLiveCapability: async () => {
+        if (typeof WebSocket === 'undefined') {
+            return {supported: false, configured: false, reason: 'WebSocket is unavailable in this WebView.', model: GOOGLE_LIVE_MODEL};
+        }
+        try {
+            return await invoke('google_live_capability');
+        } catch (error) {
+            return {
+                supported: false,
+                configured: false,
+                reason: error instanceof Error ? error.message : String(error),
+                model: GOOGLE_LIVE_MODEL,
+            };
+        }
     },
-    sendAudioChunk: () => {
-        throw new Error('Google live is not implemented');
+    startLive: async (options) => {
+        closeGoogleLiveSocket();
+        if (typeof WebSocket === 'undefined') {
+            throw new Error('Google Live is not supported by this WebView.');
+        }
+
+        // The long-lived Google key never crosses IPC. Rust provisions a
+        // single-use, model-constrained ephemeral token for this connection.
+        const auth = await invoke('google_live_create_token');
+        if (!auth?.token) throw new Error('Google Live could not create a temporary session token.');
+
+        await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const socket = new WebSocket(`${GOOGLE_LIVE_ENDPOINT}?access_token=${encodeURIComponent(auth.token)}`);
+            googleLiveSocket = socket;
+            const timeout = window.setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                closeGoogleLiveSocket();
+                reject(new Error('Google Live connection timed out.'));
+            }, 10_000);
+
+            const fail = (message: string) => {
+                notifyGoogleLiveError(message);
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeout);
+                reject(new Error(message));
+            };
+
+            socket.onopen = () => {
+                try {
+                    // Gemini 3.1 Flash Live requires an AUDIO response modality. Input
+                    // transcription is delivered independently and is what the UI uses.
+                    socket.send(JSON.stringify({
+                        setup: {
+                            model: `models/${auth.model || GOOGLE_LIVE_MODEL}`,
+                            // The wire-level BidiGenerateContentSetup carries
+                            // response modalities inside generationConfig. The
+                            // higher-level SDK's LiveConnectConfig flattens this
+                            // field, but that shape cannot be sent verbatim.
+                            generationConfig: {
+                                responseModalities: ['AUDIO'],
+                            },
+                            inputAudioTranscription: options.transcribeInput === false ? undefined : {},
+                            outputAudioTranscription: options.transcribeOutput ? {} : undefined,
+                        },
+                    }));
+                } catch (error) {
+                    fail(error instanceof Error ? error.message : String(error));
+                }
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(String(event.data || '{}'));
+                    if (message?.setupComplete && !settled) {
+                        settled = true;
+                        googleLiveReady = true;
+                        window.clearTimeout(timeout);
+                        resolve();
+                    }
+                    for (const listener of googleLiveMessageListeners) {
+                        try {
+                            listener(message);
+                        } catch {
+                        }
+                    }
+                } catch {
+                    // Ignore malformed vendor frames while keeping the session alive.
+                }
+            };
+            socket.onerror = () => fail('Google Live connection failed. Check the API key and network access.');
+            socket.onclose = (event) => {
+                const wasCurrent = googleLiveSocket === socket;
+                if (wasCurrent) {
+                    googleLiveSocket = null;
+                    googleLiveReady = false;
+                }
+                if (!settled) {
+                    fail(event.reason || `Google Live closed during setup (${event.code}).`);
+                } else if (event.code !== 1000 && wasCurrent) {
+                    notifyGoogleLiveError(event.reason || `Google Live connection closed (${event.code}).`);
+                }
+            };
+        });
     },
-    stopLive: () => {
+    sendAudioChunk: ({data, mime}) => {
+        const socket = googleLiveSocket;
+        if (!socket || socket.readyState !== WebSocket.OPEN || !googleLiveReady) {
+            return;
+        }
+        socket.send(JSON.stringify({
+            realtimeInput: {
+                audio: {
+                    data,
+                    mimeType: mime || 'audio/pcm;rate=16000',
+                },
+            },
+        }));
     },
-    onMessage: () => {
+    stopLive: stopGoogleLiveGracefully,
+    onMessage: (callback) => {
+        googleLiveMessageListeners.add(callback);
+        return () => googleLiveMessageListeners.delete(callback);
     },
-    onError: () => {
+    onError: (callback) => {
+        googleLiveErrorListeners.add(callback);
+        return () => googleLiveErrorListeners.delete(callback);
     },
 };
 
+const providersApi: AssistantAPI['providers'] = {
+    testModel: (provider, model) => invoke('provider_test_model', {
+        request: {provider, model},
+    }),
+};
+
 const authApi: AssistantAPI['auth'] = {
-    getMethods: () => invoke<AuthMethodsResponse>('auth_get_methods'),
+    getMethods: () => invoke('auth_get_methods'),
     startOAuth: (provider) => invoke('auth_start_oauth', {provider}),
+    cancelPendingOAuth: () => invoke('auth_cancel_pending'),
     onOAuthPayload: (cb) => {
         authListeners.add(cb);
         void ensureAuthSubscription();
@@ -263,13 +414,16 @@ const authApi: AssistantAPI['auth'] = {
             if (!authListeners.size && authUnlisten) {
                 void authUnlisten();
                 authUnlisten = null;
+                void invoke('auth_renderer_not_ready');
             }
         };
     },
     consumePendingOAuthPayloads: async () => {
-        const payloads = await invoke<AuthDeepLinkPayload[]>('auth_consume_pending');
-        payloads.forEach(dispatchAuthPayload);
-        return payloads;
+        // Install the event listener before marking the renderer ready/draining the
+        // queue. Pending payloads are returned to the caller and must not also be
+        // dispatched here, otherwise a login is processed twice.
+        await ensureAuthSubscription();
+        return invoke('auth_consume_pending');
     },
 };
 
@@ -278,22 +432,28 @@ const mediaApi: AssistantAPI['media'] = {
 };
 
 const localSpeechApi: AssistantAPI['localSpeech'] = {
-    getStatus: () => invoke<FastWhisperStatus>('local_speech_get_status'),
-    checkHealth: () => invoke<FastWhisperStatus>('local_speech_check_health'),
-    install: () => invoke<FastWhisperStatus>('local_speech_install'),
-    start: () => invoke<FastWhisperStatus>('local_speech_start'),
-    restart: () => invoke<FastWhisperStatus>('local_speech_restart'),
-    reinstall: () => invoke<FastWhisperStatus>('local_speech_reinstall'),
-    stop: () => invoke<FastWhisperStatus>('local_speech_stop'),
+    getStatus: () => invoke('local_speech_get_status'),
+    checkHealth: () => invoke('local_speech_check_health'),
+    install: () => invoke('local_speech_install'),
+    start: () => invoke('local_speech_start'),
+    restart: () => invoke('local_speech_restart'),
+    reinstall: () => invoke('local_speech_reinstall'),
+    stop: () => invoke('local_speech_stop'),
     checkModelDownloaded: (model: string) =>
-        invoke<boolean>('local_speech_check_model_downloaded', {model}),
+        invoke('local_speech_check_model_downloaded', {model}),
 };
 
 const ollamaApi: AssistantAPI['ollama'] = {
-    checkInstalled: () => invoke<boolean>('ollama_check_installed'),
-    listModels: () => invoke<string[]>('ollama_list_models'),
+    checkInstalled: () => invoke('ollama_check_installed'),
+    listModels: () => invoke('ollama_list_models'),
     pullModel: (model: string) => invoke('ollama_pull_model', {model}),
     warmupModel: (model: string) => invoke('ollama_warmup_model', {model}),
+    streamChat: (args, onEvent) => {
+        const channel = new Channel<OllamaStreamEvent>();
+        channel.onmessage = onEvent;
+        return invoke('ollama_stream_chat', {...args, onEvent: channel});
+    },
+    cancelChat: (requestId: string) => invoke('ollama_cancel_chat', {requestId}),
 };
 
 const api: AssistantAPI = {
@@ -304,11 +464,13 @@ const api: AssistantAPI = {
     loopback: loopbackApi,
     screen: screenApi,
     google: googleApi,
+    providers: providersApi,
     auth: authApi,
     media: mediaApi,
     localSpeech: localSpeechApi,
     ollama: ollamaApi,
     audio: audioApi,
+    diagnostics: diagnosticsApi,
     log: async (entry) => {
         const prefix = `[${entry.category}] ${entry.message}`;
         const data = entry.data;
@@ -339,12 +501,24 @@ if (typeof window !== 'undefined') {
 }
 
 async function ensureAuthSubscription() {
-    if (authUnlisten || !authListeners.size) {
-        return;
+    if (authUnlisten || !authListeners.size) return;
+    if (authListenPromise) return authListenPromise;
+    authListenPromise = (async () => {
+        const unlisten = await listen<AuthDeepLinkPayload>('auth:deep-link', (event) => {
+            dispatchAuthPayload(event.payload);
+        });
+        if (!authListeners.size) {
+            unlisten();
+            void invoke('auth_renderer_not_ready');
+            return;
+        }
+        authUnlisten = unlisten;
+    })();
+    try {
+        await authListenPromise;
+    } finally {
+        authListenPromise = null;
     }
-    authUnlisten = await listen<AuthDeepLinkPayload>('auth:deep-link', (event) => {
-        dispatchAuthPayload(event.payload);
-    });
 }
 
 function dispatchAuthPayload(payload: AuthDeepLinkPayload) {
@@ -372,8 +546,12 @@ async function captureScreenFrame(): Promise<{ base64: string; width: number; he
         });
         await video.play().catch(() => {
         });
-        const width = video.videoWidth || 1920;
-        const height = video.videoHeight || 1080;
+        const sourceWidth = video.videoWidth || 1920;
+        const sourceHeight = video.videoHeight || 1080;
+        const maxDimension = 1920;
+        const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
@@ -381,14 +559,14 @@ async function captureScreenFrame(): Promise<{ base64: string; width: number; he
         if (!ctx) {
             throw new Error('Unable to capture screen frame');
         }
-        ctx.drawImage(video, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/png');
+        ctx.drawImage(video, 0, 0, sourceWidth, sourceHeight, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
         const base64 = dataUrl.split(',')[1] || '';
         return {
             base64,
             width,
             height,
-            mime: 'image/png',
+            mime: 'image/jpeg',
         };
     } finally {
         stream.getTracks().forEach((t) => t.stop());

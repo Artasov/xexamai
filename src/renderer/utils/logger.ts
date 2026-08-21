@@ -12,13 +12,40 @@ export type LogEntry = {
 };
 
 class RendererLogger {
+    private sanitize(data: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
+        if (data == null || typeof data === 'number' || typeof data === 'boolean') return data;
+        if (typeof data === 'string') return data.length > 2_000 ? `${data.slice(0, 2_000)}…` : data;
+        if (typeof data !== 'object') return String(data);
+        if (depth >= 5) return '[truncated]';
+        if (seen.has(data)) return '[circular]';
+        seen.add(data);
+
+        if (data instanceof Error) {
+            return {name: data.name, message: data.message.slice(0, 1_000)};
+        }
+        if (Array.isArray(data)) {
+            return data.slice(0, 50).map((item) => this.sanitize(item, depth + 1, seen));
+        }
+
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+            const normalized = key.toLowerCase();
+            if (/(api.?key|authorization|cookie|password|secret|token|credential)/i.test(normalized)) {
+                result[key] = '[redacted credential]';
+                continue;
+            }
+            result[key] = this.sanitize(value, depth + 1, seen);
+        }
+        return result;
+    }
+
     private log(level: LogLevel, category: string, message: string, data?: any): void {
         const entry: LogEntry = {
             timestamp: new Date().toISOString(),
             level,
             category,
             message,
-            data
+            data: this.sanitize(data)
         };
 
         // Send to the main process via IPC
