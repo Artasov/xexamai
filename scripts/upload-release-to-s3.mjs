@@ -50,12 +50,6 @@ function objectUrl(key) {
     return new URL(`${endpoint}/${bucket}/${encodePath(key)}`);
 }
 
-function cacheBusted(url, parameter) {
-    const result = new URL(url);
-    result.searchParams.set(parameter, crypto.randomUUID());
-    return result;
-}
-
 async function signedGet(url) {
     const payloadHash = hash('');
     const now = new Date();
@@ -101,13 +95,21 @@ async function signedGet(url) {
     });
 }
 
-async function readObject(url, cacheParameter) {
-    const publicResponse = await fetch(cacheBusted(url, cacheParameter), {cache: 'no-store'});
-    return publicResponse.status === 403 ? signedGet(url) : publicResponse;
+async function readObject(url) {
+    // This is the origin S3 endpoint rather than a CDN. Query-string cache
+    // busters can be rejected by some S3-compatible authorization policies,
+    // while Node's no-store mode already avoids reusing a local response.
+    const publicResponse = await fetch(url, {cache: 'no-store'});
+    if (publicResponse.status !== 403) return publicResponse;
+    const authenticatedResponse = await signedGet(url);
+    console.log(
+        `Anonymous S3 read for ${url.pathname} returned 403; authenticated retry returned ${authenticatedResponse.status}.`,
+    );
+    return authenticatedResponse;
 }
 
 async function existingObjectHash(url) {
-    const response = await readObject(url, 'immutable-check');
+    const response = await readObject(url);
     if (isMissingOrUnobservable(response)) return null;
     if (!response.ok) {
         throw new Error(`Could not validate immutable S3 object ${url.pathname}: HTTP ${response.status}`);
@@ -209,7 +211,7 @@ async function uploadImmutable(file, key) {
 }
 
 async function readCanonicalManifest(url) {
-    const response = await readObject(url, 'canonical-manifest-check');
+    const response = await readObject(url);
     if (isMissingOrUnobservable(response)) return null;
     if (!response.ok) {
         throw new Error(`Could not read immutable release manifest ${url.pathname}: HTTP ${response.status}`);
@@ -345,7 +347,7 @@ function compareChannelManifest(current, candidate, channel) {
 
 async function readChannelManifest(key, channel) {
     const url = objectUrl(key);
-    const response = await readObject(url, 'release-check');
+    const response = await readObject(url);
     if (isMissingOrUnobservable(response)) return {manifest: null, etag: null};
     if (!response.ok) {
         throw new Error(`Could not validate existing ${channel} manifest: HTTP ${response.status}`);
