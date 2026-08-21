@@ -34,7 +34,7 @@ async function runScriptAsync(script: string, arguments_: string[], environment:
     });
 }
 
-async function fakeS3(initial: Record<string, string>, missingStatus = 404) {
+async function fakeS3(initial: Record<string, string>, missingStatus = 404, privateReads = false) {
     const objects = new Map<string, Buffer>(
         Object.entries(initial).map(([key, value]) => [key, Buffer.from(value)]),
     );
@@ -50,6 +50,11 @@ async function fakeS3(initial: Record<string, string>, missingStatus = 404) {
     const server = http.createServer((request, response) => {
         const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
         if (request.method === 'GET') {
+            if (privateReads && !request.headers.authorization) {
+                response.statusCode = 403;
+                response.end();
+                return;
+            }
             const body = objects.get(pathname);
             if (!body) {
                 response.statusCode = missingStatus;
@@ -736,6 +741,38 @@ describe('release artifact scripts', () => {
         expect(channelPuts).toHaveLength(2);
         expect(channelPuts[0]).toMatchObject({ifNoneMatch: '*'});
         expect(channelPuts[1]?.ifMatch).toMatch(/^"[a-f0-9]{32}"$/);
+        expect(JSON.parse(server.objects.get(channelPath)?.toString() ?? '{}').version).toBe('2.5.0');
+    });
+
+    it('uses an authenticated read to update a private existing channel manifest', async () => {
+        const directory = temporaryDirectory();
+        const fixture = createUploadFixture(directory);
+        const channelPath = '/bucket/xexamai/latest.json';
+        const server = await fakeS3({
+            [channelPath]: JSON.stringify({
+                version: '2.4.0',
+                platforms: {windows: {url: 'old', signature: 'old'}},
+            }),
+        }, 403, true);
+        try {
+            await runScriptAsync(
+                'upload-release-to-s3.mjs',
+                [fixture.artifacts, fixture.publication, 'v2.5.0', 'channel'],
+                {
+                    S3_ENDPOINT: server.endpoint,
+                    S3_BUCKET: 'bucket',
+                    AWS_DEFAULT_REGION: 'test-1',
+                    AWS_ACCESS_KEY_ID: 'test-access',
+                    AWS_SECRET_ACCESS_KEY: 'test-secret',
+                },
+            );
+        } finally {
+            await server.close();
+        }
+
+        const channelPuts = server.puts.filter((item) => item.path === channelPath);
+        expect(channelPuts).toHaveLength(1);
+        expect(channelPuts[0]?.ifMatch).toMatch(/^"[a-f0-9]{32}"$/);
         expect(JSON.parse(server.objects.get(channelPath)?.toString() ?? '{}').version).toBe('2.5.0');
     });
 

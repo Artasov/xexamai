@@ -56,8 +56,58 @@ function cacheBusted(url, parameter) {
     return result;
 }
 
+async function signedGet(url) {
+    const payloadHash = hash('');
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const headers = {
+        host: url.host,
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': amzDate,
+    };
+    if (sessionToken) headers['x-amz-security-token'] = sessionToken;
+    const signedHeaderNames = Object.keys(headers).sort();
+    const canonicalHeaders = signedHeaderNames
+        .map((name) => `${name}:${headers[name].trim()}\n`)
+        .join('');
+    const canonicalRequest = [
+        'GET',
+        url.pathname,
+        '',
+        canonicalHeaders,
+        signedHeaderNames.join(';'),
+        payloadHash,
+    ].join('\n');
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+        'AWS4-HMAC-SHA256',
+        amzDate,
+        scope,
+        hash(canonicalRequest),
+    ].join('\n');
+    const dateKey = hmac(`AWS4${secretKey}`, dateStamp);
+    const regionKey = hmac(dateKey, region);
+    const serviceKey = hmac(regionKey, 's3');
+    const signingKey = hmac(serviceKey, 'aws4_request');
+    const signature = crypto
+        .createHmac('sha256', signingKey)
+        .update(stringToSign)
+        .digest('hex');
+    const authorization = `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaderNames.join(';')}, Signature=${signature}`;
+    return fetch(url, {
+        headers: {...headers, Authorization: authorization},
+        cache: 'no-store',
+    });
+}
+
+async function readObject(url, cacheParameter) {
+    const publicResponse = await fetch(cacheBusted(url, cacheParameter), {cache: 'no-store'});
+    return publicResponse.status === 403 ? signedGet(url) : publicResponse;
+}
+
 async function existingObjectHash(url) {
-    const response = await fetch(cacheBusted(url, 'immutable-check'), {cache: 'no-store'});
+    const response = await readObject(url, 'immutable-check');
     if (isMissingOrUnobservable(response)) return null;
     if (!response.ok) {
         throw new Error(`Could not validate immutable S3 object ${url.pathname}: HTTP ${response.status}`);
@@ -159,7 +209,7 @@ async function uploadImmutable(file, key) {
 }
 
 async function readCanonicalManifest(url) {
-    const response = await fetch(cacheBusted(url, 'canonical-manifest-check'), {cache: 'no-store'});
+    const response = await readObject(url, 'canonical-manifest-check');
     if (isMissingOrUnobservable(response)) return null;
     if (!response.ok) {
         throw new Error(`Could not read immutable release manifest ${url.pathname}: HTTP ${response.status}`);
@@ -295,7 +345,7 @@ function compareChannelManifest(current, candidate, channel) {
 
 async function readChannelManifest(key, channel) {
     const url = objectUrl(key);
-    const response = await fetch(cacheBusted(url, 'release-check'), {cache: 'no-store'});
+    const response = await readObject(url, 'release-check');
     if (isMissingOrUnobservable(response)) return {manifest: null, etag: null};
     if (!response.ok) {
         throw new Error(`Could not validate existing ${channel} manifest: HTTP ${response.status}`);
