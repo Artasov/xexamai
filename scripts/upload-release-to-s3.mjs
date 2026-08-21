@@ -352,10 +352,12 @@ async function readChannelManifest(key, channel) {
     if (!response.ok) {
         throw new Error(`Could not validate existing ${channel} manifest: HTTP ${response.status}`);
     }
-    const etag = response.headers.get('etag');
-    if (!etag) {
+    const responseEtag = response.headers.get('etag');
+    if (!responseEtag) {
         throw new Error(`Existing ${channel} manifest response has no ETag; refusing a non-atomic update`);
     }
+    const etag = responseEtag.replace(/^W\//, '').replace(/^"|"$/g, '');
+    if (!etag) throw new Error(`Existing ${channel} manifest returned an empty ETag`);
     let manifest;
     try {
         manifest = await response.json();
@@ -380,6 +382,11 @@ async function publishChannelManifest(file, key, candidate, channel) {
         const precondition = current.etag
             ? {'if-match': current.etag}
             : {'if-none-match': '*'};
+        console.log(
+            current.etag
+                ? `Promoting ${channel} with If-Match ETag ${current.etag}.`
+                : `Creating absent ${channel} channel with If-None-Match.`,
+        );
         const response = await signedPut(file, key, {mutable: true, precondition});
         if (response.ok) {
             console.log(`Atomically promoted ${channel} channel to ${candidate.version}.`);

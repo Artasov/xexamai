@@ -92,7 +92,7 @@ async function fakeS3(initial: Record<string, string>, missingStatus = 404, priv
             }
             if (
                 (ifNoneMatch === '*' && objects.has(pathname)) ||
-                (typeof ifMatch === 'string' && etags.get(pathname) !== ifMatch)
+                (typeof ifMatch === 'string' && etags.get(pathname)?.replace(/^"|"$/g, '') !== ifMatch.replace(/^"|"$/g, ''))
             ) {
                 response.statusCode = 412;
                 response.end();
@@ -740,7 +740,7 @@ describe('release artifact scripts', () => {
         const channelPuts = server.puts.filter((item) => item.path === channelPath);
         expect(channelPuts).toHaveLength(2);
         expect(channelPuts[0]).toMatchObject({ifNoneMatch: '*'});
-        expect(channelPuts[1]?.ifMatch).toMatch(/^"[a-f0-9]{32}"$/);
+        expect(channelPuts[1]?.ifMatch).toMatch(/^[a-f0-9]{32}$/);
         expect(JSON.parse(server.objects.get(channelPath)?.toString() ?? '{}').version).toBe('2.5.0');
     });
 
@@ -772,7 +772,7 @@ describe('release artifact scripts', () => {
 
         const channelPuts = server.puts.filter((item) => item.path === channelPath);
         expect(channelPuts).toHaveLength(1);
-        expect(channelPuts[0]?.ifMatch).toMatch(/^"[a-f0-9]{32}"$/);
+        expect(channelPuts[0]?.ifMatch).toMatch(/^[a-f0-9]{32}$/);
         expect(JSON.parse(server.objects.get(channelPath)?.toString() ?? '{}').version).toBe('2.5.0');
     });
 
