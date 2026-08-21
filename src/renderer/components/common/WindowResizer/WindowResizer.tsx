@@ -1,4 +1,4 @@
-import {type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef} from 'react';
+import {type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef} from 'react';
 import './WindowResizer.scss';
 
 type Edge =
@@ -35,6 +35,8 @@ type ResizeState = {
     startX: number;
     startY: number;
     startBounds: Bounds | null;
+    pointerId: number;
+    captureTarget: HTMLDivElement;
 };
 
 const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
@@ -42,20 +44,26 @@ const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.
 export const WindowResizer = () => {
     const stateRef = useRef<ResizeState | null>(null);
     const pendingBoundsRef = useRef<Bounds | null>(null);
-    const frameRequestedRef = useRef(false);
+    const applyingBoundsRef = useRef(false);
 
     const requestBoundsUpdate = useCallback((bounds: Bounds) => {
         pendingBoundsRef.current = bounds;
-        if (frameRequestedRef.current) return;
-        frameRequestedRef.current = true;
-        requestAnimationFrame(async () => {
-            frameRequestedRef.current = false;
-            const target = pendingBoundsRef.current;
-            if (target) {
-                pendingBoundsRef.current = null;
-                await window.api.window.setBounds(target);
+        if (applyingBoundsRef.current) return;
+
+        applyingBoundsRef.current = true;
+        void (async () => {
+            try {
+                // Keep only the newest mouse position while a native resize is in
+                // flight, but never let older async calls overtake newer ones.
+                while (pendingBoundsRef.current) {
+                    const target = pendingBoundsRef.current;
+                    pendingBoundsRef.current = null;
+                    await window.api.window.setBounds(target);
+                }
+            } finally {
+                applyingBoundsRef.current = false;
             }
-        });
+        })();
     }, []);
 
     const computeBounds = useCallback((edge: Edge, startBounds: Bounds, dx: number, dy: number): Bounds => {
@@ -97,9 +105,11 @@ export const WindowResizer = () => {
     }, []);
 
     const stopResizing = useCallback(() => {
+        const state = stateRef.current;
+        if (state?.captureTarget.hasPointerCapture(state.pointerId)) {
+            state.captureTarget.releasePointerCapture(state.pointerId);
+        }
         stateRef.current = null;
-        pendingBoundsRef.current = null;
-        frameRequestedRef.current = false;
         document.body.style.userSelect = '';
     }, []);
 
@@ -107,9 +117,9 @@ export const WindowResizer = () => {
         if (!isWindows) return () => {
         };
 
-        const handleMouseMove = (event: globalThis.MouseEvent) => {
+        const handlePointerMove = (event: globalThis.PointerEvent) => {
             const state = stateRef.current;
-            if (!state || !state.startBounds) return;
+            if (!state || state.pointerId !== event.pointerId || !state.startBounds) return;
 
             const dx = event.screenX - state.startX;
             const dy = event.screenY - state.startY;
@@ -119,24 +129,29 @@ export const WindowResizer = () => {
             requestBoundsUpdate(next);
         };
 
-        const handleMouseUp = () => {
+        const handlePointerEnd = (event: globalThis.PointerEvent) => {
+            if (stateRef.current?.pointerId !== event.pointerId) return;
             stopResizing();
         };
 
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerEnd);
+        window.addEventListener('pointercancel', handlePointerEnd);
 
         return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerEnd);
+            window.removeEventListener('pointercancel', handlePointerEnd);
         };
     }, [computeBounds, requestBoundsUpdate, stopResizing]);
 
-    const handleMouseDown = useCallback((edge: Edge) => async (event: ReactMouseEvent<HTMLDivElement>) => {
+    const handlePointerDown = useCallback((edge: Edge) => async (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
         if (!isWindows) return;
 
+        event.currentTarget.setPointerCapture(event.pointerId);
         document.body.style.userSelect = 'none';
 
         stateRef.current = {
@@ -144,6 +159,8 @@ export const WindowResizer = () => {
             startX: event.screenX,
             startY: event.screenY,
             startBounds: null,
+            pointerId: event.pointerId,
+            captureTarget: event.currentTarget,
         };
 
         try {
@@ -168,7 +185,7 @@ export const WindowResizer = () => {
                     key={config.edge}
                     className={config.className}
                     role="presentation"
-                    onMouseDown={handleMouseDown(config.edge)}
+                    onPointerDown={handlePointerDown(config.edge)}
                 />
             ))}
         </div>

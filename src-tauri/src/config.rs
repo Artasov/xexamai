@@ -440,6 +440,39 @@ mod tests {
     }
 
     #[test]
+    fn fresh_install_defaults_to_normal_window_mode() {
+        let config = AppConfig::default();
+        assert!(!config.hide_app);
+        assert_eq!(config.config_version, 1);
+    }
+
+    #[test]
+    fn migrates_incomplete_v3_first_run_out_of_hidden_mode() {
+        let mut config: AppConfig = serde_json::from_value(serde_json::json!({
+            "configVersion": 0,
+            "hideApp": true,
+            "welcomeModalDismissed": false
+        }))
+        .unwrap();
+        config.normalize();
+        assert!(!config.hide_app);
+        assert_eq!(config.config_version, 1);
+    }
+
+    #[test]
+    fn preserves_existing_hidden_mode_after_onboarding() {
+        let mut config: AppConfig = serde_json::from_value(serde_json::json!({
+            "configVersion": 0,
+            "hideApp": true,
+            "welcomeModalDismissed": true
+        }))
+        .unwrap();
+        config.normalize();
+        assert!(config.hide_app);
+        assert_eq!(config.config_version, 1);
+    }
+
+    #[test]
     fn corrupt_config_diagnostic_copy_redacts_legacy_keys() {
         let corrupt =
             r#"{"openaiApiKey":"sk-openai-secret","google_api_key":"google-secret", BROKEN"#;

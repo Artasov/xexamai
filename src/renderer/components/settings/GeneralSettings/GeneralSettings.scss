@@ -13,6 +13,50 @@
   color: #e2e8f0;
 }
 
+.settings-card--logs {
+  gap: 0.65rem;
+}
+
+.settings-logs__diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settings-logs__toggle {
+  margin: 0 !important;
+  align-items: center;
+}
+
+.settings-logs__toggle .MuiCheckbox-root {
+  padding: 0.35rem 0.65rem 0.35rem 0.2rem;
+}
+
+.settings-logs__toggle .MuiFormControlLabel-label {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.settings-logs__description {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.settings-logs__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 430px) {
+  .settings-logs__actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

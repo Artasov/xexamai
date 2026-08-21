@@ -13,6 +13,7 @@ mod ipc_contract;
 mod local_speech;
 mod oauth;
 mod ollama;
+mod openai_live;
 mod provider_proxy;
 mod secret_store;
 mod transcription;
@@ -29,21 +30,21 @@ use audio::AudioManager;
 use auth::AuthQueue;
 use auth_session::AuthSessionState;
 use config::ConfigState;
-use constants::{
-    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH,
-    DEFAULT_WINDOW_WIDTH,
-};
+use constants::{DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH};
 use hotkeys::HotkeyManager;
 use local_speech::FastWhisperManager;
 use once_cell::sync::Lazy;
 use secret_store::{ProviderSecret, SecretStore};
-use tauri::LogicalSize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent};
+use tauri::{LogicalSize, PhysicalPosition};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tray::set_tray_visible;
 use types::{AppConfig, AuthDeepLinkPayload, FastWhisperStatus, JsonValue};
 
 static PENDING_DEEP_LINKS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static PENDING_WINDOW_SHOW: AtomicBool = AtomicBool::new(false);
+
+const WEBVIEW_CREATE_RETRY_DELAYS_MS: [u64; 5] = [0, 150, 350, 700, 1_400];
 
 #[derive(Default)]
 struct ShutdownState {
@@ -254,9 +255,7 @@ static ORIGINAL_WNDPROC_BY_HWND: Lazy<Mutex<std::collections::HashMap<isize, isi
     Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
 
 #[cfg(target_os = "windows")]
-fn is_resize_hit_test(hit_test_code: u16) -> bool {
-    matches!(hit_test_code, 4 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17)
-}
+static MAIN_ROOT_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn force_arrow_cursor_wndproc(
@@ -267,18 +266,40 @@ unsafe extern "system" fn force_arrow_cursor_wndproc(
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallWindowProcW, DefWindowProcW, LoadCursorW, SetCursor, SetWindowLongPtrW, GWLP_WNDPROC,
-        IDC_ARROW, WM_NCDESTROY, WM_SETCURSOR, WNDPROC,
+        CallWindowProcW, DefWindowProcW, GetWindowRect, LoadCursorW, SetCursor, SetWindowLongPtrW,
+        GWLP_WNDPROC, HTBOTTOM, HTTOP, IDC_ARROW, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR,
+        WNDPROC,
     };
 
-    if msg == WM_SETCURSOR {
-        let hit_test = (lparam.0 & 0xFFFF) as u16;
-        if is_resize_hit_test(hit_test) {
-            if let Ok(cursor) = unsafe { LoadCursorW(None, IDC_ARROW) } {
-                let _ = unsafe { SetCursor(Some(cursor)) };
+    if msg == WM_NCHITTEST
+        && hwnd.0 as isize == MAIN_ROOT_HWND.load(std::sync::atomic::Ordering::Acquire)
+    {
+        let mut rect = windows::Win32::Foundation::RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() {
+            // WM_NCHITTEST packs signed screen coordinates into LPARAM. Handle
+            // the vertical edges natively so resizing does not depend on the
+            // WebView receiving a pointer event while its origin is moving.
+            let cursor_x = (lparam.0 as u16 as i16) as i32;
+            let cursor_y = ((lparam.0 >> 16) as u16 as i16) as i32;
+            const VERTICAL_GRIP_PX: i32 = 8;
+            if cursor_x >= rect.left && cursor_x < rect.right {
+                if cursor_y >= rect.top && cursor_y < rect.top + VERTICAL_GRIP_PX {
+                    return LRESULT(HTTOP as isize);
+                }
+                if cursor_y < rect.bottom && cursor_y >= rect.bottom - VERTICAL_GRIP_PX {
+                    return LRESULT(HTBOTTOM as isize);
+                }
             }
-            return LRESULT(1);
         }
+    }
+
+    if msg == WM_SETCURSOR {
+        // Never delegate cursor selection to DefWindowProc: it would replace
+        // the arrow for the HTTOP/HTBOTTOM non-client resize zones.
+        if let Ok(cursor) = unsafe { LoadCursorW(None, IDC_ARROW) } {
+            let _ = unsafe { SetCursor(Some(cursor)) };
+        }
+        return LRESULT(1);
     }
 
     let hwnd_key = hwnd.0 as isize;
@@ -310,14 +331,10 @@ unsafe extern "system" fn force_arrow_cursor_wndproc(
 }
 
 #[cfg(target_os = "windows")]
-fn install_force_default_cursor(window: &tauri::WebviewWindow) {
-    use windows::Win32::Foundation::{GetLastError, SetLastError, HWND, WIN32_ERROR};
+fn subclass_force_arrow_cursor(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Foundation::{GetLastError, SetLastError, WIN32_ERROR};
     use windows::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_WNDPROC};
 
-    let Ok(raw_hwnd) = window.hwnd() else {
-        return;
-    };
-    let hwnd = HWND(raw_hwnd.0);
     let hwnd_key = hwnd.0 as isize;
 
     if ORIGINAL_WNDPROC_BY_HWND
@@ -350,6 +367,43 @@ fn install_force_default_cursor(window: &tauri::WebviewWindow) {
     if let Ok(mut map) = ORIGINAL_WNDPROC_BY_HWND.lock() {
         map.insert(hwnd_key, previous);
     }
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn subclass_child_cursor_window(
+    hwnd: windows::Win32::Foundation::HWND,
+    _lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::core::BOOL {
+    subclass_force_arrow_cursor(hwnd);
+    windows::core::BOOL(1)
+}
+
+#[cfg(target_os = "windows")]
+fn install_force_default_cursor(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumChildWindows, LoadCursorW, SetClassLongPtrW, GCLP_HCURSOR, IDC_ARROW,
+    };
+
+    let Ok(raw_hwnd) = window.hwnd() else {
+        return;
+    };
+
+    // Keep the Windows resize state enabled: the WndProc above supplies reliable
+    // vertical hit-testing while WM_SETCURSOR always substitutes the arrow cursor.
+    let _ = window.set_resizable(true);
+
+    let hwnd = HWND(raw_hwnd.0);
+    MAIN_ROOT_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::Release);
+    subclass_force_arrow_cursor(hwnd);
+
+    // WebView2 owns child HWNDs and can process WM_SETCURSOR after the root
+    // window. Subclass all descendants as well so no later handler can restore
+    // a resize cursor. Re-enumeration is harmless and covers recreated children.
+    if let Ok(cursor) = unsafe { LoadCursorW(None, IDC_ARROW) } {
+        let _ = unsafe { SetClassLongPtrW(hwnd, GCLP_HCURSOR, cursor.0 as isize) };
+    }
+    let _ = unsafe { EnumChildWindows(Some(hwnd), Some(subclass_child_cursor_window), LPARAM(0)) };
 }
 
 #[tauri::command]
@@ -944,6 +998,7 @@ fn apply_window_preferences(
                     DEFAULT_WINDOW_MIN_HEIGHT as f64,
                 )))
                 .map_err(|error| error.to_string())?;
+            center_window_on_primary_work_area(&window)?;
         }
 
         window
@@ -1041,35 +1096,159 @@ fn apply_window_preferences(
     Ok(())
 }
 
+fn center_window_on_primary_work_area(window: &WebviewWindow) -> Result<(), String> {
+    let monitor = window
+        .primary_monitor()
+        .map_err(|error| error.to_string())?
+        .or_else(|| window.current_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return window.center().map_err(|error| error.to_string());
+    };
+
+    let work_area = monitor.work_area();
+    let window_size = window.outer_size().map_err(|error| error.to_string())?;
+    let horizontal_space = work_area.size.width.saturating_sub(window_size.width);
+    let vertical_space = work_area.size.height.saturating_sub(window_size.height);
+    let x = work_area.position.x + (horizontal_space / 2) as i32;
+    let y = work_area.position.y + (vertical_space / 2) as i32;
+
+    window
+        .set_position(PhysicalPosition::new(x, y))
+        .map_err(|error| error.to_string())
+}
+
 pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         #[cfg(target_os = "windows")]
         install_force_default_cursor(&window);
 
+        center_window_on_primary_work_area(&window)?;
         window.show().map_err(|error| error.to_string())?;
         window.set_focus().map_err(|error| error.to_string())?;
         Ok(())
     } else {
-        tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-            .title("XexamAI")
-            .inner_size(DEFAULT_WINDOW_WIDTH as f64, DEFAULT_WINDOW_HEIGHT as f64)
-            .min_inner_size(
-                DEFAULT_WINDOW_MIN_WIDTH as f64,
-                DEFAULT_WINDOW_MIN_HEIGHT as f64,
-            )
-            .decorations(false)
-            .transparent(true)
-            .build()
-            .map_err(|error| error.to_string())?;
-        if let Some(window) = app.get_webview_window("main") {
-            #[cfg(target_os = "windows")]
-            install_force_default_cursor(&window);
-
-            window.show().map_err(|error| error.to_string())?;
-            window.set_focus().map_err(|error| error.to_string())?;
-        }
-        Ok(())
+        PENDING_WINDOW_SHOW.store(true, Ordering::Release);
+        Err("Main window is still starting".to_string())
     }
+}
+
+fn is_webview_resource_busy(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("0x800700aa")
+        || normalized.contains("requested resource is in use")
+        || normalized.contains("resource is busy")
+        || normalized.contains("ресурс занят")
+}
+
+fn create_main_window_with_retry(app: &AppHandle) -> Result<WebviewWindow, String> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "main")
+        .cloned()
+        .ok_or_else(|| "Main window configuration is missing".to_string())?;
+
+    let total_attempts = WEBVIEW_CREATE_RETRY_DELAYS_MS.len();
+    for (index, delay_ms) in WEBVIEW_CREATE_RETRY_DELAYS_MS.into_iter().enumerate() {
+        if delay_ms > 0 {
+            std::thread::sleep(Duration::from_millis(delay_ms));
+        }
+        let builder = tauri::WebviewWindowBuilder::from_config(app, &config)
+            .map_err(|error| error.to_string())?;
+        match builder.build() {
+            Ok(window) => {
+                if index > 0 {
+                    log::info!(
+                        target: "window",
+                        "WebView2 recovered on startup attempt {}",
+                        index + 1
+                    );
+                }
+                return Ok(window);
+            }
+            Err(error) => {
+                let message = error.to_string();
+                if !is_webview_resource_busy(&message) || index + 1 == total_attempts {
+                    return Err(format!(
+                        "Could not create the main WebView after {} attempt(s): {message}",
+                        index + 1
+                    ));
+                }
+                log::warn!(
+                    target: "window",
+                    "WebView2 profile is still busy; retrying startup ({}/{})",
+                    index + 1,
+                    total_attempts
+                );
+            }
+        }
+    }
+
+    Err("Could not create the main WebView".to_string())
+}
+
+fn register_main_window_events(
+    main_window: &WebviewWindow,
+    app_handle: AppHandle,
+    shutdown_state: Arc<ShutdownState>,
+    config_state: Arc<ConfigState>,
+) {
+    #[cfg(target_os = "windows")]
+    install_force_default_cursor(main_window);
+
+    let resize_window = main_window.clone();
+    let pending_size_save = Arc::new(Mutex::new(None::<tauri::async_runtime::JoinHandle<()>>));
+    main_window.on_window_event(move |event| {
+        if let WindowEvent::Resized(physical_size) = event {
+            let scale_factor = resize_window.scale_factor().unwrap_or(1.0);
+            let logical_size = physical_size.to_logical::<u32>(scale_factor);
+
+            // Windows reports zero/tiny dimensions while minimizing. Never
+            // replace the user's real window size with that transient state.
+            if logical_size.width >= DEFAULT_WINDOW_MIN_WIDTH
+                && logical_size.height >= DEFAULT_WINDOW_MIN_HEIGHT
+            {
+                let config = config_state.clone();
+                if let Ok(mut pending) = pending_size_save.lock() {
+                    if let Some(previous) = pending.take() {
+                        previous.abort();
+                    }
+                    *pending = Some(tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(350)).await;
+                        if let Err(error) = config
+                            .update(serde_json::json!({
+                                "windowWidth": logical_size.width,
+                                "windowHeight": logical_size.height,
+                            }))
+                            .await
+                        {
+                            log::warn!(target: "window", "Could not remember resized window: {error}");
+                        }
+                    }));
+                }
+            }
+        }
+
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            if shutdown_state.requested.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            let _ = app_handle.emit_to("main", "app:shutdown-requested", ());
+            let fallback_app = app_handle.clone();
+            let fallback_state = shutdown_state.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                if !fallback_state.completed.load(Ordering::Acquire) {
+                    log::warn!(target: "app", "Renderer shutdown timed out; exiting");
+                    log::logger().flush();
+                    fallback_app.exit(0);
+                }
+            });
+        }
+    });
 }
 
 fn main() {
@@ -1101,7 +1280,9 @@ fn main() {
                     }
                 }
             } else {
-                let _ = show_main_window(app);
+                if let Err(error) = show_main_window(app) {
+                    log::warn!(target: "window", "Could not show window on activation: {error}");
+                }
             }
         }))
         .plugin(tauri_plugin_opener::init())
@@ -1110,6 +1291,8 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_handle = app.handle();
+            let main_window = create_main_window_with_retry(app_handle)
+                .map_err(std::io::Error::other)?;
             ensure_deep_links_registered(app_handle);
             let config_state = Arc::new(tauri::async_runtime::block_on(ConfigState::initialize(
                 app_handle,
@@ -1159,38 +1342,22 @@ fn main() {
             app.manage(shutdown_state.clone());
             app.manage(update::UpdateManager::default());
 
+            register_main_window_events(
+                &main_window,
+                app_handle.clone(),
+                shutdown_state,
+                config_state.clone(),
+            );
             tray::setup(app_handle)?;
             handle_config_effects(app_handle, &initial_config, hotkeys, true);
+            if PENDING_WINDOW_SHOW.swap(false, Ordering::AcqRel) {
+                if let Err(error) = show_main_window(app_handle) {
+                    log::warn!(target: "window", "Could not show pending activation: {error}");
+                }
+            }
             flush_pending_deep_links(app_handle, auth_queue.clone());
             setup_deep_link_listener(app_handle, auth_queue);
             update::start_update_poll(app_handle.clone());
-
-            if let Some(main_window) = app.get_webview_window("main") {
-                #[cfg(target_os = "windows")]
-                install_force_default_cursor(&main_window);
-
-                let app_handle = app_handle.clone();
-                let shutdown_state = shutdown_state.clone();
-                main_window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        if shutdown_state.requested.swap(true, Ordering::AcqRel) {
-                            return;
-                        }
-                        let _ = app_handle.emit_to("main", "app:shutdown-requested", ());
-                        let fallback_app = app_handle.clone();
-                        let fallback_state = shutdown_state.clone();
-                        tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(Duration::from_secs(3)).await;
-                            if !fallback_state.completed.load(Ordering::Acquire) {
-                                log::warn!(target: "app", "Renderer shutdown timed out; exiting");
-                                log::logger().flush();
-                                fallback_app.exit(0);
-                            }
-                        });
-                    }
-                });
-            }
 
             Ok(())
         })
@@ -1253,5 +1420,21 @@ fn ensure_deep_links_registered(app: &AppHandle) {
             log::error!(target: "deep-link", "Failed to register deep link schemes: {error}");
             eprintln!("[deep-link] failed to register schemes: {error}");
         }
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::is_webview_resource_busy;
+
+    #[test]
+    fn recognizes_webview2_resource_busy_errors_only() {
+        assert!(is_webview_resource_busy(
+            "WebView2 error: WindowsError(Error { code: HRESULT(0x800700AA), message: resource })"
+        ));
+        assert!(is_webview_resource_busy("Требуемый ресурс занят."));
+        assert!(!is_webview_resource_busy(
+            "WebView2 runtime is not installed"
+        ));
     }
 }

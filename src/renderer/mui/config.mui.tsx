@@ -23,25 +23,30 @@ const palette = {
 
 const menuScrollbar = {
     scrollbarWidth: 'thin' as const,
-    scrollbarColor: `${palette.primary.main} rgba(139, 92, 246, 0.18)`,
+    scrollbarColor: 'rgba(148, 163, 184, 0.34) transparent',
     '&::-webkit-scrollbar': {
-        width: '10px',
+        width: '5px',
+        height: '5px',
     },
     '&::-webkit-scrollbar-track': {
-        background: 'linear-gradient(180deg, rgba(12,17,27,0.95), rgba(12,17,27,0.75))',
+        background: 'transparent',
         borderRadius: '9999px',
-        boxShadow: 'inset 0 0 0 1px rgba(139, 92, 246, 0.12)',
     },
     '&::-webkit-scrollbar-thumb': {
-        background: 'linear-gradient(180deg, #a78bfa, #8b5cf6) !important',
+        background: 'rgba(148, 163, 184, 0.34) !important',
         borderRadius: '9999px',
-        border: '2px solid rgba(12, 17, 27, 0.9) !important',
-        boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.12) !important',
-        transition: 'background 200ms ease, box-shadow 200ms ease',
+        border: '1px solid transparent !important',
+        backgroundClip: 'padding-box',
+        minHeight: '24px',
+        transition: 'background 160ms ease',
     },
     '&::-webkit-scrollbar-thumb:hover': {
-        background: 'linear-gradient(180deg, #c4b5fd, #8b5cf6) !important',
-        boxShadow: 'inset 0 1px 2px rgba(255, 255, 255, 0.2), 0 0 6px rgba(139, 92, 246, 0.18) !important',
+        background: 'rgba(148, 163, 184, 0.5) !important',
+    },
+    '&::-webkit-scrollbar-button': {
+        display: 'none',
+        width: 0,
+        height: 0,
     },
 };
 

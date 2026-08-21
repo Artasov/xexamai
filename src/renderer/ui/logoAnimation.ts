@@ -27,8 +27,14 @@ export function startLogoAnimation(logoElement: HTMLImageElement, container: HTM
         timers.add(setTimeout(() => {
             logoElement.classList.remove('logo-fade-in');
             logoElement.classList.add('logo-final-state');
-            container.classList.add('final-state');
         }, 2500));
+
+        // Keep the overlay above dialogs until the visual fade-out has
+        // completed; dropping its stacking order earlier makes it disappear
+        // instantly behind the welcome backdrop.
+        timers.add(setTimeout(() => {
+            container.classList.add('final-state');
+        }, 3400));
     };
 
     if (logoElement.complete && logoElement.naturalHeight !== 0) {

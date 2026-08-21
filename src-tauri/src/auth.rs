@@ -249,9 +249,8 @@ pub async fn handle_deep_link(app: AppHandle, queue: Arc<AuthQueue>, url: String
         }
     }
 
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.set_focus();
+    if let Err(error) = crate::show_main_window(&app) {
+        log::warn!(target: "window", "Could not show centered window after OAuth: {error}");
     }
 
     if !queue.queue_or_should_emit(payload.clone()).await {

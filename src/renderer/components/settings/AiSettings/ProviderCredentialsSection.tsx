@@ -1,4 +1,14 @@
-import {Box, Button, TextField, Typography} from '@mui/material';
+import {
+    CircularProgress,
+    IconButton,
+    InputAdornment,
+    TextField,
+    Tooltip,
+    Typography,
+} from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import PublishedWithChangesOutlinedIcon from '@mui/icons-material/PublishedWithChangesOutlined';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 
 type Provider = 'openai' | 'google';
 
@@ -25,6 +35,8 @@ function ProviderKeyField({
     onSave,
     onTest,
 }: ProviderKeyFieldProps) {
+    const hasDraft = Boolean(value.trim());
+
     return (
         <div className="settings-field">
             <TextField
@@ -35,18 +47,55 @@ function ProviderKeyField({
                 placeholder={saved ? 'Saved securely — enter a replacement' : `Enter your ${label} API key`}
                 onChange={(event) => onChange(event.target.value)}
                 fullWidth
+                slotProps={{
+                    input: {
+                        endAdornment: (
+                            <InputAdornment position="end" sx={{gap: 0.1, mr: -0.5}}>
+                                {hasDraft ? (
+                                    <Tooltip title={saved ? 'Replace key' : 'Save key'} arrow>
+                                        <IconButton
+                                            size="small"
+                                            color="primary"
+                                            aria-label={saved ? `Replace ${label} API key` : `Save ${label} API key`}
+                                            onClick={() => void onSave(value)}
+                                        >
+                                            <PublishedWithChangesOutlinedIcon fontSize="small"/>
+                                        </IconButton>
+                                    </Tooltip>
+                                ) : null}
+                                {saved ? (
+                                    <Tooltip title={testing ? 'Testing model…' : 'Test selected model'} arrow>
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                aria-label={`Test ${label} model`}
+                                                disabled={testing}
+                                                onClick={() => void onTest(provider)}
+                                            >
+                                                {testing
+                                                    ? <CircularProgress size={17} thickness={5}/>
+                                                    : <ScienceOutlinedIcon fontSize="small"/>}
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                ) : null}
+                                {saved ? (
+                                    <Tooltip title="Remove saved key" arrow>
+                                        <IconButton
+                                            size="small"
+                                            color="warning"
+                                            aria-label={`Remove ${label} API key`}
+                                            onClick={() => void onSave('')}
+                                        >
+                                            <DeleteOutlineIcon fontSize="small"/>
+                                        </IconButton>
+                                    </Tooltip>
+                                ) : null}
+                            </InputAdornment>
+                        ),
+                    },
+                }}
             />
-            <Box sx={{display: 'flex', gap: .75, mt: .75, flexWrap: 'wrap'}}>
-                <Button size="small" variant="contained" disabled={!value.trim()} onClick={() => void onSave(value)}>
-                    {saved ? 'Replace key' : 'Save key'}
-                </Button>
-                <Button size="small" variant="outlined" disabled={!saved || testing} onClick={() => void onTest(provider)}>
-                    {testing ? 'Testing…' : 'Test model'}
-                </Button>
-                <Button size="small" color="warning" disabled={!saved} onClick={() => void onSave('')}>
-                    Remove
-                </Button>
-            </Box>
             {testMessage ? <Typography variant="caption" color="text.secondary">{testMessage}</Typography> : null}
         </div>
     );

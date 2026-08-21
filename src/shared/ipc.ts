@@ -16,9 +16,8 @@ export type LlmHost = 'api' | 'local';
 
 export type LocalDevice = 'auto' | 'cpu' | 'cuda' | 'metal' | 'gpu';
 
-export type ScreenProcessingProvider = 'openai' | 'google';
-
 export type AppSettings = {
+    configVersion?: number;
     durations: number[];
     durationHotkeys?: Record<number, string>;
     toggleInputHotkey?: string;
@@ -44,13 +43,10 @@ export type AppSettings = {
     localDevice?: LocalDevice;
     apiSttTimeoutMs?: number;
     apiLlmTimeoutMs?: number;
-    screenProcessingTimeoutMs?: number;
     googleApiKey?: string;
     hasOpenaiApiKey?: boolean;
     hasGoogleApiKey?: boolean;
     streamSendHotkey?: string;
-    screenProcessingModel?: ScreenProcessingProvider;
-    screenProcessingPrompt?: string;
     backendDomain?: BackendDomain;
     /** Default for the per-report redacted diagnostics checkbox; never enables content logging. */
     diagnosticsEnabled?: boolean;
@@ -59,14 +55,13 @@ export type AppSettings = {
 export const DEFAULT_LLM_PROMPT =
     'You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code';
 
-export const DEFAULT_SCREEN_PROMPT =
-    'You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate\'s environment, tools, or work. Focus on actionable insights.';
-
 export const DefaultSettings: AppSettings = {
+    configVersion: 1,
     durations: [5, 10, 15, 20, 30, 60],
     toggleInputHotkey: 'g',
     windowOpacity: 100,
     alwaysOnTop: false,
+    hideApp: false,
     welcomeModalDismissed: false,
     audioInputType: 'microphone',
     transcriptionMode: 'api',
@@ -77,11 +72,8 @@ export const DefaultSettings: AppSettings = {
     localWhisperModel: 'base',
     localDevice: 'cpu',
     streamSendHotkey: '~',
-    screenProcessingModel: 'openai',
-    screenProcessingPrompt: DEFAULT_SCREEN_PROMPT,
     apiSttTimeoutMs: 150000,
     apiLlmTimeoutMs: 150000,
-    screenProcessingTimeoutMs: 150000,
     backendDomain: 'xlartas.com',
     diagnosticsEnabled: false,
 };
@@ -127,11 +119,7 @@ export const IPCChannels = {
     AuthConsumeDeepLinks: 'auth:consume-deep-links',
     AuthDeepLink: 'auth:deep-link',
     Log: 'log:entry',
-    SetScreenProcessingModel: 'settings:set:screen-processing-model',
-    SetScreenProcessingPrompt: 'settings:set:screen-processing-prompt',
-    ScreenProcess: 'screen:process',
     ScreenCapture: 'screen:capture',
-    SetScreenProcessingTimeoutMs: 'settings:set:screen-processing-timeout-ms',
 } as const;
 
 export type ProcessAudioArgs = {
@@ -160,6 +148,16 @@ export type AskChatRequest = {
     text: string;
     requestId?: string;
     history?: ChatHistoryMessage[];
+    images?: PromptImageAttachment[];
+};
+
+export type PromptImageAttachment = {
+    id: string;
+    mime: string;
+    base64: string;
+    name?: string;
+    width?: number;
+    height?: number;
 };
 
 export type ChatHistoryMessage = {
@@ -169,22 +167,6 @@ export type ChatHistoryMessage = {
 
 export type StopStreamRequest = {
     requestId?: string;
-};
-
-export type ScreenProcessRequest = {
-    requestId?: string;
-    imageBase64: string;
-    mime: string;
-    width?: number;
-    height?: number;
-    userText?: string;
-    history?: ChatHistoryMessage[];
-};
-
-export type ScreenProcessResponse = {
-    ok: boolean;
-    answer?: string;
-    error?: string;
 };
 
 export type ScreenCaptureResponse = {
@@ -269,9 +251,6 @@ export type AssistantAPI = {
         openConfigFolder: () => Promise<void>;
         openLogsFolder: () => Promise<void>;
         getLogPath: () => Promise<string>;
-        setScreenProcessingModel: (provider: ScreenProcessingProvider) => Promise<void>;
-        setScreenProcessingPrompt: (prompt: string) => Promise<void>;
-        setScreenProcessingTimeoutMs: (timeoutMs: number) => Promise<void>;
         setWelcomeModalDismissed: (dismissed: boolean) => Promise<void>;
         setGoogleApiKey: (key: string) => Promise<void>;
         setStreamSendHotkey: (key: string) => Promise<void>;
@@ -292,8 +271,6 @@ export type AssistantAPI = {
     };
     screen: {
         capture: () => Promise<{ base64: string; width: number; height: number; mime: string }>;
-        process: (payload: ScreenProcessRequest) => Promise<ScreenProcessResponse>;
-        cancel: (requestId: string) => void;
     };
     google: {
         getLiveCapability: () => Promise<{ supported: boolean; configured: boolean; reason?: string | null; model: string }>;
@@ -305,6 +282,14 @@ export type AssistantAPI = {
         sendAudioChunk: (params: { data: string; mime: string }) => void;
         stopLive: () => Promise<void>;
         onMessage: (cb: (message: any) => void) => () => void;
+        onError: (cb: (error: string) => void) => () => void;
+    };
+    openai: {
+        getLiveCapability: () => Promise<{ supported: boolean; configured: boolean; reason?: string | null; model: string }>;
+        startLive: (opts: {prompt?: string}) => Promise<void>;
+        sendAudioChunk: (params: {data: string}) => void;
+        stopLive: () => Promise<void>;
+        onMessage: (cb: (message: Record<string, any>) => void) => () => void;
         onError: (cb: (error: string) => void) => () => void;
     };
     providers: {

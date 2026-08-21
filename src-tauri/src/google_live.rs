@@ -98,19 +98,31 @@ pub async fn google_live_create_token(
             }
         })?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        return Err(match status.as_u16() {
-            400 => "Google Live rejected the selected model or session settings".to_string(),
-            401 | 403 => "Google API key is invalid or does not have Live API access".to_string(),
-            429 => "Google Live rate limit or quota was reached".to_string(),
-            code => format!("Google Live token request failed (HTTP {code})"),
+    let status = response.status();
+    let response_body = response
+        .bytes()
+        .await
+        .map_err(|_| "Google Live returned an unreadable token response".to_string())?;
+    if !status.is_success() {
+        let detail = google_error_message(&response_body);
+        log::warn!(
+            "Google Live token request failed: status={} detail={}",
+            status,
+            detail.as_deref().unwrap_or("unavailable")
+        );
+        return Err(match (status.as_u16(), detail) {
+            (401 | 403, _) => {
+                "Google API key is invalid or does not have Live API access".to_string()
+            }
+            (429, _) => "Google Live rate limit or quota was reached".to_string(),
+            (code, Some(detail)) => {
+                format!("Google Live token request failed (HTTP {code}): {detail}")
+            }
+            (code, None) => format!("Google Live token request failed (HTTP {code})"),
         });
     }
 
-    let token: GoogleAuthTokenResponse = response
-        .json()
-        .await
+    let token: GoogleAuthTokenResponse = serde_json::from_slice(&response_body)
         .map_err(|_| "Google Live returned an invalid token response".to_string())?;
     if token.name.trim().is_empty() {
         return Err("Google Live returned an empty temporary token".to_string());
@@ -127,14 +139,30 @@ fn token_request_body(expire_time: String, new_session_expire_time: String) -> V
         "uses": 1,
         "expireTime": expire_time,
         "newSessionExpireTime": new_session_expire_time,
-        "liveConnectConstraints": {
+        // v1beta AuthToken now accepts the constrained setup directly. The
+        // older `liveConnectConstraints` field is rejected as an unknown field.
+        "bidiGenerateContentSetup": {
             "model": format!("models/{GOOGLE_LIVE_MODEL}"),
-            "config": {
-                "responseModalities": ["AUDIO"],
-                "inputAudioTranscription": {}
-            }
+            "generationConfig": {
+                "responseModalities": ["AUDIO"]
+            },
+            "inputAudioTranscription": {},
+            "sessionResumption": {}
         }
     })
+}
+
+fn google_error_message(body: &[u8]) -> Option<String> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let raw = value
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)?;
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(normalized.chars().take(320).collect())
 }
 
 #[cfg(test)]
@@ -147,15 +175,23 @@ mod tests {
         let body = token_request_body("expiry".into(), "new-session-expiry".into());
         assert_eq!(body["uses"], 1);
         assert_eq!(
-            body["liveConnectConstraints"]["model"],
+            body["bidiGenerateContentSetup"]["model"],
             "models/gemini-3.1-flash-live-preview"
         );
         assert_eq!(
-            body["liveConnectConstraints"]["config"]["responseModalities"][0],
+            body["bidiGenerateContentSetup"]["generationConfig"]["responseModalities"][0],
             "AUDIO"
         );
-        assert!(body["liveConnectConstraints"]["config"]["inputAudioTranscription"].is_object());
+        assert!(body["bidiGenerateContentSetup"]["inputAudioTranscription"].is_object());
+        assert!(body["bidiGenerateContentSetup"]["sessionResumption"].is_object());
         assert_eq!(body["expireTime"], "expiry");
         assert_eq!(body["newSessionExpireTime"], "new-session-expiry");
+    }
+
+    #[test]
+    fn extracts_bounded_google_error_message() {
+        let body = br#"{"error":{"status":"INVALID_ARGUMENT","message":" Unknown   field "}}"#;
+        assert_eq!(google_error_message(body).as_deref(), Some("Unknown field"));
+        assert!(google_error_message(b"not json").is_none());
     }
 }

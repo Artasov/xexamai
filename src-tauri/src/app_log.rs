@@ -402,7 +402,7 @@ pub(crate) fn redact_text(value: &str) -> String {
     ] {
         output = redact_assigned_value(&output, key);
     }
-    redact_bearer_values(&output)
+    redact_openai_credentials(&redact_bearer_values(&output))
 }
 
 pub(crate) fn redact_json(value: &serde_json::Value) -> serde_json::Value {
@@ -483,6 +483,69 @@ fn truncate_chars(value: &str, max: usize) -> String {
         "{}...<truncated>",
         value.chars().take(max).collect::<String>()
     )
+}
+
+fn redact_openai_credentials(value: &str) -> String {
+    const REDACTED: &str = "[REDACTED]";
+    const MIN_PAYLOAD_LEN: usize = 20;
+
+    let mut output = String::with_capacity(value.len());
+    let mut copy_from = 0;
+    let mut index = 0;
+    while index < value.len() {
+        let remaining = &value[index..];
+        let prefix_len = if remaining.starts_with("sk-proj-") {
+            "sk-proj-".len()
+        } else if remaining.starts_with("sk-svcacct-") {
+            "sk-svcacct-".len()
+        } else if remaining.starts_with("sk-") {
+            "sk-".len()
+        } else if remaining.starts_with("ek_") {
+            "ek_".len()
+        } else if remaining.starts_with("ek-") {
+            "ek-".len()
+        } else {
+            index += remaining.chars().next().map(char::len_utf8).unwrap_or(1);
+            continue;
+        };
+
+        let has_left_boundary = value[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !is_openai_credential_character(character));
+        if !has_left_boundary {
+            index += prefix_len;
+            continue;
+        }
+
+        let payload_start = index + prefix_len;
+        let mut end = payload_start;
+        while end < value.len()
+            && value.as_bytes()[end].is_ascii()
+            && is_openai_credential_character(char::from(value.as_bytes()[end]))
+        {
+            end += 1;
+        }
+        let payload = &value.as_bytes()[payload_start..end];
+        let looks_like_credential = payload.len() >= MIN_PAYLOAD_LEN
+            && payload.iter().any(u8::is_ascii_alphabetic)
+            && payload.iter().any(u8::is_ascii_digit);
+        if !looks_like_credential {
+            index += prefix_len;
+            continue;
+        }
+
+        output.push_str(&value[copy_from..index]);
+        output.push_str(REDACTED);
+        copy_from = end;
+        index = end;
+    }
+    output.push_str(&value[copy_from..]);
+    output
+}
+
+fn is_openai_credential_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
 }
 
 fn redact_bearer_values(value: &str) -> String {
@@ -578,6 +641,23 @@ mod tests {
         assert!(!output.contains("abc"));
         assert!(!output.contains("xyz"));
         assert!(output.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redacts_bare_openai_credentials() {
+        for prefix in ["sk-", "sk-proj-", "ek_", "ek-"] {
+            let credential = format!("{prefix}{}", "Ab3c".repeat(8));
+            let input = format!("WebSocket protocol openai-insecure-api-key.{credential}, closed");
+            let output = redact_text(&input);
+            assert!(!output.contains(&credential));
+            assert!(output.contains("[REDACTED]"));
+        }
+    }
+
+    #[test]
+    fn preserves_non_credential_openai_like_text() {
+        let input = "Keep sk-test, ek_value, task-sketch, and sk-this-is-an-ordinary-long-slug.";
+        assert_eq!(redact_text(input), input);
     }
 
     #[test]

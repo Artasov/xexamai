@@ -1,10 +1,16 @@
 {
   "name": "xexamai",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "AI Interview Assistant",
   "author": "xexamai",
-  "license": "GPL-3.0",
+  "license": "MPL-2.0",
   "scripts": {
+    "deps:patch": "node ./scripts/patch-axios-freeze-prototype.mjs",
+    "postinstall": "npm run deps:patch",
+    "predev": "npm run deps:patch",
+    "predev:renderer": "npm run deps:patch",
+    "prebuild": "npm run deps:patch",
+    "prebuild:renderer": "npm run deps:patch",
     "pretauri": "node ./scripts/sync-tauri-version.mjs",
     "bindings:generate": "cargo test --manifest-path src-tauri/Cargo.toml --locked ipc_contract::tests::export_bindings -- --ignored --exact --nocapture",
     "bindings:check": "cargo test --manifest-path src-tauri/Cargo.toml --locked ipc_contract::tests::generated_bindings_are_current -- --exact",

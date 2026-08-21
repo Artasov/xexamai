@@ -1,7 +1,9 @@
 import {
     GEMINI_LLM_MODELS,
+    GOOGLE_LIVE_TRANSCRIBE_MODEL,
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_SIZE_HINTS,
+    OPENAI_LIVE_TRANSCRIBE_MODEL,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
     WINKY_LLM_MODELS,
@@ -33,6 +35,12 @@ export const formatTranscribeLabel = (value: string): string => {
     }
     if (WINKY_TRANSCRIBE_SET.has(value)) {
         return 'Our Transcribe';
+    }
+    if (value === GOOGLE_LIVE_TRANSCRIBE_MODEL) {
+        return 'Google Realtime (Gemini 3.1 Flash Live)';
+    }
+    if (value === OPENAI_LIVE_TRANSCRIBE_MODEL) {
+        return 'OpenAI Realtime (GPT Live Transcribe)';
     }
     if (GOOGLE_TRANSCRIBE_SET.has(value)) {
         return `Google ${toTitle(value)}`;

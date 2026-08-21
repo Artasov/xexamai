@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 const [repository, tag, targetCommitish, outputPath] = process.argv.slice(2);
 const token = process.env.GITHUB_TOKEN;
@@ -20,4 +21,14 @@ if (!response.ok) {
     throw new Error(`GitHub release notes request failed: HTTP ${response.status} ${await response.text()}`);
 }
 const payload = await response.json();
-fs.writeFileSync(outputPath, `${payload.body ?? ''}\n`);
+const generatedNotes = String(payload.body ?? '').trim();
+const curatedNotesPath = path.resolve('release-notes', `${tag}.md`);
+const curatedNotes = fs.existsSync(curatedNotesPath)
+    ? fs.readFileSync(curatedNotesPath, 'utf8').trim()
+    : '';
+const notes = curatedNotes
+    ? [curatedNotes, generatedNotes ? `---\n\n## Commit history\n\n${generatedNotes}` : '']
+        .filter(Boolean)
+        .join('\n\n')
+    : generatedNotes;
+fs.writeFileSync(outputPath, `${notes}\n`);

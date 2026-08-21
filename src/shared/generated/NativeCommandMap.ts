@@ -130,6 +130,14 @@ export type NativeCommandMap = {
         args: undefined;
         result: Awaited<ReturnType<NativeBindings["googleLiveCreateToken"]>>;
     };
+    "openai_live_capability": {
+        args: undefined;
+        result: Awaited<ReturnType<NativeBindings["openaiLiveCapability"]>>;
+    };
+    "openai_live_create_token": {
+        args: undefined;
+        result: Awaited<ReturnType<NativeBindings["openaiLiveCreateToken"]>>;
+    };
     "provider_proxy_request": {
         args: {
             request: Parameters<NativeBindings["providerProxyRequest"]>[0];

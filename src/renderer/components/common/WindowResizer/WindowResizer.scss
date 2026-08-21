@@ -5,12 +5,15 @@
   inset: 0;
   pointer-events: none;
   z-index: 12000;
+  -webkit-app-region: no-drag;
 }
 
 .resize-handle {
   position: fixed;
   pointer-events: auto;
   z-index: 12000;
+  cursor: default !important;
+  -webkit-app-region: no-drag;
 }
 
 .resize-handle--top,
@@ -18,14 +21,16 @@
   left: 16px;
   right: 16px;
   height: 8px;
+  touch-action: none;
 }
 
 .resize-handle--top {
-  top: -2px;
+  top: 0;
+  height: 10px;
 }
 
 .resize-handle--bottom {
-  bottom: -2px;
+  bottom: 0;
 }
 
 .resize-handle--left,
@@ -36,11 +41,11 @@
 }
 
 .resize-handle--left {
-  left: -2px;
+  left: 0;
 }
 
 .resize-handle--right {
-  right: -2px;
+  right: 0;
 }
 
 .resize-handle--top-left,
@@ -52,21 +57,21 @@
 }
 
 .resize-handle--top-left {
-  top: -3px;
-  left: -3px;
+  top: 0;
+  left: 0;
 }
 
 .resize-handle--top-right {
-  top: -3px;
-  right: -3px;
+  top: 0;
+  right: 0;
 }
 
 .resize-handle--bottom-left {
-  bottom: -3px;
-  left: -3px;
+  bottom: 0;
+  left: 0;
 }
 
 .resize-handle--bottom-right {
-  bottom: -3px;
-  right: -3px;
+  bottom: 0;
+  right: 0;
 }

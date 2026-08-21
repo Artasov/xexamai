@@ -36,6 +36,13 @@ export const commands = {
 	 *  model-constrained Live API token. Only the short-lived token crosses IPC.
 	 */
 	googleLiveCreateToken: () => __TAURI_INVOKE<GoogleLiveToken>("google_live_create_token"),
+	openaiLiveCapability: () => __TAURI_INVOKE<OpenAiLiveCapability>("openai_live_capability"),
+	/**
+	 *  Exchanges the long-lived OpenAI key held by the OS credential store for a
+	 *  short-lived client secret bound to a transcription-only Realtime session.
+	 *  The renderer never receives the provider API key.
+	 */
+	openaiLiveCreateToken: () => __TAURI_INVOKE<OpenAiLiveToken>("openai_live_create_token"),
 	providerProxyRequest: (request: ProviderProxyRequest) => __TAURI_INVOKE<ProviderProxyResponse>("provider_proxy_request", { request }),
 	providerProxyStream: (request: ProviderProxyRequest, onEvent: Channel<ProviderStreamEvent>) => __TAURI_INVOKE<null>("provider_proxy_stream", { request, onEvent }),
 	providerProxyCancel: (requestId: string) => __TAURI_INVOKE<null>("provider_proxy_cancel", { requestId }),
@@ -76,6 +83,7 @@ export type ApiOrLocalContract = "api" | "local";
 export type AppConfig = AppConfig_Serialize | AppConfig_Deserialize;
 
 export type AppConfig_Deserialize = {
+	configVersion?: number,
 	backendDomain?: BackendDomainContract,
 	durations?: number[],
 	durationHotkeys?: { [key in number]: string },
@@ -101,16 +109,14 @@ export type AppConfig_Deserialize = {
 	windowScale?: number,
 	apiSttTimeoutMs?: number,
 	apiLlmTimeoutMs?: number,
-	screenProcessingTimeoutMs?: number,
 	streamSendHotkey?: string,
-	screenProcessingModel?: ScreenProviderContract,
-	screenProcessingPrompt?: string,
 	saveRecorderFiles?: boolean,
 	/**  Whether the user opted in to attaching a cleaned diagnostic snapshot to reports. */
 	diagnosticsEnabled?: boolean,
 };
 
 export type AppConfig_Serialize = {
+	configVersion: number,
 	backendDomain: BackendDomainContract,
 	durations: number[],
 	durationHotkeys: { [key in number]: string },
@@ -136,10 +142,7 @@ export type AppConfig_Serialize = {
 	windowScale: number,
 	apiSttTimeoutMs: number,
 	apiLlmTimeoutMs: number,
-	screenProcessingTimeoutMs: number,
 	streamSendHotkey: string,
-	screenProcessingModel: ScreenProviderContract,
-	screenProcessingPrompt: string,
 	saveRecorderFiles: boolean,
 	/**  Whether the user opted in to attaching a cleaned diagnostic snapshot to reports. */
 	diagnosticsEnabled: boolean,
@@ -240,6 +243,18 @@ export type LocalDeviceContract = "auto" | "cpu" | "cuda" | "metal" | "gpu";
 
 export type OllamaStreamEvent = { kind: "chunk"; dataBase64: string } | { kind: "done" };
 
+export type OpenAiLiveCapability = {
+	supported: boolean,
+	configured: boolean,
+	model: string,
+	reason: string | null,
+};
+
+export type OpenAiLiveToken = {
+	token: string,
+	model: string,
+};
+
 export type ProviderModelTestRequest = {
 	provider: string,
 	model: string,
@@ -279,8 +294,6 @@ export type PublicAppConfig_Serialize = {
 	hasOpenaiApiKey: boolean,
 	hasGoogleApiKey: boolean,
 } & AppConfig_Serialize;
-
-export type ScreenProviderContract = "openai" | "google";
 
 export type TranscriptionRequest = {
 	request_id?: string | null,

@@ -40,11 +40,11 @@ use crate::constants::{
     BACKEND_DOMAIN_RU, DEFAULT_API_LLM_TIMEOUT_MS, DEFAULT_API_STT_TIMEOUT_MS,
     DEFAULT_AUDIO_INPUT_TYPE, DEFAULT_BACKEND_DOMAIN, DEFAULT_DURATIONS, DEFAULT_LLM_HOST,
     DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE, DEFAULT_LOCAL_LLM_MODEL, DEFAULT_LOCAL_WHISPER_MODEL,
-    DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL, DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS,
-    DEFAULT_SCREEN_PROMPT, DEFAULT_SCREEN_PROVIDER, DEFAULT_STREAM_SEND_HOTKEY,
+    DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL, DEFAULT_STREAM_SEND_HOTKEY,
     DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE, DEFAULT_TRANSCRIPTION_PROMPT,
     DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH,
     DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE, DEFAULT_WINDOW_WIDTH,
+    LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT, LEGACY_VERBOSE_LLM_PROMPT,
 };
 
 const VALID_LOCAL_DEVICES: &[&str] = &["auto", "cpu", "cuda", "metal", "gpu"];
@@ -150,14 +150,6 @@ fn default_stream_hotkey() -> String {
     DEFAULT_STREAM_SEND_HOTKEY.to_string()
 }
 
-fn default_screen_model() -> String {
-    DEFAULT_SCREEN_PROVIDER.to_string()
-}
-
-fn default_screen_prompt() -> String {
-    DEFAULT_SCREEN_PROMPT.to_string()
-}
-
 fn default_backend_domain() -> String {
     DEFAULT_BACKEND_DOMAIN.to_string()
 }
@@ -207,14 +199,6 @@ enum WhisperModelContract {
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "lowercase")]
-enum ScreenProviderContract {
-    Openai,
-    Google,
-}
-
-#[allow(dead_code)]
-#[derive(Serialize, Deserialize, specta::Type)]
 enum BackendDomainContract {
     #[serde(rename = "xlartas.com")]
     Com,
@@ -225,6 +209,8 @@ enum BackendDomainContract {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    #[serde(default)]
+    pub config_version: u32,
     #[serde(default = "default_backend_domain")]
     #[specta(type = BackendDomainContract)]
     pub backend_domain: String,
@@ -290,15 +276,8 @@ pub struct AppConfig {
     pub api_stt_timeout_ms: u32,
     #[serde(default = "default_api_llm_timeout")]
     pub api_llm_timeout_ms: u32,
-    #[serde(default = "default_screen_timeout")]
-    pub screen_processing_timeout_ms: u32,
     #[serde(default = "default_stream_hotkey")]
     pub stream_send_hotkey: String,
-    #[serde(default = "default_screen_model")]
-    #[specta(type = ScreenProviderContract)]
-    pub screen_processing_model: String,
-    #[serde(default = "default_screen_prompt")]
-    pub screen_processing_prompt: String,
     #[serde(default)]
     pub save_recorder_files: bool,
     /// Whether the user opted in to attaching a cleaned diagnostic snapshot to reports.
@@ -315,8 +294,10 @@ fn default_window_height() -> u32 {
 }
 
 fn default_hide_app() -> bool {
-    true
+    false
 }
+
+const CURRENT_CONFIG_VERSION: u32 = 1;
 
 fn default_transcription_prompt() -> String {
     DEFAULT_TRANSCRIPTION_PROMPT.to_string()
@@ -330,13 +311,10 @@ fn default_api_llm_timeout() -> u32 {
     DEFAULT_API_LLM_TIMEOUT_MS
 }
 
-fn default_screen_timeout() -> u32 {
-    DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS
-}
-
 impl Default for AppConfig {
     fn default() -> Self {
         let mut cfg = Self {
+            config_version: CURRENT_CONFIG_VERSION,
             backend_domain: default_backend_domain(),
             openai_api_key: None,
             google_api_key: None,
@@ -357,17 +335,14 @@ impl Default for AppConfig {
             local_device: default_local_device(),
             window_opacity: DEFAULT_WINDOW_OPACITY,
             always_on_top: false,
-            hide_app: true,
+            hide_app: false,
             welcome_modal_dismissed: false,
             window_width: DEFAULT_WINDOW_WIDTH,
             window_height: DEFAULT_WINDOW_HEIGHT,
             window_scale: DEFAULT_WINDOW_SCALE,
             api_stt_timeout_ms: DEFAULT_API_STT_TIMEOUT_MS,
             api_llm_timeout_ms: DEFAULT_API_LLM_TIMEOUT_MS,
-            screen_processing_timeout_ms: DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS,
             stream_send_hotkey: default_stream_hotkey(),
-            screen_processing_model: default_screen_model(),
-            screen_processing_prompt: default_screen_prompt(),
             save_recorder_files: false,
             diagnostics_enabled: false,
         };
@@ -378,6 +353,16 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn normalize(&mut self) {
+        // v3.0.0 accidentally defaulted fresh installations to stealth mode.
+        // Migrate only configs that never completed first-run onboarding so an
+        // existing user's explicit hidden-mode preference remains untouched.
+        if self.config_version < CURRENT_CONFIG_VERSION {
+            if !self.welcome_modal_dismissed {
+                self.hide_app = false;
+            }
+            self.config_version = CURRENT_CONFIG_VERSION;
+        }
+
         if self.backend_domain != DEFAULT_BACKEND_DOMAIN && self.backend_domain != BACKEND_DOMAIN_RU
         {
             self.backend_domain = default_backend_domain();
@@ -406,7 +391,9 @@ impl AppConfig {
             self.transcription_model = DEFAULT_OPENAI_TRANSCRIPTION_MODEL.to_string();
         }
         self.transcription_model = migrate_retired_gemini_model(&self.transcription_model);
-        if self.transcription_prompt.trim().is_empty() {
+        if self.transcription_prompt.trim().is_empty()
+            || self.transcription_prompt.trim() == LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT
+        {
             self.transcription_prompt = DEFAULT_TRANSCRIPTION_PROMPT.to_string();
         }
         if self.llm_model.trim().is_empty() {
@@ -420,7 +407,8 @@ impl AppConfig {
         if self.local_llm_model.trim().is_empty() {
             self.local_llm_model = DEFAULT_LOCAL_LLM_MODEL.to_string();
         }
-        if self.llm_prompt.trim().is_empty() {
+        if self.llm_prompt.trim().is_empty() || self.llm_prompt.trim() == LEGACY_VERBOSE_LLM_PROMPT
+        {
             self.llm_prompt = DEFAULT_LLM_PROMPT.to_string();
         }
         if !matches!(self.transcription_mode.as_str(), "api" | "local") {
@@ -459,17 +447,9 @@ impl AppConfig {
 
         self.api_stt_timeout_ms = self.api_stt_timeout_ms.clamp(1_000, 600_000);
         self.api_llm_timeout_ms = self.api_llm_timeout_ms.clamp(1_000, 600_000);
-        self.screen_processing_timeout_ms = self.screen_processing_timeout_ms.clamp(1_000, 600_000);
 
         self.stream_send_hotkey = normalize_hotkey(&self.stream_send_hotkey)
             .unwrap_or_else(|| DEFAULT_STREAM_SEND_HOTKEY.to_string());
-
-        if self.screen_processing_model != "openai" && self.screen_processing_model != "google" {
-            self.screen_processing_model = DEFAULT_SCREEN_PROVIDER.to_string();
-        }
-        if self.screen_processing_prompt.trim().is_empty() {
-            self.screen_processing_prompt = DEFAULT_SCREEN_PROMPT.to_string();
-        }
     }
 }
 
@@ -559,5 +539,83 @@ impl FastWhisperStatus {
             base_url: None,
             updated_at: Utc::now().timestamp_millis(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_screen_settings_are_ignored_and_not_serialized() {
+        let config: AppConfig = serde_json::from_value(serde_json::json!({
+            "screenProcessingModel": "google",
+            "screenProcessingPrompt": "legacy prompt",
+            "screenProcessingTimeoutMs": 42_000
+        }))
+        .expect("legacy config remains readable");
+        let serialized = serde_json::to_value(config).expect("config serializes");
+        assert!(serialized.get("screenProcessingModel").is_none());
+        assert!(serialized.get("screenProcessingPrompt").is_none());
+        assert!(serialized.get("screenProcessingTimeoutMs").is_none());
+    }
+
+    #[test]
+    fn legacy_translating_prompt_migrates_to_multilingual_default() {
+        let mut config = AppConfig {
+            transcription_prompt: LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT.to_string(),
+            ..AppConfig::default()
+        };
+
+        config.normalize();
+
+        assert_eq!(config.transcription_prompt, DEFAULT_TRANSCRIPTION_PROMPT);
+        assert!(config
+            .transcription_prompt
+            .contains("original spoken language"));
+        assert!(config.transcription_prompt.contains("code-switching"));
+    }
+
+    #[test]
+    fn custom_transcription_prompt_is_preserved() {
+        let mut config = AppConfig {
+            transcription_prompt: "Keep product-specific terminology verbatim.".to_string(),
+            ..AppConfig::default()
+        };
+
+        config.normalize();
+
+        assert_eq!(
+            config.transcription_prompt,
+            "Keep product-specific terminology verbatim."
+        );
+    }
+
+    #[test]
+    fn legacy_verbose_llm_prompt_migrates_to_concise_answer_first_default() {
+        let mut config = AppConfig {
+            llm_prompt: LEGACY_VERBOSE_LLM_PROMPT.to_string(),
+            ..AppConfig::default()
+        };
+
+        config.normalize();
+
+        assert_eq!(config.llm_prompt, DEFAULT_LLM_PROMPT);
+        assert!(config.llm_prompt.contains("Start immediately"));
+        assert!(config.llm_prompt.contains("50–120 words"));
+        assert!(!config.llm_prompt.contains("Provide detailed"));
+    }
+
+    #[test]
+    fn custom_llm_prompt_is_preserved() {
+        let custom = "Answer with a haiku and one code example.";
+        let mut config = AppConfig {
+            llm_prompt: custom.to_string(),
+            ..AppConfig::default()
+        };
+
+        config.normalize();
+
+        assert_eq!(config.llm_prompt, custom);
     }
 }

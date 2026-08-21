@@ -10,8 +10,15 @@ describe('reconcileRealtimeTranscript', () => {
     });
 
     it('appends a disjoint next transcription segment', () => {
-        expect(reconcileRealtimeTranscript('Question hello', 'hello', 'from audio'))
+        expect(reconcileRealtimeTranscript('Question hello', 'hello', ' from audio'))
             .toBe('Question hello from audio');
+    });
+
+    it('preserves provider boundaries when a word is split across chunks', () => {
+        let current = reconcileRealtimeTranscript('', '', ' Ho');
+        current = reconcileRealtimeTranscript(current, ' Ho', 'w');
+        current = reconcileRealtimeTranscript(current, 'w', ' are');
+        expect(current).toBe('How are');
     });
 
     it('does not overwrite user edits after a prior partial', () => {

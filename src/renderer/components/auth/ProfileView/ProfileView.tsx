@@ -46,19 +46,20 @@ export function ProfileView() {
 
     return (
         <div className="fc gap-2">
-            <div className="card fc gap-1 p-6 text-center">
-                <div className={'frsc gap-4'}>
+            <div className="card p-4">
+                <div className="flex items-center gap-3">
                     <div
-                        className="frcc h-20 w-20 rounded-full border border-white/10 bg-white/5 text-2xl font-semibold">
-                        {user.avatar ? <img className={'rounded-full'} src={user.avatar} alt=""/> : '👤'}
+                        className="frcc h-16 w-16 shrink-0 overflow-hidden rounded-full border border-white/10 bg-white/5 text-xl font-semibold">
+                        {user.avatar ? (
+                            <img className="h-full w-full object-cover" src={user.avatar} alt=""/>
+                        ) : '👤'}
                     </div>
-                    <div className={'fc gap-2'}>
-                        <div className={'fcss gap-0'}>
-                            <div className={'frcc'}>
-                                <h2 className="text-xl font-semibold text-white">
-                                    {user.username || user.email}
-                                </h2>
-                                <div className="frcc mt-2">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                            <h2 className="truncate text-lg font-semibold leading-tight text-white">
+                                {user.username || user.email}
+                            </h2>
+                            <div className="flex shrink-0 items-center gap-0.5">
                                     <Tooltip title="Refresh account" arrow>
                                         <span>
                                             <IconButton
@@ -67,7 +68,7 @@ export function ProfileView() {
                                                 onClick={() => void refreshProfile()}
                                                 aria-label="Refresh account"
                                                 sx={{
-                                                    mb: '4px',
+                                                    p: 0.5,
                                                     color: 'rgba(255, 255, 255, 0.7)',
                                                     '&:hover': {
                                                         color: 'rgba(255, 255, 255, 0.9)',
@@ -89,8 +90,9 @@ export function ProfileView() {
                                         <IconButton
                                             size={'small'}
                                             onClick={signOut}
+                                            aria-label="Log out"
                                             sx={{
-                                                mb: '4px',
+                                                p: 0.5,
                                                 color: 'rgba(255, 255, 255, 0.7)',
                                                 '&:hover': {
                                                     color: 'rgba(255, 255, 255, 0.9)',
@@ -101,46 +103,34 @@ export function ProfileView() {
                                             <Logout sx={{width: 16, height: 16}}/>
                                         </IconButton>
                                     </Tooltip>
-                                </div>
                             </div>
-                            <p className="text-sm text-gray-400">{user.email}</p>
-                            {refreshError ? <p className="text-xs text-amber-300">{refreshError}</p> : null}
                         </div>
-                        <div className="frcc flex-wrap gap-2 text-xs text-gray-300">
-                            {user.is_email_confirmed &&
-                                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">
-                                Email confirmed
-                            </span>}
-                            {user.timezone ? (
-                                <span className="rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-1">
-                                    Timezone: {typeof user.timezone === 'string' ? user.timezone : 'Custom'}
-                                </span>
-                            ) : null}
-                        </div>
+                        <p className="mt-1 truncate text-sm text-gray-400">{user.email}</p>
+                        {refreshError ? <p className="mt-1 text-xs text-amber-300">{refreshError}</p> : null}
                     </div>
                 </div>
             </div>
 
             {tiersAndFeatures ? (
-                <div className="card fc gap-4 p-6">
-                    <h3 className="text-lg font-semibold text-white">XEXAI Token & Tier</h3>
-                    <div className="fc gap-3">
-                        <div className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
-                            <span className="text-sm text-gray-400">Balance</span>
-                            <span className="text-base font-semibold text-white">
+                <div className="card fc gap-2.5 p-4">
+                    <h3 className="text-base font-semibold text-white">XEXAI Token & Tier</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="min-w-0 rounded-md border border-white/10 bg-white/5 px-3 py-2">
+                            <span className="block text-xs text-gray-400">Balance</span>
+                            <span className="mt-0.5 block truncate text-sm font-semibold text-white">
                                 {formatBalance((activeTierInfo?.balance) || '0')} {activeTierInfo?.ticker || ''}
                             </span>
                         </div>
-                        <div className="frbc gap-4 p-3 rounded-md border border-white/10 bg-white/5">
-                            <span className="text-sm text-gray-400">Active Tier</span>
-                            <span className="text-base font-semibold text-white">
+                        <div className="min-w-0 rounded-md border border-white/10 bg-white/5 px-3 py-2">
+                            <span className="block text-xs text-gray-400">Active Tier</span>
+                            <span className="mt-0.5 block truncate text-sm font-semibold text-white">
                                 {activeTierInfo?.tier || 'No active tier'}
                             </span>
                         </div>
-                        {tiersAndFeatures.active_tier?.description ? (
-                            <p className="text-sm text-gray-400 italic">{tiersAndFeatures.active_tier.description}</p>
-                        ) : null}
                     </div>
+                    {tiersAndFeatures.active_tier?.description ? (
+                        <p className="text-xs text-gray-400 italic">{tiersAndFeatures.active_tier.description}</p>
+                    ) : null}
                 </div>
             ) : null}
 

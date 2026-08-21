@@ -868,7 +868,7 @@ describe('release artifact scripts', () => {
         expect(server.objects.get(channelPath)?.toString()).toBe(original);
     });
 
-    it('repairs a partial draft release, preserves matching bytes and publishes an exact set', async () => {
+    it('removes interrupted draft assets and publishes an S3-links-only release', async () => {
         const directory = temporaryDirectory();
         const fixture = createGitHubFixture(directory, {
             'app.bin': 'correct application',
@@ -886,37 +886,31 @@ describe('release artifact scripts', () => {
                 {name: 'stale.bin', content: 'stale'},
             ],
         });
-        const preservedId = [...server.assets.values()].find((asset) => asset.name === 'app.bin')?.id;
         try {
             await runScriptAsync(
                 'reconcile-github-release.mjs',
-                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, fixture.artifacts, 'false'],
+                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, 'false'],
                 {GITHUB_API_URL: server.endpoint, GH_TOKEN: 'test-token'},
             );
         } finally {
             await server.close();
         }
 
-        expect(server.deletes.sort()).toEqual(['app.sig', 'stale.bin']);
-        expect(server.uploads.sort()).toEqual(['app.sig', 'manual.txt']);
-        expect([...server.assets.values()].find((asset) => asset.name === 'app.bin')?.id).toBe(preservedId);
-        expect([...server.assets.values()].map((asset) => asset.name).sort()).toEqual([
-            'app.bin',
-            'app.sig',
-            'manual.txt',
-        ]);
+        expect(server.deletes.sort()).toEqual(['app.bin', 'app.sig', 'stale.bin']);
+        expect(server.uploads).toEqual([]);
+        expect([...server.assets.values()]).toEqual([]);
         expect(server.release).toMatchObject({draft: false, name: 'v2.5.0', body: 'Release body'});
         expect(server.patches).toHaveLength(1);
     });
 
-    it('creates a missing release as a draft before uploading and publishing it', async () => {
+    it('creates and publishes a missing release without attaching binaries', async () => {
         const directory = temporaryDirectory();
         const fixture = createGitHubFixture(directory, {'app.bin': 'application'});
         const server = await fakeGitHub({exists: false, tagLookupHidesDrafts: true});
         try {
             await runScriptAsync(
                 'reconcile-github-release.mjs',
-                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, fixture.artifacts, 'false'],
+                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, 'false'],
                 {GITHUB_API_URL: server.endpoint, GH_TOKEN: 'test-token'},
             );
         } finally {
@@ -924,11 +918,12 @@ describe('release artifact scripts', () => {
         }
 
         expect(server.creates).toBe(1);
-        expect(server.uploads).toEqual(['app.bin']);
+        expect(server.uploads).toEqual([]);
+        expect([...server.assets.values()]).toEqual([]);
         expect(server.release).toMatchObject({draft: false, name: 'v2.5.0'});
     });
 
-    it('does not mutate a published release with a mismatched asset', async () => {
+    it('does not mutate assets on an already-published historical release', async () => {
         const directory = temporaryDirectory();
         const fixture = createGitHubFixture(directory, {
             'app.bin': 'correct application',
@@ -939,11 +934,11 @@ describe('release artifact scripts', () => {
             assets: [{name: 'app.bin', content: 'wrong application'}],
         });
         try {
-            await expect(runScriptAsync(
+            await runScriptAsync(
                 'reconcile-github-release.mjs',
-                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, fixture.artifacts, 'false'],
+                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, 'false'],
                 {GITHUB_API_URL: server.endpoint, GH_TOKEN: 'test-token'},
-            )).rejects.toThrow();
+            );
         } finally {
             await server.close();
         }
@@ -955,32 +950,7 @@ describe('release artifact scripts', () => {
         expect(server.release).toMatchObject({draft: false});
     });
 
-    it('does not fill in a missing asset on an already-published release', async () => {
-        const directory = temporaryDirectory();
-        const fixture = createGitHubFixture(directory, {
-            'app.bin': 'application',
-            'app.sig': 'signature',
-        });
-        const server = await fakeGitHub({
-            draft: false,
-            assets: [{name: 'app.bin', content: 'application'}],
-        });
-        try {
-            await expect(runScriptAsync(
-                'reconcile-github-release.mjs',
-                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, fixture.artifacts, 'false'],
-                {GITHUB_API_URL: server.endpoint, GH_TOKEN: 'test-token'},
-            )).rejects.toThrow();
-        } finally {
-            await server.close();
-        }
-
-        expect(server.uploads).toEqual([]);
-        expect(server.deletes).toEqual([]);
-        expect(server.patches).toEqual([]);
-    });
-
-    it('accepts an exact published asset set without rewriting historical release notes', async () => {
+    it('accepts a published release without rewriting historical release notes', async () => {
         const directory = temporaryDirectory();
         const fixture = createGitHubFixture(directory, {'app.bin': 'application'});
         const server = await fakeGitHub({
@@ -992,7 +962,7 @@ describe('release artifact scripts', () => {
         try {
             await runScriptAsync(
                 'reconcile-github-release.mjs',
-                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, fixture.artifacts, 'false'],
+                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, 'false'],
                 {GITHUB_API_URL: server.endpoint, GH_TOKEN: 'test-token'},
             );
         } finally {
@@ -1016,7 +986,7 @@ describe('release artifact scripts', () => {
         try {
             await expect(runScriptAsync(
                 'reconcile-github-release.mjs',
-                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, fixture.artifacts, 'false'],
+                ['acme/xexamai', 'v2.5.0', 'commit-sha', fixture.bodyFile, 'false'],
                 {GITHUB_API_URL: server.endpoint, GH_TOKEN: 'test-token'},
             )).rejects.toThrow();
         } finally {

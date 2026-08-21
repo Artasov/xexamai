@@ -1,10 +1,12 @@
-import {useEffect, useRef, type KeyboardEvent} from 'react';
+import {useEffect, useRef, type ClipboardEvent, type KeyboardEvent} from 'react';
 import {TextField} from '@mui/material';
+import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import {createNewChat} from '../../ui/outputs';
 import type {useRendererSession} from '../../hooks/useRendererSession';
 import type {AppState} from '../../state/appState';
 import {ChatHistory} from '../history/ChatHistory';
 import {registerWaveCanvas} from '../../ui/waveform';
+import {imagePreviewUrl} from '../../utils/promptImages';
 
 type RendererController = ReturnType<typeof useRendererSession>;
 
@@ -66,32 +68,40 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
     const handleQuestionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey)) return;
         event.preventDefault();
-        if (!appState.isProcessing && renderer.question.trim()) submitQuestion();
+        if (!appState.isProcessing && (renderer.question.trim() || renderer.promptImages.length)) submitQuestion();
+    };
+    const handleQuestionPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+        const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'));
+        if (!images.length) return;
+        event.preventDefault();
+        void renderer.addPastedImages(images);
     };
 
     return (
         <section className="flex flex-col gap-4 overflow-auto md:flex-row">
             <div className="card h-min flex-grow md:max-w-[340px] min-w-[305px]">
-                <div className={`send-last-container ${appState.isRecording ? 'expanded mb-2' : ''}`}>
-                    <div className="label mb-2">Send the last:</div>
-                    <div className="flex flex-wrap gap-2">
-                        {renderer.settings.durations.map((seconds) => (
-                            <button
-                                key={seconds}
-                                className="btn btn-secondary fcsc !px-1 !pb-1 !pt-0"
-                                type="button"
-                                onClick={() => void renderer.askWindow(seconds)}
-                            >
-                                <span>{seconds}s</span>
-                                {renderer.settings.durationHotkeys[seconds] ? (
-                                    <span className="hk text-xs text-gray-400 font-extralight">
-                                        Ctrl-{String(renderer.settings.durationHotkeys[seconds]).toUpperCase()}
-                                    </span>
-                                ) : null}
-                            </button>
-                        ))}
+                {!renderer.settings.realtimeTranscription ? (
+                    <div className={`send-last-container ${appState.isRecording ? 'expanded mb-2' : ''}`}>
+                        <div className="label mb-2">Send the last:</div>
+                        <div className="flex flex-wrap gap-2">
+                            {renderer.settings.durations.map((seconds) => (
+                                <button
+                                    key={seconds}
+                                    className="btn btn-secondary fcsc !px-1 !pb-1 !pt-0"
+                                    type="button"
+                                    onClick={() => void renderer.askWindow(seconds)}
+                                >
+                                    <span>{seconds}s</span>
+                                    {renderer.settings.durationHotkeys[seconds] ? (
+                                        <span className="hk text-xs text-gray-400 font-extralight">
+                                            Ctrl-{String(renderer.settings.durationHotkeys[seconds]).toUpperCase()}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                ) : null}
 
                 <div className="mt-2 flex items-center gap-4">
                     <button
@@ -118,7 +128,8 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                     <button
                         type="button"
                         className="btn btn-secondary"
-                        aria-label="Capture and analyze screenshot"
+                        aria-label="Capture screenshot and attach"
+                        title="Capture screenshot and attach"
                         disabled={!renderer.ready || appState.isProcessing}
                         onClick={() => void renderer.captureScreenshot()}
                     >
@@ -127,34 +138,50 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                 </div>
 
                 <div className="mt-2 flex flex-col">
-                    <div className="flex items-end gap-2">
-                        <div className="flex-grow">
-                            <TextField
-                                value={renderer.question}
-                                onChange={(event) => renderer.setQuestion(event.target.value)}
-                                onKeyDown={handleQuestionKeyDown}
-                                placeholder="Ask a question..."
-                                fullWidth
-                                variant="outlined"
-                                size="small"
-                                multiline
-                                minRows={1}
-                                maxRows={7}
-                                inputProps={{'aria-label': 'Question for the assistant'}}
-                                sx={{'& .MuiInputBase-root': {alignItems: 'flex-start'}}}
-                            />
+                    {renderer.promptImages.length ? (
+                        <div className="prompt-image-strip" aria-label="Attached images">
+                            {renderer.promptImages.map((image) => (
+                                <div className="prompt-image" key={image.id}>
+                                    <img src={imagePreviewUrl(image)} alt={image.name || 'Attached image'}/>
+                                    <button
+                                        type="button"
+                                        className="prompt-image__remove"
+                                        aria-label={`Remove ${image.name || 'attached image'}`}
+                                        title="Remove image"
+                                        onClick={() => renderer.removePromptImage(image.id)}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
                         </div>
-                        <button
-                            className="btn btn-primary"
-                            type="button"
-                            disabled={!renderer.ready || appState.isProcessing || !renderer.question.trim()}
-                            aria-label="Send question"
-                            onClick={submitQuestion}
-                        >
-                            Send
-                        </button>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                    ) : null}
+                    <TextField
+                        value={renderer.question}
+                        onChange={(event) => renderer.setQuestion(event.target.value)}
+                        onKeyDown={handleQuestionKeyDown}
+                        onPaste={handleQuestionPaste}
+                        placeholder="Ask a question..."
+                        fullWidth
+                        variant="outlined"
+                        size="small"
+                        multiline
+                        minRows={1}
+                        maxRows={7}
+                        inputProps={{'aria-label': 'Question for the assistant'}}
+                        sx={{
+                            '& .MuiInputBase-root': {
+                                alignItems: 'flex-start',
+                                minHeight: '36px',
+                                padding: '6px 10px',
+                            },
+                            '& .MuiInputBase-inputMultiline': {
+                                padding: 0,
+                                lineHeight: 1.45,
+                            },
+                        }}
+                    />
+                    <div className="mt-2 flex w-full flex-wrap items-center gap-2">
                         {stopVisible ? (
                             <button
                                 className="btn btn-secondary !px-2 !py-1 text-xs"
@@ -179,6 +206,16 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                             onClick={onOpenHistory}
                         >
                             History
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-primary ml-auto inline-flex items-center gap-1 !px-2 !py-1 text-xs"
+                            disabled={!renderer.ready || appState.isProcessing || (!renderer.question.trim() && !renderer.promptImages.length)}
+                            aria-label="Send question"
+                            onClick={submitQuestion}
+                        >
+                            <SendRoundedIcon aria-hidden="true" sx={{fontSize: 14}}/>
+                            <span>Send</span>
                         </button>
                     </div>
                 </div>

@@ -7,15 +7,16 @@ export function BetaFeedbackWidget() {
     const [isModalOpen, setModalOpen] = useState(false);
 
     return (
-        <div className="relative flex items-end">
+        <div className="relative flex items-center">
             <button
                 type="button"
                 aria-label="Report a bug"
-                className="pointer-events-auto flex items-center justify-center rounded-full border border-white/10 bg-black/40 p-2 text-gray-100 shadow-lg transition hover:bg-black/60"
-                style={{cursor: 'pointer'}}
+                title="Report a bug"
+                className="close window-control-icon"
                 onClick={() => setModalOpen(true)}
+                onFocus={(event) => event.currentTarget.blur()}
             >
-                <BugReportIcon fontSize="small"/>
+                <BugReportIcon sx={{fontSize: 16}} aria-hidden="true"/>
             </button>
             <BugReportModal
                 open={isModalOpen}

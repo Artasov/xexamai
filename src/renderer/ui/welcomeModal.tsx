@@ -10,7 +10,6 @@ import {
     DialogContent,
     DialogTitle,
     FormControlLabel,
-    Stack,
     Typography,
 } from '@mui/material';
 
@@ -111,16 +110,17 @@ function CommunityTile({link}: { link: CommunityLink }) {
                     width: '100%',
                     justifyContent: 'flex-start',
                     alignItems: 'center',
-                    gap: 1.5,
-                    px: 2,
-                    py: 1.5,
-                    borderRadius: 3,
-                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    minHeight: 42,
+                    gap: 1,
+                    px: 1.25,
+                    py: 0.65,
+                    borderRadius: 2,
+                    backgroundColor: 'rgba(255, 255, 255, 0.045)',
+                    border: '1px solid rgba(148, 163, 184, 0.16)',
                     transition: 'all 0.2s ease',
                     '&:hover': {
-                        backgroundColor: 'rgba(148, 163, 184, 0.12)',
-                        borderColor: 'rgba(148, 163, 184, 0.35)',
+                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                        borderColor: 'rgba(148, 163, 184, 0.3)',
                     },
                 }}
             >
@@ -130,13 +130,21 @@ function CommunityTile({link}: { link: CommunityLink }) {
                     alt={link.label}
                     onError={handleIconError}
                     sx={{
-                        width: 32,
-                        height: 32,
+                        width: 23,
+                        height: 23,
+                        flex: '0 0 23px',
                         objectFit: 'contain',
-                        filter: 'drop-shadow(0 4px 12px rgba(15,23,42,0.55))',
+                        filter: 'drop-shadow(0 2px 6px rgba(15,23,42,0.5))',
                     }}
                 />
-                <Typography variant="subtitle2" fontWeight={600} color="text.primary">
+                <Typography
+                    noWrap
+                    title={link.label}
+                    variant="body2"
+                    fontWeight={600}
+                    color="text.primary"
+                    sx={{minWidth: 0, fontSize: '0.78rem'}}
+                >
                     {link.label}
                 </Typography>
             </ButtonBase>
@@ -153,10 +161,6 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
         }
     }, [open]);
 
-    if (!open) {
-        return null;
-    }
-
     return (
         <Dialog open={open} onClose={() => onClose({dismiss})} maxWidth="md" fullWidth>
             <DialogTitle>
@@ -168,16 +172,15 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                     and get the latest resources in one place.
                 </Typography>
             </DialogTitle>
-            <DialogContent dividers>
+            <DialogContent dividers sx={{px: 2, py: 1.5}}>
                 <Box
                     sx={{
                         display: 'grid',
                         gridTemplateColumns: {
-                            xs: 'repeat(1, minmax(0, 1fr))',
-                            sm: 'repeat(2, minmax(0, 1fr))',
+                            xs: 'repeat(2, minmax(0, 1fr))',
                             md: 'repeat(3, minmax(0, 1fr))',
                         },
-                        gap: 1.5,
+                        gap: 0.75,
                     }}
                 >
                     {COMMUNITY_LINKS.map((link) => (
@@ -185,38 +188,39 @@ function WelcomeDialog({open, onClose}: WelcomeDialogProps) {
                     ))}
                 </Box>
             </DialogContent>
-            <DialogActions sx={{flexDirection: 'column', alignItems: 'stretch', gap: 1.5}}>
+            <DialogActions
+                sx={{
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    px: 2,
+                    py: 1,
+                }}
+            >
                 <FormControlLabel
                     control={
                         <Checkbox
+                            size="small"
                             checked={dismiss}
                             onChange={(event) => setDismiss(event.target.checked)}
-                            sx={{color: 'rgba(148, 163, 184, 0.7)'}}
+                            sx={{color: 'rgba(148, 163, 184, 0.7)', p: 0.75}}
                         />
                     }
                     label="Don't show again"
                     sx={{
-                        alignSelf: 'stretch',
                         m: 0,
                         opacity: 1,
+                        '& .MuiFormControlLabel-label': {fontSize: '0.82rem'},
                     }}
                 />
-                <Stack direction="row" gap={1.5} alignSelf="stretch">
-                    <Button
-                        variant="outlined"
-                        fullWidth
-                        onClick={() => onClose({dismiss})}
-                    >
-                        Close
-                    </Button>
-                    <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={() => onClose({dismiss})}
-                    >
-                        Continue
-                    </Button>
-                </Stack>
+                <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => onClose({dismiss})}
+                    sx={{minWidth: 112, minHeight: 32}}
+                >
+                    Continue
+                </Button>
             </DialogActions>
         </Dialog>
     );

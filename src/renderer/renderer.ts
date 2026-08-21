@@ -7,7 +7,6 @@ import {hideStopButton} from './ui/stopButton';
 import {CHAT_RETRY_EVENT_NAME} from './ui/outputs';
 import {awaitPreloadBridge} from './app/preloadBridge';
 import {AudioInputType, StreamController} from './app/streamController';
-import {ScreenshotController} from './app/screenshotController';
 import {checkFeatureAccess, showFeatureAccessModal} from './ui/featureAccessModal';
 import {checkOllamaModelDownloaded} from './services/ollama';
 import {normalizeLocalWhisperModel} from './services/localSpeechModels';
@@ -16,17 +15,23 @@ import {DisposableScope} from './app/disposableScope';
 import {ensureTranscriptionReady} from './utils/transcriptionGuards';
 import {logger} from './utils/logger';
 import type {SettingsChangeDetail, SettingsChangeResult} from './utils/settingsEvents';
+import type {PromptImageAttachment} from '@shared/ipc';
+import {isRealtimeTranscription} from './services/realtimeTranscription';
+import {beginNativeRendererActivity} from './state/rendererActivity';
 
 export type RendererSettingsSnapshot = {
     durations: number[];
     durationHotkeys: Record<number, string>;
+    realtimeTranscription: boolean;
 };
 
 export type RendererSessionUi = {
     updateRealtimeTranscript: (previous: string, next: string) => void;
     restoreQuestionIfEmpty: (text: string) => void;
     getQuestion: () => string;
-    clearQuestionIfUnchanged: (text: string) => void;
+    getPromptImages: () => PromptImageAttachment[];
+    addPromptImages: (images: PromptImageAttachment[]) => void;
+    clearSubmittedPrompt: (text: string, imageIds: string[]) => void;
     setAudioInputPresentation: (type: AudioInputType, switching: boolean) => void;
     setSettingsSnapshot: (snapshot: RendererSettingsSnapshot) => void;
     setReady: (ready: boolean) => void;
@@ -67,7 +72,6 @@ async function preloadLocalModelsIfNeeded(): Promise<void> {
 export class RendererSession {
     private readonly scope = new DisposableScope();
     private readonly streamController: StreamController;
-    private readonly screenshotController: ScreenshotController;
     private started = false;
     private streamSendHotkey = '~';
 
@@ -76,10 +80,6 @@ export class RendererSession {
             updateRealtimeTranscript: ui.updateRealtimeTranscript,
             restoreQuestionIfEmpty: ui.restoreQuestionIfEmpty,
             setAudioInputPresentation: ui.setAudioInputPresentation,
-        });
-        this.screenshotController = new ScreenshotController({
-            getQuestion: ui.getQuestion,
-            clearQuestionIfUnchanged: ui.clearQuestionIfUnchanged,
         });
     }
 
@@ -128,16 +128,20 @@ export class RendererSession {
         const settings = await settingsStore.load();
         if (this.scope.isClosed) return;
         this.streamSendHotkey = settings.streamSendHotkey || '~';
-        this.publishSettings(settings.durations, settings.durationHotkeys);
+        this.publishSettings(
+            settings.durations,
+            settings.durationHotkeys,
+            settings.transcriptionMode,
+            settings.transcriptionModel,
+        );
 
         const keydownListener = (event: KeyboardEvent) => {
             if (!event.ctrlKey || this.eventKey(event) !== this.normalizedHotkey(this.streamSendHotkey)) return;
             const question = this.ui.getQuestion().trim();
-            if (!question || state.isProcessing) return;
+            const images = this.ui.getPromptImages();
+            if ((!question && !images.length) || state.isProcessing) return;
             event.preventDefault();
-            void this.sendQuestion(question).then((started) => {
-                if (started) this.ui.clearQuestionIfUnchanged(question);
-            });
+            void this.sendQuestion();
         };
         document.addEventListener('keydown', keydownListener);
         this.scope.add(() => document.removeEventListener('keydown', keydownListener));
@@ -179,7 +183,17 @@ export class RendererSession {
         setRecording(shouldStart);
         try {
             await this.streamController.handleRecordToggle(shouldStart);
-            setStatus(shouldStart ? 'Recording...' : 'Ready', shouldStart ? 'recording' : 'ready');
+            // Realtime startup reports its own active/error status. Do not
+            // overwrite a useful Google error with a generic "Recording...".
+            const settings = settingsStore.get();
+            if (!shouldStart) {
+                setStatus('Ready', 'ready');
+            } else if (!isRealtimeTranscription(
+                settings.transcriptionMode,
+                settings.transcriptionModel,
+            )) {
+                setStatus('Recording...', 'recording');
+            }
         } catch {
             setRecording(false);
         }
@@ -187,13 +201,36 @@ export class RendererSession {
 
     async askWindow(seconds: number): Promise<void> {
         if (this.scope.isClosed) return;
+        const text = this.ui.getQuestion();
+        const images = this.ui.getPromptImages();
+        const settings = settingsStore.get();
+        if (isRealtimeTranscription(settings.transcriptionMode, settings.transcriptionModel)) {
+            if (!text.trim() && !images.length) {
+                setStatus('Waiting for realtime transcription...', 'recording');
+                return;
+            }
+            const started = await this.streamController.handleTextSend(text, images);
+            if (started) {
+                this.streamController.acknowledgeRealtimeSubmission();
+                this.ui.clearSubmittedPrompt(text, images.map((image) => image.id));
+            }
+            return;
+        }
         setStatus(`Sending last ${seconds}s...`, 'sending');
-        await this.streamController.handleAskWindow(seconds);
+        const started = await this.streamController.handleAskWindow(seconds, text, images);
+        if (started) this.ui.clearSubmittedPrompt(text, images.map((image) => image.id));
     }
 
-    async sendQuestion(text: string): Promise<boolean> {
+    async sendQuestion(): Promise<boolean> {
         if (this.scope.isClosed || state.isProcessing) return false;
-        return this.streamController.handleTextSend(text);
+        const text = this.ui.getQuestion();
+        const images = this.ui.getPromptImages();
+        const started = await this.streamController.handleTextSend(text, images);
+        if (started) {
+            this.streamController.acknowledgeRealtimeSubmission();
+            this.ui.clearSubmittedPrompt(text, images.map((image) => image.id));
+        }
+        return started;
     }
 
     async toggleAudioInput(): Promise<void> {
@@ -207,12 +244,33 @@ export class RendererSession {
             showFeatureAccessModal('screen_processing');
             return;
         }
-        await this.screenshotController.start();
+        setProcessing(true);
+        setStatus('Capturing screen...', 'processing');
+        let releaseActivity: (() => Promise<void>) | null = null;
+        try {
+            releaseActivity = await beginNativeRendererActivity('Capturing screenshot attachment');
+            const capture = await window.api.screen.capture();
+            if (!capture?.base64) throw new Error('Failed to capture screen');
+            this.ui.addPromptImages([{
+                id: crypto.randomUUID(),
+                mime: capture.mime || 'image/jpeg',
+                base64: capture.base64,
+                name: 'Screenshot',
+                width: capture.width,
+                height: capture.height,
+            }]);
+            setStatus('Screenshot attached', 'ready');
+        } catch (error) {
+            logger.error('screenshot', 'Screenshot capture failed', {error});
+            setStatus(error instanceof Error ? error.message : 'Screenshot capture failed', 'error');
+        } finally {
+            if (releaseActivity) await releaseActivity().catch(() => undefined);
+            setProcessing(false);
+        }
     }
 
     async stopActiveOperation(): Promise<void> {
         if (await this.streamController.stopActiveOperation()) return;
-        if (this.screenshotController.cancelActive()) return;
         hideStopButton();
     }
 
@@ -226,7 +284,6 @@ export class RendererSession {
     }
 
     private async shutdownActiveWork(requireIdle = false): Promise<void> {
-        this.screenshotController.cancelActive();
         await this.streamController.stopActiveOperation().catch(() => false);
         if (state.isRecording) {
             await this.streamController.handleRecordToggle(false).catch(() => undefined);
@@ -236,12 +293,21 @@ export class RendererSession {
             await Promise.resolve(window.api.google.stopLive());
         } catch {
         }
+        try {
+            await Promise.resolve(window.api.openai.stopLive());
+        } catch {
+        }
         if (requireIdle && (state.isRecording || state.isProcessing)) {
             throw new Error('Active renderer work could not be stopped safely');
         }
     }
 
-    private publishSettings(durationsValue: unknown, hotkeysValue: unknown): void {
+    private publishSettings(
+        durationsValue: unknown,
+        hotkeysValue: unknown,
+        transcriptionMode?: unknown,
+        transcriptionModel?: unknown,
+    ): void {
         const durations = Array.isArray(durationsValue) && durationsValue.length
             ? durationsValue.filter((value): value is number => Number.isFinite(value) && value > 0)
             : DEFAULT_DURATIONS;
@@ -249,7 +315,14 @@ export class RendererSession {
             ? hotkeysValue as Record<number, string>
             : {};
         if (durations.length) setDuration(Math.max(...durations));
-        this.ui.setSettingsSnapshot({durations, durationHotkeys});
+        this.ui.setSettingsSnapshot({
+            durations,
+            durationHotkeys,
+            realtimeTranscription: isRealtimeTranscription(
+                typeof transcriptionMode === 'string' ? transcriptionMode : undefined,
+                typeof transcriptionModel === 'string' ? transcriptionModel : undefined,
+            ),
+        });
     }
 
     private async handleSettingsEvent(detail: SettingsChangeDetail): Promise<SettingsChangeResult> {
@@ -267,7 +340,18 @@ export class RendererSession {
                     error: applied ? undefined : 'Audio input could not be switched safely',
                 };
             }
-            if (applied) return {success: true, appliedValue: value};
+            if (applied) {
+                if (key === 'transcriptionMode' || key === 'transcriptionModel') {
+                    const settings = settingsStore.get();
+                    this.publishSettings(
+                        settings.durations,
+                        settings.durationHotkeys,
+                        settings.transcriptionMode,
+                        settings.transcriptionModel,
+                    );
+                }
+                return {success: true, appliedValue: value};
+            }
 
             if (key === 'durations') {
                 settingsStore.patch({durations: Array.isArray(value) ? value as number[] : []});
@@ -281,7 +365,12 @@ export class RendererSession {
                 return {success: false, appliedValue: value, error: 'Unsupported setting'};
             }
             const settings = settingsStore.get();
-            this.publishSettings(settings.durations, settings.durationHotkeys);
+            this.publishSettings(
+                settings.durations,
+                settings.durationHotkeys,
+                settings.transcriptionMode,
+                settings.transcriptionModel,
+            );
             return {success: true, appliedValue: value};
         } catch (error) {
             logger.error('settings', 'Settings change handler failed', {error});

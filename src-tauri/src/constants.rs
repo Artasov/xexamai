@@ -2,7 +2,7 @@ pub const CONFIG_DIR_NAME: &str = "xexamai";
 pub const CONFIG_FILE_NAME: &str = "config.json";
 
 pub const DEFAULT_WINDOW_WIDTH: u32 = 420;
-pub const DEFAULT_WINDOW_HEIGHT: u32 = 780;
+pub const DEFAULT_WINDOW_HEIGHT: u32 = 680;
 pub const DEFAULT_WINDOW_MIN_WIDTH: u32 = 400;
 pub const DEFAULT_WINDOW_MIN_HEIGHT: u32 = 500;
 pub const DEFAULT_WINDOW_SCALE: f32 = 1.0;
@@ -24,13 +24,11 @@ pub const DEFAULT_DURATIONS: [u32; 6] = [5, 10, 15, 20, 30, 60];
 
 pub const DEFAULT_API_STT_TIMEOUT_MS: u32 = 150_000;
 pub const DEFAULT_API_LLM_TIMEOUT_MS: u32 = 150_000;
-pub const DEFAULT_SCREEN_PROCESSING_TIMEOUT_MS: u32 = 150_000;
 
-pub const DEFAULT_SCREEN_PROVIDER: &str = "openai";
-
-pub const DEFAULT_TRANSCRIPTION_PROMPT: &str = "This is a technical interview conducted in English. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).";
-pub const DEFAULT_LLM_PROMPT: &str = "You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code";
-pub const DEFAULT_SCREEN_PROMPT: &str = "You are assisting with a technical interview. Analyze the screenshot and extract key information that could help answer questions about the candidate's environment, tools, or work. Focus on actionable insights.";
+pub const LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT: &str = "This is a technical interview conducted in English. Please transcribe the speech in Russian, but preserve English programming and technical terms exactly as they are (e.g. Redis, Postgres, Celery, HTTP, API, and etc.).";
+pub const DEFAULT_TRANSCRIPTION_PROMPT: &str = "Transcribe verbatim in each original spoken language. Preserve code-switching, English programming terms, product names, acronyms, and code exactly as spoken. Do not translate.";
+pub const LEGACY_VERBOSE_LLM_PROMPT: &str = "You are a seasoned technical interview coach for software engineers. Provide detailed, precise answers with technical terminology, example code";
+pub const DEFAULT_LLM_PROMPT: &str = "You are a concise real-time technical interview copilot. Reply in the same language as the question while preserving English technical terms and code identifiers. Start immediately with a direct, natural answer the candidate can say aloud; never add a preamble, heading, restatement, or meta-commentary. Lead with the conclusion, then include only the minimum reasoning or trade-offs needed to defend it. Prefer one short paragraph of 2–5 sentences, usually 50–120 words. Use at most 3 bullets only when a comparison truly needs them. For coding questions, state the approach and time/space complexity first, and include code only when explicitly requested. If the question is ambiguous, state one brief assumption and answer it. Never produce an exhaustive tutorial or a long list unless the user explicitly asks for detail.";
 
 pub const BACKEND_DOMAIN_COM: &str = "xlartas.com";
 pub const BACKEND_DOMAIN_RU: &str = "xlartas.ru";

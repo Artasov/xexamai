@@ -1,5 +1,6 @@
-import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {listen} from '@tauri-apps/api/event';
+import {Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton} from '@mui/material';
 import {invokeNative} from '../../bridge/nativeInvoke';
 import {AsyncListenerSlot} from '../../bridge/asyncListenerSlot';
 import type {
@@ -44,7 +45,8 @@ export function UpdateCenter() {
     const [metadata, setMetadata] = useState<UpdateMetadata | null>(null);
     const [progress, setProgress] = useState<UpdateProgressPayload | null>(null);
     const [message, setMessage] = useState<string>('');
-    const [expanded, setExpanded] = useState(false);
+    const [open, setOpen] = useState(false);
+    const deferredVersion = useRef<string | null>(null);
     useSyncExternalStore(subscribeAppState, getAppStateSnapshot, getAppStateSnapshot);
     useSyncExternalStore(subscribeRendererActivity, getRendererActivitySnapshot, getRendererActivitySnapshot);
     const busyReason = getRendererBusyReason();
@@ -53,8 +55,13 @@ export function UpdateCenter() {
         setMetadata(next);
         setPhase(next.downloaded ? 'downloaded' : 'available');
         setMessage('');
-        setExpanded(true);
+        if (deferredVersion.current !== next.version) setOpen(true);
     }, []);
+
+    const dismiss = useCallback(() => {
+        if (metadata) deferredVersion.current = metadata.version;
+        setOpen(false);
+    }, [metadata]);
 
     useEffect(() => {
         const available = new AsyncListenerSlot<UpdateMetadata>();
@@ -71,7 +78,6 @@ export function UpdateCenter() {
             (payload) => {
                 setProgress({...payload, percent: clampPercent(payload.percent)});
                 setPhase(payload.percent >= 100 ? 'downloaded' : 'downloading');
-                setExpanded(true);
             },
         );
         started.replace(
@@ -79,7 +85,7 @@ export function UpdateCenter() {
             (payload) => {
                 setPhase('installing');
                 setMessage(`Installing ${payload.version}. The app may close to finish setup.`);
-                setExpanded(true);
+                setOpen(true);
             },
         );
         failed.replace(
@@ -87,7 +93,7 @@ export function UpdateCenter() {
             (payload) => {
                 setPhase('error');
                 setMessage(payload.message || 'The update operation failed.');
-                setExpanded(true);
+                setOpen(true);
             },
         );
 
@@ -106,13 +112,12 @@ export function UpdateCenter() {
         } catch (error) {
             setPhase('error');
             setMessage(error instanceof Error ? error.message : String(error));
-            setExpanded(true);
+            setOpen(true);
         }
     }, []);
 
     const check = useCallback(() => run(async () => {
         setPhase('checking');
-        setExpanded(true);
         const result = await invokeNative('check_app_update');
         const next = metadataFromCheck(result);
         if (!next) {
@@ -136,7 +141,7 @@ export function UpdateCenter() {
                 if (next) acceptMetadata(next);
             })
             .catch(() => {
-                // The explicit check button reports errors to the user.
+                // Startup checks are silent unless a signed update is found.
             });
         return () => {
             active = false;
@@ -166,7 +171,7 @@ export function UpdateCenter() {
         setProgress(null);
         setMessage('Downloaded update removed.');
         setPhase('idle');
-        setExpanded(false);
+        setOpen(false);
     }), [run]);
 
     const progressText = useMemo(() => {
@@ -176,67 +181,67 @@ export function UpdateCenter() {
         return `${Math.round(progress.percent)}% (${downloaded}${total})`;
     }, [progress]);
 
-    const buttonLabel = phase === 'checking'
-        ? 'Checking…'
-        : metadata
-            ? `Update ${metadata.version}`
-            : 'Check for updates';
-
     return (
-        <div className="update-center no-drag">
-            <button
-                type="button"
-                className="update-center-trigger"
-                disabled={phase === 'checking' || phase === 'installing'}
-                aria-expanded={expanded}
-                aria-controls="update-center-panel"
-                onClick={() => metadata || message ? setExpanded((value) => !value) : void check()}
-            >
-                {buttonLabel}
-            </button>
-            {expanded && (
-                <section id="update-center-panel" className="update-center-panel" aria-label="Application update">
-                    <div className="update-center-heading">
-                        <strong>{metadata ? `XEXAMAI ${metadata.version}` : 'Application update'}</strong>
-                        <button type="button" aria-label="Close update panel" onClick={() => setExpanded(false)}>×</button>
-                    </div>
-                    {metadata && (
-                        <>
-                            <div className="update-center-version">
-                                Installed {metadata.currentVersion}{metadata.date ? ` · ${new Date(metadata.date).toLocaleDateString()}` : ''}
-                            </div>
-                            {metadata.notes && <div className="update-center-notes">{metadata.notes}</div>}
-                        </>
-                    )}
-                    <div className="update-center-status" role="status" aria-live="polite">
-                        {phase === 'checking' && 'Checking for a signed update…'}
-                        {phase === 'available' && 'Ready to download. Installation starts only when you choose it.'}
-                        {phase === 'downloading' && `Downloading ${progressText}`}
-                        {phase === 'downloaded' && (busyReason || 'Download verified. Install now or keep working and install later.')}
-                        {phase === 'installing' && (message || 'Starting the installer…')}
-                        {phase === 'error' && `Update failed: ${message}`}
-                        {phase === 'idle' && message}
-                    </div>
-                    {phase === 'downloading' && (
-                        <progress max={100} value={progress?.percent ?? 0} aria-label="Update download progress"/>
-                    )}
-                    <div className="update-center-actions">
-                        {(phase === 'idle' || phase === 'error') && (
-                            <button type="button" onClick={() => void check()}>Check again</button>
-                        )}
-                        {phase === 'available' && (
-                            <button type="button" onClick={() => void download()}>Download</button>
-                        )}
-                        {phase === 'downloaded' && (
-                            <>
-                                <button type="button" disabled={!!busyReason} title={busyReason || undefined} onClick={() => void install()}>Install update</button>
-                                <button type="button" onClick={() => setExpanded(false)}>Later</button>
-                                <button type="button" onClick={() => void discard()}>Remove download</button>
-                            </>
-                        )}
-                    </div>
-                </section>
-            )}
-        </div>
+        <Dialog
+            open={open}
+            onClose={() => phase !== 'installing' && dismiss()}
+            maxWidth="xs"
+            fullWidth
+            aria-labelledby="update-dialog-title"
+        >
+            <DialogTitle id="update-dialog-title" className="update-center-heading">
+                <strong>{metadata ? `XEXAMAI ${metadata.version}` : 'Application update'}</strong>
+                <IconButton
+                    size="small"
+                    aria-label="Close update dialog"
+                    disabled={phase === 'installing'}
+                    onClick={dismiss}
+                >
+                    ×
+                </IconButton>
+            </DialogTitle>
+            <DialogContent dividers className="update-center-content">
+                {metadata && (
+                    <>
+                        <div className="update-center-version">
+                            Installed {metadata.currentVersion}{metadata.date ? ` · ${new Date(metadata.date).toLocaleDateString()}` : ''}
+                        </div>
+                        {metadata.notes && <div className="update-center-notes">{metadata.notes}</div>}
+                    </>
+                )}
+                <div className="update-center-status" role="status" aria-live="polite">
+                    {phase === 'checking' && 'Checking for a signed update…'}
+                    {phase === 'available' && 'A signed update is available. Download it now or continue working.'}
+                    {phase === 'downloading' && `Downloading ${progressText}`}
+                    {phase === 'downloaded' && (busyReason || 'Download verified. Install now or keep working and install later.')}
+                    {phase === 'installing' && (message || 'Starting the installer…')}
+                    {phase === 'error' && `Update failed: ${message}`}
+                    {phase === 'idle' && message}
+                </div>
+                {phase === 'downloading' && (
+                    <progress max={100} value={progress?.percent ?? 0} aria-label="Update download progress"/>
+                )}
+            </DialogContent>
+            <DialogActions className="update-center-actions">
+                {(phase === 'idle' || phase === 'error') && (
+                    <Button onClick={() => void check()}>Check again</Button>
+                )}
+                {phase === 'available' && (
+                    <>
+                        <Button onClick={dismiss}>Later</Button>
+                        <Button variant="contained" onClick={() => void download()}>Download</Button>
+                    </>
+                )}
+                {phase === 'downloaded' && (
+                    <>
+                        <Button onClick={() => void discard()}>Remove download</Button>
+                        <Button onClick={dismiss}>Later</Button>
+                        <Button variant="contained" disabled={!!busyReason} title={busyReason || undefined} onClick={() => void install()}>
+                            Install update
+                        </Button>
+                    </>
+                )}
+            </DialogActions>
+        </Dialog>
     );
 }

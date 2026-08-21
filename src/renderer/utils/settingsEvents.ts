@@ -2,6 +2,8 @@ export type SettingsEventKey =
     | 'streamSendHotkey'
     | 'audioInputType'
     | 'audioInputDeviceId'
+    | 'transcriptionMode'
+    | 'transcriptionModel'
     | 'durations'
     | 'durationHotkeys';
 

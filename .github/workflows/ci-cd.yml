@@ -214,7 +214,7 @@ jobs:
       - name: Reconcile and publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/reconcile-github-release.mjs "${{ github.repository }}" "${{ github.ref_name }}" "${{ github.sha }}" release-publication/release-body.md release-artifacts "${{ steps.release-channel.outputs.prerelease }}"
+        run: node scripts/reconcile-github-release.mjs "${{ github.repository }}" "${{ github.ref_name }}" "${{ github.sha }}" release-publication/release-body.md "${{ steps.release-channel.outputs.prerelease }}"
 
       - name: Atomically promote S3 channel manifest
         env:

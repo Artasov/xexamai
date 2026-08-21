@@ -14,17 +14,31 @@ export const LLM_HOSTS = {
     LOCAL: 'local',
 } as const;
 
-export const OPENAI_TRANSCRIBE_MODELS = [
+export const OPENAI_LIVE_TRANSCRIBE_MODEL = 'gpt-live-transcribe' as const;
+
+export const OPENAI_BATCH_TRANSCRIBE_MODELS = [
     'gpt-4o-mini-transcribe',
     'gpt-4o-transcribe',
     'whisper-1',
 ] as const;
 
-export const GOOGLE_TRANSCRIBE_MODELS = [
+export const OPENAI_TRANSCRIBE_MODELS = [
+    OPENAI_LIVE_TRANSCRIBE_MODEL,
+    ...OPENAI_BATCH_TRANSCRIBE_MODELS,
+] as const;
+
+export const GOOGLE_LIVE_TRANSCRIBE_MODEL = 'gemini-3.1-flash-live-preview' as const;
+
+export const GOOGLE_BATCH_TRANSCRIBE_MODELS = [
     'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash',
     'gemini-2.5-flash',
+] as const;
+
+export const GOOGLE_TRANSCRIBE_MODELS = [
+    GOOGLE_LIVE_TRANSCRIBE_MODEL,
+    ...GOOGLE_BATCH_TRANSCRIBE_MODELS,
 ] as const;
 
 export const WINKY_TRANSCRIBE_MODELS = [

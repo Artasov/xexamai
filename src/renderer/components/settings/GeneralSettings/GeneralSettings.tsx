@@ -20,7 +20,7 @@ const MIN_WINDOW_HEIGHT = 500;
 const MAX_WINDOW_WIDTH = 7680;
 const MAX_WINDOW_HEIGHT = 4320;
 const DEFAULT_WINDOW_WIDTH = 420;
-const DEFAULT_WINDOW_HEIGHT = 780;
+const DEFAULT_WINDOW_HEIGHT = 680;
 const clampWindowDimension = (value: number, min: number, max: number, fallback: number) =>
     Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
 
@@ -359,34 +359,35 @@ export const GeneralSettings = () => {
                 </div>
             </section>
 
-            <section className="settings-card card">
-                <h3 className="settings-card__title">Config folder</h3>
-                <button type="button" className="btn btn-sm" onClick={openConfigFolder}>
-                    Open config folder
-                </button>
-            </section>
-
-            <section className="settings-card card">
+            <section className="settings-card settings-card--logs card">
                 <h3 className="settings-card__title">Logs</h3>
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            size="small"
-                            checked={settings.diagnosticsEnabled === true}
-                            onChange={(event) => void toggleDiagnostics(event.target.checked)}
-                            icon={baseCheckboxIcon}
-                            checkedIcon={checkedCheckboxIcon}
-                            disableRipple
-                        />
-                    }
-                    label="Preselect cleaned diagnostics in bug reports"
-                />
-                <p className="mb-2 text-xs text-gray-400">
-                    The report form always shows this choice, and you can turn it off before sending. This does not enable content logging.
-                </p>
-                <button type="button" className="btn btn-sm" onClick={openLogsFolder}>
-                    Open logs folder
-                </button>
+                <div className="settings-logs__diagnostics">
+                    <FormControlLabel
+                        className="settings-logs__toggle"
+                        control={
+                            <Checkbox
+                                size="small"
+                                checked={settings.diagnosticsEnabled === true}
+                                onChange={(event) => void toggleDiagnostics(event.target.checked)}
+                                icon={baseCheckboxIcon}
+                                checkedIcon={checkedCheckboxIcon}
+                                disableRipple
+                            />
+                        }
+                        label="Preselect cleaned diagnostics in bug reports"
+                    />
+                    <p className="settings-logs__description">
+                        The report form always shows this choice, and you can turn it off before sending. This does not enable content logging.
+                    </p>
+                </div>
+                <div className="settings-logs__actions">
+                    <button type="button" className="btn btn-sm" onClick={openLogsFolder}>
+                        Open logs folder
+                    </button>
+                    <button type="button" className="btn btn-sm" onClick={openConfigFolder}>
+                        Open config folder
+                    </button>
+                </div>
             </section>
         </div>
     );

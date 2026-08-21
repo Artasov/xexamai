@@ -5,13 +5,18 @@ import {
     AppSettings,
     ChatHistoryMessage,
     ProcessAudioArgs,
+    PromptImageAttachment,
     StopStreamRequest,
 } from '@shared/ipc';
 import {
     GEMINI_LLM_MODELS,
+    GOOGLE_BATCH_TRANSCRIBE_MODELS,
+    GOOGLE_LIVE_TRANSCRIBE_MODEL,
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_MODELS,
     LOCAL_TRANSCRIBE_MODELS,
+    OPENAI_BATCH_TRANSCRIBE_MODELS,
+    OPENAI_LIVE_TRANSCRIBE_MODEL,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
     WINKY_LLM_MODELS,
@@ -91,13 +96,12 @@ const GEMINI_LLM_SET = new Set(GEMINI_LLM_MODELS as readonly string[]);
 const WINKY_TRANSCRIBE_SET = new Set(WINKY_TRANSCRIBE_MODELS as readonly string[]);
 const WINKY_LLM_SET = new Set(WINKY_LLM_MODELS as readonly string[]);
 const DEFAULT_LOCAL_TRANSCRIBE = LOCAL_TRANSCRIBE_MODELS[0] ?? 'base';
-const DEFAULT_API_TRANSCRIBE = OPENAI_TRANSCRIBE_MODELS[0] ?? 'gpt-4o-mini-transcribe';
+const DEFAULT_API_TRANSCRIBE = OPENAI_BATCH_TRANSCRIBE_MODELS[0] ?? 'gpt-4o-mini-transcribe';
 const DEFAULT_API_LLM = OPENAI_LLM_MODELS[0] ?? 'gpt-4.1-nano';
 const DEFAULT_LOCAL_LLM = LOCAL_LLM_MODELS[0] ?? 'gpt-oss:20b';
 
 const MAX_HISTORY_MESSAGES = 40;
 const WINKY_CREDITS_TOPUP_PATH = '/profile/general?open_top_up=1';
-
 const supportsCustomTemperature = (model: string): boolean => !model.toLowerCase().startsWith('gpt-5');
 
 const normalizeChatHistory = (history?: ChatHistoryMessage[]): ChatHistoryMessage[] => {
@@ -320,6 +324,16 @@ const appendStreamingDelta = (current: string, nextChunk: string): { full: strin
         return {full: current, delta: ''};
     }
     return {full: current + nextChunk, delta: nextChunk};
+};
+
+const normalizePromptImages = (images?: PromptImageAttachment[]): PromptImageAttachment[] => {
+    if (!Array.isArray(images)) return [];
+    return images
+        .filter((image) => !!image
+            && typeof image.base64 === 'string'
+            && image.base64.length > 0
+            && /^image\/(jpeg|png|webp)$/i.test(image.mime || ''))
+        .slice(0, 4);
 };
 
 type StreamTimeouts = { connectMs: number; idleMs: number; totalMs: number };
@@ -914,15 +928,24 @@ async function streamOllamaChatCompletion(
     requestId: string,
     settings: AppSettings,
     history: ChatHistoryMessage[] | undefined,
-    controller: AbortController
+    controller: AbortController,
+    images: PromptImageAttachment[] = [],
 ): Promise<void> {
     const model = settings.localLlmModel || settings.llmModel || DEFAULT_LOCAL_LLM;
     const systemPrompt = (settings.llmPrompt || '').trim();
     const normalizedHistory = normalizeChatHistory(history);
+    const userMessage: Record<string, unknown> = {role: 'user', content: prompt};
+    const normalizedImages = normalizePromptImages(images);
+    if (normalizedImages.length) {
+        // Ollama accepts raw base64 image payloads on the user message. The
+        // selected local model remains authoritative; non-vision models return
+        // their own capability error instead of silently switching providers.
+        userMessage.images = normalizedImages.map((image) => image.base64);
+    }
     const messages = [
         ...(systemPrompt ? [{role: 'system', content: systemPrompt}] : []),
         ...normalizedHistory.map((item) => ({role: item.role, content: item.content})),
-        {role: 'user', content: prompt},
+        userMessage,
     ];
     logRequest('llm:ollama:stream', 'start', {requestId, model, promptPreview: previewText(prompt)});
     const timeouts = resolveStreamTimeouts(settings.apiLlmTimeoutMs);
@@ -981,13 +1004,108 @@ async function streamOllamaChatCompletion(
     });
 }
 
+async function completeMultimodalChat(
+    prompt: string,
+    requestId: string,
+    settings: AppSettings,
+    history: ChatHistoryMessage[] | undefined,
+    images: PromptImageAttachment[],
+    controller: AbortController,
+): Promise<void> {
+    const normalizedHistory = normalizeChatHistory(history);
+    const normalizedImages = normalizePromptImages(images);
+    if (!normalizedImages.length) throw new Error('No valid image attachment was provided.');
+    const {host, model} = resolveLlmTarget(settings);
+    if (host === 'local') {
+        await streamOllamaChatCompletion(prompt, requestId, settings, history, controller, normalizedImages);
+        return;
+    }
+    if (WINKY_LLM_SET.has(model)) {
+        throw new Error(
+            'The selected Winky model does not support image attachments yet. Choose an OpenAI, Google, or vision-capable local LLM.',
+        );
+    }
+    const provider = GEMINI_LLM_SET.has(model) ? 'google' : 'openai';
+    const timeoutMs = settings.apiLlmTimeoutMs;
+    let response: Response;
+
+    if (provider === 'google') {
+        const contents: any[] = normalizedHistory.map((item) => ({
+            role: item.role === 'assistant' ? 'model' : 'user',
+            parts: [{text: item.content}],
+        }));
+        contents.push({
+            role: 'user',
+            parts: [
+                {text: prompt},
+                ...normalizedImages.map((image) => ({
+                    inline_data: {mime_type: image.mime, data: image.base64},
+                })),
+            ],
+        });
+        const body: Record<string, unknown> = {contents};
+        if (settings.llmPrompt?.trim()) {
+            body.systemInstruction = {role: 'system', parts: [{text: settings.llmPrompt.trim()}]};
+        }
+        response = await providerProxyFetch('google', 'screenGenerateContent', body, {
+            model,
+            signal: controller.signal,
+            timeoutMs,
+        });
+    } else {
+        const messages: Array<{role: string; content: unknown}> = [];
+        if (settings.llmPrompt?.trim()) messages.push({role: 'system', content: settings.llmPrompt.trim()});
+        messages.push(...normalizedHistory.map((item) => ({role: item.role, content: item.content})));
+        messages.push({
+            role: 'user',
+            content: [
+                {type: 'text', text: prompt},
+                ...normalizedImages.map((image) => ({
+                    type: 'image_url',
+                    image_url: {url: `data:${image.mime};base64,${image.base64}`},
+                })),
+            ],
+        });
+        response = await providerProxyFetch('openai', 'screenChatCompletions', {
+            model,
+            messages,
+        }, {signal: controller.signal, timeoutMs});
+    }
+
+    const data = await response.json().catch(async () => ({text: await response.text()}));
+    if (!response.ok) {
+        throw new Error(data?.error?.message || data?.text || `Image request failed (${response.status}).`);
+    }
+    const full = provider === 'google'
+        ? (data?.candidates?.[0]?.content?.parts || []).map((part: any) => part?.text || '').join('\n').trim()
+        : (Array.isArray(data?.choices?.[0]?.message?.content)
+            ? data.choices[0].message.content.map((part: any) => part?.text || '').join('')
+            : data?.choices?.[0]?.message?.content || '').trim();
+    if (!full) throw new Error('The image model returned an empty response.');
+    emit('delta', {requestId, delta: full});
+    emit('done', {requestId, full});
+    logRequest('llm:multimodal', 'ok', {
+        requestId,
+        provider,
+        model,
+        imageCount: normalizedImages.length,
+        promptPreview: previewText(prompt),
+        responsePreview: previewText(full),
+    });
+}
+
 async function streamChatCompletion(
     prompt: string,
     requestId: string,
     settings: AppSettings,
     history: ChatHistoryMessage[] | undefined,
-    controller: AbortController
+    controller: AbortController,
+    images: PromptImageAttachment[] = [],
 ): Promise<void> {
+    if (images.length) {
+        await completeMultimodalChat(prompt, requestId, settings, history, images, controller);
+        return;
+    }
     const {host, model} = resolveLlmTarget(settings);
 
     logRequest('llm:stream', 'start', {
@@ -1168,9 +1286,18 @@ async function transcribeAudioBuffer({
             return transcribeWithWinky(buffer, mime, settings);
         }
         if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
-            return transcribeWithGoogle(buffer, mime, settings, transcriptionModel, requestId);
+            // Live is a persistent WebSocket model and cannot be sent to the
+            // batch generateContent transcription endpoint. Duration actions
+            // retain their old behavior through Google's current batch model.
+            const batchModel = transcriptionModel === GOOGLE_LIVE_TRANSCRIBE_MODEL
+                ? GOOGLE_BATCH_TRANSCRIBE_MODELS[0]
+                : transcriptionModel;
+            return transcribeWithGoogle(buffer, mime, settings, batchModel, requestId);
         }
-        return transcribeWithOpenAi(buffer, mime, filename, settings, transcriptionModel, requestId);
+        const batchModel = transcriptionModel === OPENAI_LIVE_TRANSCRIBE_MODEL
+            ? OPENAI_BATCH_TRANSCRIBE_MODELS[0]
+            : transcriptionModel;
+        return transcribeWithOpenAi(buffer, mime, filename, settings, batchModel, requestId);
     })();
 
     logRequest('transcribe', 'ok', {
@@ -1204,8 +1331,9 @@ export async function assistantAskChat(args: AskChatRequest) {
     const settings = await loadSettings();
     const requestId = args.requestId || crypto.randomUUID();
     const history = normalizeChatHistory(args.history);
+    const images = normalizePromptImages(args.images);
     runWithActiveStream(requestId, (controller) =>
-        streamChatCompletion(args.text, requestId, settings, history, controller)
+        streamChatCompletion(args.text, requestId, settings, history, controller, images)
     );
 }
 
@@ -1250,6 +1378,4 @@ export function assistantOffStreamDone(cb?: StreamListener<{ requestId?: string;
 export function assistantOffStreamError(cb?: StreamListener<{ requestId?: string; error: string }>) {
     removeStreamListener('error', cb);
 }
-
-export {cancelScreenProcessing, processScreenImage} from './screenProcessing';
 

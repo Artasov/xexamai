@@ -38,6 +38,8 @@ pub(crate) fn builder() -> Builder<Wry> {
             crate::auth_session::auth_session_logout,
             crate::google_live::google_live_capability,
             crate::google_live::google_live_create_token,
+            crate::openai_live::openai_live_capability,
+            crate::openai_live::openai_live_create_token,
             crate::provider_proxy::provider_proxy_request,
             crate::provider_proxy::provider_proxy_stream,
             crate::provider_proxy::provider_proxy_cancel,

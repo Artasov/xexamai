@@ -4,10 +4,33 @@
   gap: 1rem;
 }
 
+.hotkeys-settings .settings-card {
+  gap: 0.65rem;
+}
+
+.hotkeys-settings .MuiInputBase-root {
+  height: 30px;
+  min-height: 30px;
+  border-radius: 8px;
+}
+
+.hotkeys-settings .MuiInputBase-input {
+  height: auto;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  line-height: 20px;
+}
+
+.hotkeys-settings .btn-sm {
+  min-height: 30px;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
 .hotkeys-duration-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.45rem;
 }
 
 .hotkeys-duration {
@@ -32,7 +55,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: 0.35rem;
 }
 
 .hotkeys-input-row {

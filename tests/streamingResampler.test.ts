@@ -11,6 +11,22 @@ function collect(chunks: Int16Array[]): Int16Array {
     return result;
 }
 
+function sine(sampleRate: number, frequency: number, durationSeconds = 1): Float32Array {
+    return Float32Array.from(
+        {length: Math.round(sampleRate * durationSeconds)},
+        (_, index) => Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.8,
+    );
+}
+
+function rms(samples: Int16Array, skip = 0): number {
+    let sum = 0;
+    for (let index = skip; index < samples.length; index += 1) {
+        const normalized = samples[index] / 0x8000;
+        sum += normalized * normalized;
+    }
+    return Math.sqrt(sum / Math.max(1, samples.length - skip));
+}
+
 describe('streaming PCM resampler', () => {
     it('matches one-shot output across uneven 44.1 kHz packet boundaries', () => {
         const input = Float32Array.from({length: 4_410}, (_, index) => Math.sin(index / 17) * 0.7);
@@ -38,5 +54,59 @@ describe('streaming PCM resampler', () => {
             resampler.finish(),
         ]);
         expect([...output]).toEqual([0, 8192, 16384, 24575]);
+    });
+
+    it('produces the exact OpenAI 24 kHz duration from packeted 48 kHz audio', () => {
+        const input = Float32Array.from(
+            {length: 4_800},
+            (_, index) => Math.sin(index * Math.PI / 31) * 0.6,
+        );
+        const oneShot = new StreamingPcm16Resampler(24_000);
+        const expected = collect([oneShot.process(input, 48_000), oneShot.finish()]);
+
+        const packeted = new StreamingPcm16Resampler(24_000);
+        const actual = collect([
+            packeted.process(input.subarray(0, 317), 48_000),
+            packeted.process(input.subarray(317, 1_641), 48_000),
+            packeted.process(input.subarray(1_641, 3_809), 48_000),
+            packeted.process(input.subarray(3_809), 48_000),
+            packeted.finish(),
+        ]);
+
+        expect(actual).toEqual(expected);
+        expect(actual.length).toBe(2_400);
+    });
+
+    it('strongly attenuates input above the 24 kHz output Nyquist frequency', () => {
+        const passBand = new StreamingPcm16Resampler(24_000);
+        const passBandOutput = collect([
+            passBand.process(sine(48_000, 2_000), 48_000),
+            passBand.finish(),
+        ]);
+
+        const stopBand = new StreamingPcm16Resampler(24_000);
+        const stopBandOutput = collect([
+            stopBand.process(sine(48_000, 18_000), 48_000),
+            stopBand.finish(),
+        ]);
+
+        // Ignore the short causal-filter warm-up when measuring steady state.
+        expect(rms(stopBandOutput, 128)).toBeLessThan(rms(passBandOutput, 128) * 0.01);
+    });
+
+    it('strongly attenuates input above the 16 kHz output Nyquist frequency', () => {
+        const passBand = new StreamingPcm16Resampler(16_000);
+        const passBandOutput = collect([
+            passBand.process(sine(48_000, 2_000), 48_000),
+            passBand.finish(),
+        ]);
+
+        const stopBand = new StreamingPcm16Resampler(16_000);
+        const stopBandOutput = collect([
+            stopBand.process(sine(48_000, 14_000), 48_000),
+            stopBand.finish(),
+        ]);
+
+        expect(rms(stopBandOutput, 128)).toBeLessThan(rms(passBandOutput, 128) * 0.01);
     });
 });

@@ -7,7 +7,9 @@ type StreamOptions = {
 };
 
 const TARGET_SAMPLE_RATE = 16_000;
-const MIN_SEND_SAMPLES = 1_600;
+// 40 ms PCM packets keep latency low without flooding the WebSocket.
+const MIN_SEND_SAMPLES = 640;
+const MAX_SETUP_BUFFER_SAMPLES = TARGET_SAMPLE_RATE * 10;
 
 /** Feeds the rolling native capture to Gemini Live without opening a second device. */
 export class GoogleStreamingService {
@@ -19,38 +21,73 @@ export class GoogleStreamingService {
     private bufferedSamples: Int16Array[] = [];
     private bufferedLength = 0;
     private active = false;
+    private transportReady = false;
+    private transcriptBoundaryPending = false;
     private releaseActivity: (() => Promise<void>) | null = null;
     private readonly resampler = new StreamingPcm16Resampler(TARGET_SAMPLE_RATE);
 
     async start(_stream?: MediaStream | null, _options: StreamOptions = {}): Promise<void> {
+        const reconnectBuffer = !this.transportReady ? [...this.bufferedSamples] : [];
+        const reconnectLength = reconnectBuffer.reduce((total, chunk) => total + chunk.length, 0);
         await this.stop();
+        this.bufferedSamples = reconnectBuffer;
+        this.bufferedLength = reconnectLength;
         const capability = await window.api.google.getLiveCapability();
         if (!capability.supported || !capability.configured) {
             throw new Error(capability.reason || 'Configure a Google AI API key to use realtime transcription.');
         }
 
         this.messageUnsubscribe = window.api.google.onMessage((message: any) => {
-            const inputText = message?.serverContent?.inputTranscription?.text;
+            const serverContent = message?.serverContent;
+            // Gemini 3.1 can emit low-latency interim input transcription
+            // before the final inputTranscription frame at the VAD boundary.
+            const inputText = serverContent?.interimInputTranscription?.text
+                ?? serverContent?.inputTranscription?.text;
             if (typeof inputText === 'string' && inputText.trim()) {
-                this.transcriptCallback?.(inputText.trim());
+                const text = this.transcriptBoundaryPending
+                    ? ` ${inputText.trimStart()}`
+                    : inputText;
+                this.transcriptBoundaryPending = false;
+                this.transcriptCallback?.(text);
             }
+            if (serverContent?.turnComplete) this.transcriptBoundaryPending = true;
         });
         this.errorUnsubscribe = window.api.google.onError((message: string) => {
+            // Keep collecting a short setup buffer until the controller opens
+            // a replacement session.
+            this.transportReady = false;
             this.errorCallback?.(message || 'Google Live error');
         });
 
         try {
             this.releaseActivity = await beginNativeRendererActivity('Realtime transcription');
+            this.resampler.reset();
+            this.transcriptBoundaryPending = false;
+            this.active = true;
+            this.transportReady = false;
+            // Capture immediately: token provisioning and WebSocket setup must
+            // not cut off the beginning of the first spoken phrase.
+            this.audioUnsubscribe = onAudioChunk((chunk) => this.handleNativeAudio(chunk));
             await window.api.google.startLive({
                 response: 'AUDIO',
                 transcribeInput: true,
                 transcribeOutput: false,
             });
-            this.resampler.reset();
-            this.active = true;
-            this.audioUnsubscribe = onAudioChunk((chunk) => this.handleNativeAudio(chunk));
+            this.transportReady = true;
+            this.flushAudio();
         } catch (error) {
-            await this.stop();
+            // Preserve the bounded native-audio setup buffer across transient
+            // token/WebSocket failures. start() snapshots it before replacing
+            // the failed transport on the next retry.
+            this.transportReady = false;
+            if (!this.active || !this.audioUnsubscribe || !this.releaseActivity) {
+                await this.stop();
+            } else {
+                try {
+                    await window.api.google.stopLive();
+                } catch {
+                }
+            }
             throw error;
         }
     }
@@ -64,6 +101,7 @@ export class GoogleStreamingService {
             this.resampler.reset();
         }
         this.active = false;
+        this.transportReady = false;
         this.audioUnsubscribe?.();
         this.audioUnsubscribe = null;
         try {
@@ -78,6 +116,7 @@ export class GoogleStreamingService {
         this.releaseActivity = null;
         this.bufferedSamples = [];
         this.bufferedLength = 0;
+        this.transcriptBoundaryPending = false;
     }
 
     onTranscript(callback: (text: string) => void): void {
@@ -95,17 +134,32 @@ export class GoogleStreamingService {
             chunk.sampleRate,
         );
         this.enqueueAudio(pcm);
-        if (this.bufferedLength >= MIN_SEND_SAMPLES) this.flushAudio();
+        if (this.transportReady && this.bufferedLength >= MIN_SEND_SAMPLES) this.flushAudio();
     }
 
     private enqueueAudio(pcm: Int16Array): void {
         if (!pcm.length) return;
         this.bufferedSamples.push(pcm);
         this.bufferedLength += pcm.length;
+        if (!this.transportReady && this.bufferedLength > MAX_SETUP_BUFFER_SAMPLES) {
+            let excess = this.bufferedLength - MAX_SETUP_BUFFER_SAMPLES;
+            while (excess > 0 && this.bufferedSamples.length) {
+                const first = this.bufferedSamples[0];
+                if (first.length <= excess) {
+                    this.bufferedSamples.shift();
+                    this.bufferedLength -= first.length;
+                    excess -= first.length;
+                } else {
+                    this.bufferedSamples[0] = first.subarray(excess);
+                    this.bufferedLength -= excess;
+                    excess = 0;
+                }
+            }
+        }
     }
 
     private flushAudio(): void {
-        if (!this.bufferedLength || !this.active) return;
+        if (!this.bufferedLength || !this.active || !this.transportReady) return;
         const combined = new Int16Array(this.bufferedLength);
         let offset = 0;
         for (const chunk of this.bufferedSamples) {
