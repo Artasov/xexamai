@@ -30,8 +30,11 @@
     ],
     "security": {
       "freezePrototype": true,
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8868 https://xlartas.com https://xlartas.ru wss://xlartas.com wss://xlartas.ru wss://api.openai.com wss://generativelanguage.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
-      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8868 https://xlartas.com https://xlartas.ru wss://xlartas.com wss://xlartas.ru wss://api.openai.com wss://generativelanguage.googleapis.com ws://localhost:1420; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https://s3.twcstorage.ru; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8868 https://xlartas.com https://xlartas.ru wss://xlartas.com wss://xlartas.ru wss://api.openai.com wss://generativelanguage.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https://s3.twcstorage.ru; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8868 https://xlartas.com https://xlartas.ru wss://xlartas.com wss://xlartas.ru wss://api.openai.com wss://generativelanguage.googleapis.com ws://localhost:1420; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     }
   },
   "plugins": {

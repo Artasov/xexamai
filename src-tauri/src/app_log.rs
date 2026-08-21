@@ -221,15 +221,15 @@ fn write_log_line(
         drop(file.take());
         let rotated = match rotate_log_now(path) {
             Ok(()) => true,
-            Err(error) => {
+            Err(_error) => {
                 #[cfg(debug_assertions)]
-                eprintln!("[logger] runtime rotation failed: {error}");
+                eprintln!("[logger] runtime rotation failed: {_error}");
                 false
             }
         };
-        let next = open_log_file(path).map_err(|error| {
+        let next = open_log_file(path).map_err(|_error| {
             #[cfg(debug_assertions)]
-            eprintln!("[logger] failed to reopen log file: {error}");
+            eprintln!("[logger] failed to reopen log file: {_error}");
         })?;
         *bytes_written = next
             .metadata()
