@@ -34,7 +34,7 @@ async function runScriptAsync(script: string, arguments_: string[], environment:
     });
 }
 
-async function fakeS3(initial: Record<string, string>, missingStatus = 404, privateReads = false) {
+async function fakeS3(initial: Record<string, string>, missingStatus = 404, privateReadStatus = 0) {
     const objects = new Map<string, Buffer>(
         Object.entries(initial).map(([key, value]) => [key, Buffer.from(value)]),
     );
@@ -50,8 +50,8 @@ async function fakeS3(initial: Record<string, string>, missingStatus = 404, priv
     const server = http.createServer((request, response) => {
         const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
         if (request.method === 'GET') {
-            if (privateReads && !request.headers.authorization) {
-                response.statusCode = 403;
+            if (privateReadStatus && !request.headers.authorization) {
+                response.statusCode = privateReadStatus;
                 response.end();
                 return;
             }
@@ -753,7 +753,7 @@ describe('release artifact scripts', () => {
                 version: '2.4.0',
                 platforms: {windows: {url: 'old', signature: 'old'}},
             }),
-        }, 403, true);
+        }, 403, 404);
         try {
             await runScriptAsync(
                 'upload-release-to-s3.mjs',

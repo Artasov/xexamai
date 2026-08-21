@@ -100,10 +100,10 @@ async function readObject(url) {
     // busters can be rejected by some S3-compatible authorization policies,
     // while Node's no-store mode already avoids reusing a local response.
     const publicResponse = await fetch(url, {cache: 'no-store'});
-    if (publicResponse.status !== 403) return publicResponse;
+    if (!isMissingOrUnobservable(publicResponse)) return publicResponse;
     const authenticatedResponse = await signedGet(url);
     console.log(
-        `Anonymous S3 read for ${url.pathname} returned 403; authenticated retry returned ${authenticatedResponse.status}.`,
+        `Anonymous S3 read for ${url.pathname} returned ${publicResponse.status}; authenticated retry returned ${authenticatedResponse.status}.`,
     );
     return authenticatedResponse;
 }
