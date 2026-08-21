@@ -34,6 +34,12 @@ const mimeType = (name) => name.endsWith('.json')
         : 'application/octet-stream';
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+// S3-compatible stores commonly return 403 for a missing public object when
+// the publishing principal has PutObject/GetObject but no ListBucket access.
+// Treat that response as "not observable" and let the conditional PUT decide:
+// If-None-Match still prevents overwriting an existing object.
+const isMissingOrUnobservable = (response) => [403, 404].includes(response.status);
+
 async function sha256File(file) {
     const digest = crypto.createHash('sha256');
     for await (const chunk of fs.createReadStream(file)) digest.update(chunk);
@@ -52,7 +58,7 @@ function cacheBusted(url, parameter) {
 
 async function existingObjectHash(url) {
     const response = await fetch(cacheBusted(url, 'immutable-check'), {cache: 'no-store'});
-    if (response.status === 404) return null;
+    if (isMissingOrUnobservable(response)) return null;
     if (!response.ok) {
         throw new Error(`Could not validate immutable S3 object ${url.pathname}: HTTP ${response.status}`);
     }
@@ -154,7 +160,7 @@ async function uploadImmutable(file, key) {
 
 async function readCanonicalManifest(url) {
     const response = await fetch(cacheBusted(url, 'canonical-manifest-check'), {cache: 'no-store'});
-    if (response.status === 404) return null;
+    if (isMissingOrUnobservable(response)) return null;
     if (!response.ok) {
         throw new Error(`Could not read immutable release manifest ${url.pathname}: HTTP ${response.status}`);
     }
@@ -290,7 +296,7 @@ function compareChannelManifest(current, candidate, channel) {
 async function readChannelManifest(key, channel) {
     const url = objectUrl(key);
     const response = await fetch(cacheBusted(url, 'release-check'), {cache: 'no-store'});
-    if (response.status === 404) return {manifest: null, etag: null};
+    if (isMissingOrUnobservable(response)) return {manifest: null, etag: null};
     if (!response.ok) {
         throw new Error(`Could not validate existing ${channel} manifest: HTTP ${response.status}`);
     }

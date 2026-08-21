@@ -34,7 +34,7 @@ async function runScriptAsync(script: string, arguments_: string[], environment:
     });
 }
 
-async function fakeS3(initial: Record<string, string>) {
+async function fakeS3(initial: Record<string, string>, missingStatus = 404) {
     const objects = new Map<string, Buffer>(
         Object.entries(initial).map(([key, value]) => [key, Buffer.from(value)]),
     );
@@ -52,7 +52,7 @@ async function fakeS3(initial: Record<string, string>) {
         if (request.method === 'GET') {
             const body = objects.get(pathname);
             if (!body) {
-                response.statusCode = 404;
+                response.statusCode = missingStatus;
                 response.end();
                 return;
             }
@@ -571,6 +571,33 @@ describe('release artifact scripts', () => {
         expect(server.puts.find((item) => item.path.endsWith('/windows/app.bin'))).toBeUndefined();
         expect(server.puts.find((item) => item.path.endsWith('/v2.5.0/latest.json'))?.ifNoneMatch).toBe('*');
         expect(server.puts.find((item) => item.path.endsWith('/xexamai/latest.json'))?.ifNoneMatch).toBe('*');
+    });
+
+    it('publishes safely when missing S3 objects are hidden behind HTTP 403', async () => {
+        const directory = temporaryDirectory();
+        const fixture = createUploadFixture(directory);
+        const server = await fakeS3({}, 403);
+        try {
+            await runScriptAsync(
+                'upload-release-to-s3.mjs',
+                [fixture.artifacts, fixture.publication, 'v2.5.0'],
+                {
+                    S3_ENDPOINT: server.endpoint,
+                    S3_BUCKET: 'bucket',
+                    AWS_DEFAULT_REGION: 'test-1',
+                    AWS_ACCESS_KEY_ID: 'test-access',
+                    AWS_SECRET_ACCESS_KEY: 'test-secret',
+                },
+            );
+        } finally {
+            await server.close();
+        }
+
+        expect(server.puts.find((item) => item.path.endsWith('/windows/app.bin'))?.ifNoneMatch).toBe('*');
+        expect(server.puts.find((item) => item.path.endsWith('/v2.5.0/latest.json'))?.ifNoneMatch).toBe('*');
+        expect(server.puts.find((item) => item.path.endsWith('/xexamai/latest.json'))?.ifNoneMatch).toBe('*');
+        expect(JSON.parse(server.objects.get('/bucket/xexamai/latest.json')?.toString() ?? '{}').version)
+            .toBe('2.5.0');
     });
 
     it('refuses to overwrite a mismatched object from a partial release', async () => {
