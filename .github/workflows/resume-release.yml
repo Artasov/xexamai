@@ -1,0 +1,110 @@
+name: Resume Release Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+      source_run_id:
+        description: CI/CD run containing the signed release artifacts
+        required: true
+        type: string
+
+concurrency:
+  group: xexamai-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 24.18.0
+  AWS_DEFAULT_REGION: ru-1
+  S3_BUCKET: 324718a4-2cc5dd7a-917b-4e82-87c5-b9d5f8de16ba
+  S3_ENDPOINT: https://s3.twcstorage.ru
+
+jobs:
+  publish:
+    name: Resume Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Resolve and verify release tag
+        id: release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          release_sha="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          node scripts/verify-release-version.mjs "$RELEASE_TAG"
+          echo "sha=$release_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Download signed release artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Generate release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: node scripts/generate-release-notes.mjs "${{ github.repository }}" "$RELEASE_TAG" "$RELEASE_SHA" generated-notes.md
+
+      - name: Build signed Tauri update manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          release_pub_date="$(git show -s --format=%cI "$RELEASE_SHA")"
+          node scripts/build-update-manifest.mjs release-artifacts "$RELEASE_TAG" generated-notes.md release-publication "$release_pub_date"
+
+      - name: Resolve release channel
+        id: release-channel
+        shell: bash
+        run: |
+          node -e "const p=require('./release-publication/publication.json'); process.stdout.write('prerelease='+(p.channel==='beta')+'\n')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify immutable release objects in S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: node scripts/upload-release-to-s3.mjs release-artifacts release-publication "$RELEASE_TAG" immutable
+
+      - name: Reconcile and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          PRERELEASE: ${{ steps.release-channel.outputs.prerelease }}
+        run: node scripts/reconcile-github-release.mjs "${{ github.repository }}" "$RELEASE_TAG" "$RELEASE_SHA" release-publication/release-body.md release-artifacts "$PRERELEASE"
+
+      - name: Atomically promote S3 channel manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: node scripts/upload-release-to-s3.mjs release-artifacts release-publication "$RELEASE_TAG" channel
