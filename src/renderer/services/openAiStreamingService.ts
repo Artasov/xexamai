@@ -1,20 +1,28 @@
 import {StreamingPcm16Resampler} from '../audio/streamingResampler';
 import {beginNativeRendererActivity} from '../state/rendererActivity';
 import {onAudioChunk, type AudioChunk} from './nativeAudio';
-import {OpenAiTranscriptAssembler} from './openAiLiveContract';
+import {
+    OpenAiTranscriptAssembler,
+    OpenAiTranslationTranscriptAssembler,
+    type OpenAiTranslationTranscript,
+} from './openAiLiveContract';
 
 const TARGET_SAMPLE_RATE = 24_000;
 // 40 ms at 24 kHz, matching the low-latency packet cadence used by Google Live.
 const MIN_SEND_SAMPLES = 960;
+// Realtime Translation consumes 200 ms engine frames.
+const TRANSLATION_SEND_SAMPLES = 4_800;
 const MAX_SETUP_BUFFER_SAMPLES = TARGET_SAMPLE_RATE * 10;
 
 type OpenAiStreamOptions = {
     prompt?: string;
+    targetLanguage?: string;
 };
 
 /** Feeds native capture into the dedicated OpenAI realtime transcription API. */
 export class OpenAiStreamingService {
     private transcriptCallback: ((text: string) => void) | null = null;
+    private translationCallback: ((text: OpenAiTranslationTranscript) => void) | null = null;
     private errorCallback: ((error: string) => void) | null = null;
     private audioUnsubscribe: (() => void) | null = null;
     private messageUnsubscribe: (() => void) | null = null;
@@ -26,6 +34,8 @@ export class OpenAiStreamingService {
     private releaseActivity: (() => Promise<void>) | null = null;
     private readonly resampler = new StreamingPcm16Resampler(TARGET_SAMPLE_RATE);
     private readonly transcripts = new OpenAiTranscriptAssembler();
+    private readonly translations = new OpenAiTranslationTranscriptAssembler();
+    private translationMode = false;
 
     async start(options: OpenAiStreamOptions = {}): Promise<void> {
         const reconnectBuffer = !this.transportReady ? [...this.bufferedSamples] : [];
@@ -40,6 +50,13 @@ export class OpenAiStreamingService {
         }
 
         this.messageUnsubscribe = window.api.openai.onMessage((message) => {
+            if (this.translationMode) {
+                const text = this.translations.apply(message);
+                if (text && (text.source.trim() || text.translated.trim())) {
+                    this.translationCallback?.(text);
+                }
+                return;
+            }
             const failed = message.type === 'conversation.item.input_audio_transcription.failed';
             if (failed) {
                 const detail = typeof message.error?.message === 'string'
@@ -60,10 +77,15 @@ export class OpenAiStreamingService {
             this.releaseActivity = await beginNativeRendererActivity('Realtime transcription');
             this.resampler.reset();
             this.transcripts.reset();
+            this.translations.reset();
+            this.translationMode = Boolean(options.targetLanguage);
             this.active = true;
             this.transportReady = false;
             this.audioUnsubscribe = onAudioChunk((chunk) => this.handleNativeAudio(chunk));
-            await window.api.openai.startLive({prompt: options.prompt});
+            await window.api.openai.startLive({
+                prompt: options.prompt,
+                targetLanguage: options.targetLanguage,
+            });
             this.transportReady = true;
             this.flushAudio();
         } catch (error) {
@@ -87,6 +109,7 @@ export class OpenAiStreamingService {
 
     acknowledgeTranscript(): void {
         this.transcripts.acknowledge();
+        this.translations.acknowledge();
     }
 
     async stop(): Promise<void> {
@@ -113,10 +136,16 @@ export class OpenAiStreamingService {
         this.bufferedSamples = [];
         this.bufferedLength = 0;
         this.transcripts.reset();
+        this.translations.reset();
+        this.translationMode = false;
     }
 
     onTranscript(callback: (text: string) => void): void {
         this.transcriptCallback = callback;
+    }
+
+    onTranslation(callback: (text: OpenAiTranslationTranscript) => void): void {
+        this.translationCallback = callback;
     }
 
     onError(callback: (error: string) => void): void {
@@ -127,7 +156,8 @@ export class OpenAiStreamingService {
         if (!this.active || !chunk.samples.length) return;
         const pcm = this.resampler.process(this.mixToMono(chunk.samples), chunk.sampleRate);
         this.enqueueAudio(pcm);
-        if (this.transportReady && this.bufferedLength >= MIN_SEND_SAMPLES) this.flushAudio();
+        const sendThreshold = this.translationMode ? TRANSLATION_SEND_SAMPLES : MIN_SEND_SAMPLES;
+        if (this.transportReady && this.bufferedLength >= sendThreshold) this.flushAudio();
     }
 
     private enqueueAudio(pcm: Int16Array): void {

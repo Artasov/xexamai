@@ -43,6 +43,14 @@ export const commands = {
 	 *  The renderer never receives the provider API key.
 	 */
 	openaiLiveCreateToken: () => __TAURI_INVOKE<OpenAiLiveToken>("openai_live_create_token"),
+	/**
+	 *  Opens the dedicated translation WebSocket from the native process. Unlike
+	 *  the browser WebSocket API, this transport can send the required Bearer
+	 *  header while keeping the permanent provider key inside the OS keyring.
+	 */
+	openaiTranslationStart: (targetLanguage: string) => __TAURI_INVOKE<null>("openai_translation_start", { targetLanguage }),
+	openaiTranslationSendAudio: (data: string) => __TAURI_INVOKE<null>("openai_translation_send_audio", { data }),
+	openaiTranslationStop: () => __TAURI_INVOKE<null>("openai_translation_stop"),
 	providerProxyRequest: (request: ProviderProxyRequest) => __TAURI_INVOKE<ProviderProxyResponse>("provider_proxy_request", { request }),
 	providerProxyStream: (request: ProviderProxyRequest, onEvent: Channel<ProviderStreamEvent>) => __TAURI_INVOKE<null>("provider_proxy_stream", { request, onEvent }),
 	providerProxyCancel: (requestId: string) => __TAURI_INVOKE<null>("provider_proxy_cancel", { requestId }),
@@ -91,6 +99,7 @@ export type AppConfig_Deserialize = {
 	audioInputDeviceId?: string | null,
 	audioInputType?: AudioInputTypeContract,
 	transcriptionModel?: string,
+	realtimeTranslationLanguage?: string,
 	transcriptionPrompt?: string,
 	llmModel?: string,
 	apiLlmModel?: string,
@@ -124,6 +133,7 @@ export type AppConfig_Serialize = {
 	audioInputDeviceId: string | null,
 	audioInputType: AudioInputTypeContract,
 	transcriptionModel: string,
+	realtimeTranslationLanguage: string,
 	transcriptionPrompt: string,
 	llmModel: string,
 	apiLlmModel: string,

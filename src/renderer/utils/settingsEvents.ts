@@ -4,6 +4,7 @@ export type SettingsEventKey =
     | 'audioInputDeviceId'
     | 'transcriptionMode'
     | 'transcriptionModel'
+    | 'realtimeTranslationLanguage'
     | 'durations'
     | 'durationHotkeys';
 

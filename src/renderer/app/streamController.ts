@@ -23,8 +23,8 @@ import {
 } from "../services/ollama";
 import { LOCAL_LLM_MODELS } from "@shared/constants";
 import {
-  getRealtimeTranscriptionProvider,
-  type RealtimeTranscriptionProvider,
+  getRealtimeTranscriptionTarget,
+  type RealtimeTranscriptionTarget,
 } from "../services/realtimeTranscription";
 import type { SwitchAudioResult } from "./audioSession";
 import {
@@ -48,6 +48,12 @@ export type AudioInputType = "microphone" | "system" | "mixed";
 
 export type StreamControllerUi = {
   updateRealtimeTranscript?: (previous: string, next: string) => void;
+  updateRealtimeTranslation?: (update: {
+    sourcePrevious: string;
+    sourceNext: string;
+    translatedPrevious: string;
+    translatedNext: string;
+  }) => void;
   restoreQuestionIfEmpty?: (text: string) => void;
   setAudioInputPresentation?: (
     type: AudioInputType,
@@ -76,10 +82,12 @@ export class StreamController {
   private streamErrorHandler: any = null;
 
   private streamAccumulator = "";
-  private activeRealtimeProvider: RealtimeTranscriptionProvider | null = null;
-  private desiredRealtimeProvider: RealtimeTranscriptionProvider | null = null;
+  private activeRealtimeTarget: RealtimeTranscriptionTarget | null = null;
+  private desiredRealtimeTarget: RealtimeTranscriptionTarget | null = null;
   private readonly realtimeTransitions = new LatestIntentQueue();
   private lastRealtimeTranscript = "";
+  private lastRealtimeSource = "";
+  private lastRealtimeTranslation = "";
   private submittedRealtimeFragment = "";
   private realtimeRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private realtimeRetryAttempt = 0;
@@ -129,22 +137,40 @@ export class StreamController {
     this.ui.updateRealtimeTranscript?.(previous, next);
   };
 
+  private readonly onTranslation = (text: {source: string; translated: string}) => {
+    if (
+      text.source === this.lastRealtimeSource &&
+      text.translated === this.lastRealtimeTranslation
+    ) return;
+    const update = {
+      sourcePrevious: this.lastRealtimeSource,
+      sourceNext: text.source,
+      translatedPrevious: this.lastRealtimeTranslation,
+      translatedNext: text.translated,
+    };
+    this.lastRealtimeSource = text.source;
+    this.lastRealtimeTranslation = text.translated;
+    this.ui.updateRealtimeTranslation?.(update);
+  };
+
   acknowledgeRealtimeSubmission(): void {
     this.submittedRealtimeFragment = this.lastRealtimeTranscript.trim();
-    if (this.activeRealtimeProvider === "openai") {
+    if (this.activeRealtimeTarget?.startsWith("openai")) {
       this.openAiStreamingService.acknowledgeTranscript();
       this.lastRealtimeTranscript = "";
+      this.lastRealtimeSource = "";
+      this.lastRealtimeTranslation = "";
       this.submittedRealtimeFragment = "";
     }
   }
 
   private onStreamingError(
-    provider: RealtimeTranscriptionProvider,
+    target: RealtimeTranscriptionTarget,
     error: string,
   ): void {
-    if (provider !== this.desiredRealtimeProvider) return;
-    console.error(`${provider} realtime transcription error:`, error);
-    this.activeRealtimeProvider = null;
+    if (target !== this.desiredRealtimeTarget) return;
+    console.error(`${target} realtime transcription error:`, error);
+    this.activeRealtimeTarget = null;
     if (this.realtimeRetryTimer) return;
     if (this.disposed || !state.isRecording) {
       void this.stopRealtimeServices();
@@ -179,9 +205,13 @@ export class StreamController {
       this.onStreamingError("google", error),
     );
     this.openAiStreamingService.onTranscript(this.onTranscript);
-    this.openAiStreamingService.onError((error) =>
-      this.onStreamingError("openai", error),
-    );
+    this.openAiStreamingService.onTranslation(this.onTranslation);
+    this.openAiStreamingService.onError((error) => {
+      const target = this.desiredRealtimeTarget?.startsWith("openai")
+        ? this.desiredRealtimeTarget
+        : "openai-transcribe";
+      this.onStreamingError(target, error);
+    });
   }
 
   async syncInitialSettings(): Promise<void> {
@@ -225,8 +255,15 @@ export class StreamController {
           typeof value === "string" ? value : "",
         );
       case "transcriptionMode":
-      case "transcriptionModel": {
+      case "transcriptionModel":
+      case "realtimeTranslationLanguage": {
         settingsStore.patch({ [key]: value } as any);
+        if (key === "realtimeTranslationLanguage" && state.isRecording) {
+          // The target language is bound to the short-lived translation
+          // session, so changing it requires a fresh session even though the
+          // selected model/provider did not change.
+          this.activeRealtimeTarget = null;
+        }
         return (
           state.isRecording
             ? this.syncRealtimeTranscription()
@@ -1076,73 +1113,82 @@ export class StreamController {
       if (!isCurrent()) return;
       const settings = await this.loadSettingsSafe();
       if (!isCurrent()) return;
-      const targetProvider = !this.disposed && state.isRecording
-        ? getRealtimeTranscriptionProvider(
+      const target = !this.disposed && state.isRecording
+        ? getRealtimeTranscriptionTarget(
             settings.transcriptionMode,
             settings.transcriptionModel,
           )
         : null;
-      this.desiredRealtimeProvider = targetProvider;
-      if (!targetProvider) {
+      this.desiredRealtimeTarget = target;
+      if (!target) {
         this.clearRealtimeRetry();
         await this.stopRealtimeServices();
         if (!isCurrent()) return;
-        this.activeRealtimeProvider = null;
+        this.activeRealtimeTarget = null;
         this.lastRealtimeTranscript = "";
+        this.lastRealtimeSource = "";
+        this.lastRealtimeTranslation = "";
         this.submittedRealtimeFragment = "";
         return;
       }
-      if (this.activeRealtimeProvider === targetProvider) return;
+      if (this.activeRealtimeTarget === target) return;
 
       // Stop only the provider we are leaving. The target service's start()
       // performs its own restart while preserving audio accumulated during a
       // token/WebSocket backoff, so the first words after an outage are not
       // discarded.
-      if (targetProvider === "openai") {
+      if (target.startsWith("openai")) {
         await this.googleStreamingService.stop();
       } else {
         await this.openAiStreamingService.stop();
       }
       if (!isCurrent()) return;
-      this.activeRealtimeProvider = null;
+      this.activeRealtimeTarget = null;
       this.lastRealtimeTranscript = "";
+      this.lastRealtimeSource = "";
+      this.lastRealtimeTranslation = "";
       this.submittedRealtimeFragment = "";
       try {
-        if (targetProvider === "openai") {
+        if (target.startsWith("openai")) {
           await this.openAiStreamingService.start({
-            prompt: settings.transcriptionPrompt,
+            prompt: target === "openai-transcribe" ? settings.transcriptionPrompt : undefined,
+            targetLanguage: target === "openai-translate"
+              ? settings.realtimeTranslationLanguage || "en"
+              : undefined,
           });
         } else {
           await this.googleStreamingService.start(null, { streamMode: "base" });
         }
         if (!isCurrent()) return;
-        this.activeRealtimeProvider = targetProvider;
+        this.activeRealtimeTarget = target;
         this.clearRealtimeRetry();
         setStatus(
-          targetProvider === "openai"
-            ? "Recording · OpenAI Live"
-            : "Recording · Google Live",
+          target === "openai-translate"
+            ? "Recording · OpenAI Translate"
+            : target === "openai-transcribe"
+              ? "Recording · OpenAI Live"
+              : "Recording · Google Live",
           "recording",
         );
       } catch (error) {
-        this.activeRealtimeProvider = null;
+        this.activeRealtimeTarget = null;
         // The target service deliberately remains subscribed to native audio
         // during the bounded reconnect backoff. Stop only the other provider;
         // the next target start() replaces its failed transport while keeping
         // the buffered speech.
-        if (targetProvider === "openai") {
+        if (target.startsWith("openai")) {
           await this.googleStreamingService.stop();
         } else {
           await this.openAiStreamingService.stop();
         }
         if (!isCurrent()) return;
         const errorMessage = this.toErrorMessage(error);
-        logger.warn(`${targetProvider}-live`, "Realtime transcription unavailable", {
+        logger.warn(`${target}-live`, "Realtime transcription unavailable", {
           error: errorMessage,
         });
         // Initial token/WebSocket/setup failures need the same bounded
         // reconnect path as failures from an established session.
-        this.onStreamingError(targetProvider, errorMessage);
+        this.onStreamingError(target, errorMessage);
       }
     });
   }
@@ -1169,8 +1215,12 @@ export class StreamController {
       // existing session automatically receives the new
       // source. Keeping it open avoids dropping audio during a reconnect.
       setStatus(
-        this.activeRealtimeProvider
-          ? `Recording · ${this.activeRealtimeProvider === "openai" ? "OpenAI" : "Google"} Live`
+        this.activeRealtimeTarget
+          ? this.activeRealtimeTarget === "openai-translate"
+            ? "Recording · OpenAI Translate"
+            : this.activeRealtimeTarget === "openai-transcribe"
+              ? "Recording · OpenAI Live"
+              : "Recording · Google Live"
           : "Recording...",
         "recording",
       );
@@ -1200,8 +1250,8 @@ export class StreamController {
     this.activeOpId += 1;
     await this.stopActiveOperation().catch(() => false);
     await this.syncRealtimeTranscription().catch(() => undefined);
-    this.activeRealtimeProvider = null;
-    this.desiredRealtimeProvider = null;
+    this.activeRealtimeTarget = null;
+    this.desiredRealtimeTarget = null;
     this.removeStreamHandlers();
   }
 }

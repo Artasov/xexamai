@@ -16,13 +16,20 @@ const DEFAULT_SETTINGS: RendererSettingsSnapshot = {
     durations: [5, 10, 15, 20, 30, 60],
     durationHotkeys: {},
     realtimeTranscription: false,
+    realtimeTranslation: false,
 };
+
+type TranslationView = 'translated' | 'source';
 
 export function useRendererSession() {
     const sessionRef = useRef<RendererSession | null>(null);
     const questionRef = useRef('');
+    const translationActiveRef = useRef(false);
+    const translationViewRef = useRef<TranslationView>('translated');
+    const translationTextRef = useRef({source: '', translated: ''});
     const promptImagesRef = useRef<PromptImageAttachment[]>([]);
     const [question, setQuestionState] = useState('');
+    const [translationView, setTranslationViewState] = useState<TranslationView>('translated');
     const [promptImages, setPromptImagesState] = useState<PromptImageAttachment[]>([]);
     const [ready, setReady] = useState(false);
     const [settings, setSettings] = useState<RendererSettingsSnapshot>(DEFAULT_SETTINGS);
@@ -33,6 +40,12 @@ export function useRendererSession() {
         setQuestionState((current) => {
             const next = typeof value === 'function' ? value(current) : value;
             questionRef.current = next;
+            if (translationActiveRef.current) {
+                translationTextRef.current = {
+                    ...translationTextRef.current,
+                    [translationViewRef.current]: next,
+                };
+            }
             return next;
         });
     }, []);
@@ -40,6 +53,44 @@ export function useRendererSession() {
     const updateRealtimeTranscript = useCallback((previous: string, next: string) => {
         setQuestion((current) => reconcileRealtimeTranscript(current, previous, next));
     }, [setQuestion]);
+
+    const updateRealtimeTranslation = useCallback((update: {
+        sourcePrevious: string;
+        sourceNext: string;
+        translatedPrevious: string;
+        translatedNext: string;
+    }) => {
+        const current = translationTextRef.current;
+        const next = {
+            source: reconcileRealtimeTranscript(
+                current.source,
+                update.sourcePrevious,
+                update.sourceNext,
+            ),
+            translated: reconcileRealtimeTranscript(
+                current.translated,
+                update.translatedPrevious,
+                update.translatedNext,
+            ),
+        };
+        translationTextRef.current = next;
+        if (!translationActiveRef.current) return;
+        const visible = next[translationViewRef.current];
+        questionRef.current = visible;
+        setQuestionState(visible);
+    }, []);
+
+    const toggleTranslationView = useCallback(() => {
+        if (!translationActiveRef.current) return;
+        const nextView: TranslationView = translationViewRef.current === 'translated'
+            ? 'source'
+            : 'translated';
+        translationViewRef.current = nextView;
+        setTranslationViewState(nextView);
+        const visible = translationTextRef.current[nextView];
+        questionRef.current = visible;
+        setQuestionState(visible);
+    }, []);
 
     const restoreQuestionIfEmpty = useCallback((text: string) => {
         setQuestion((current) => current.trim() ? current : text);
@@ -98,7 +149,13 @@ export function useRendererSession() {
     }, [setPromptImages]);
 
     const clearSubmittedPrompt = useCallback((text: string, imageIds: string[]) => {
-        clearQuestionIfUnchanged(text);
+        if (translationActiveRef.current && questionRef.current.trim() === text.trim()) {
+            translationTextRef.current = {source: '', translated: ''};
+            questionRef.current = '';
+            setQuestionState('');
+        } else {
+            clearQuestionIfUnchanged(text);
+        }
         const submitted = new Set(imageIds);
         setPromptImages((current) => current.filter((image) => !submitted.has(image.id)));
     }, [clearQuestionIfUnchanged, setPromptImages]);
@@ -108,16 +165,32 @@ export function useRendererSession() {
         setAudioSwitching(switching);
     }, []);
 
+    const setSettingsSnapshot = useCallback((snapshot: RendererSettingsSnapshot) => {
+        const wasTranslation = translationActiveRef.current;
+        translationActiveRef.current = snapshot.realtimeTranslation;
+        if (!wasTranslation && snapshot.realtimeTranslation) {
+            translationViewRef.current = 'translated';
+            setTranslationViewState('translated');
+            translationTextRef.current = {source: '', translated: questionRef.current};
+        } else if (wasTranslation && !snapshot.realtimeTranslation) {
+            translationTextRef.current = {source: '', translated: ''};
+            translationViewRef.current = 'translated';
+            setTranslationViewState('translated');
+        }
+        setSettings(snapshot);
+    }, []);
+
     useEffect(() => {
         const session = new RendererSession({
             updateRealtimeTranscript,
+            updateRealtimeTranslation,
             restoreQuestionIfEmpty,
             getQuestion: () => questionRef.current,
             getPromptImages: () => promptImagesRef.current,
             addPromptImages,
             clearSubmittedPrompt,
             setAudioInputPresentation,
-            setSettingsSnapshot: setSettings,
+            setSettingsSnapshot,
             setReady,
         });
         sessionRef.current = session;
@@ -132,10 +205,12 @@ export function useRendererSession() {
         };
     }, [
         updateRealtimeTranscript,
+        updateRealtimeTranslation,
         addPromptImages,
         clearSubmittedPrompt,
         restoreQuestionIfEmpty,
         setAudioInputPresentation,
+        setSettingsSnapshot,
     ]);
 
     const toggleRecording = useCallback(() => sessionRef.current?.toggleRecording(), []);
@@ -149,6 +224,8 @@ export function useRendererSession() {
         ready,
         question,
         setQuestion,
+        translationView,
+        toggleTranslationView,
         promptImages,
         addPastedImages,
         removePromptImage,

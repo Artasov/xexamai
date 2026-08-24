@@ -1326,6 +1326,8 @@ fn main() {
             let activity_gate = Arc::new(ActivityGate::new());
             let renderer_activity_leases =
                 Arc::new(RendererActivityLeases::new(activity_gate.clone()));
+            let openai_translation_state =
+                Arc::new(openai_live::OpenAiTranslationState::default());
             let shutdown_state = Arc::new(ShutdownState::default());
 
             app.manage(config_state.clone());
@@ -1339,6 +1341,7 @@ fn main() {
             app.manage(audio_manager.clone());
             app.manage(activity_gate);
             app.manage(renderer_activity_leases);
+            app.manage(openai_translation_state);
             app.manage(shutdown_state.clone());
             app.manage(update::UpdateManager::default());
 

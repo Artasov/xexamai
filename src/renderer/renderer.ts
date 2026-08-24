@@ -17,16 +17,24 @@ import {logger} from './utils/logger';
 import type {SettingsChangeDetail, SettingsChangeResult} from './utils/settingsEvents';
 import type {PromptImageAttachment} from '@shared/ipc';
 import {isRealtimeTranscription} from './services/realtimeTranscription';
+import {isOpenAiRealtimeTranslation} from './services/openAiLiveContract';
 import {beginNativeRendererActivity} from './state/rendererActivity';
 
 export type RendererSettingsSnapshot = {
     durations: number[];
     durationHotkeys: Record<number, string>;
     realtimeTranscription: boolean;
+    realtimeTranslation: boolean;
 };
 
 export type RendererSessionUi = {
     updateRealtimeTranscript: (previous: string, next: string) => void;
+    updateRealtimeTranslation: (update: {
+        sourcePrevious: string;
+        sourceNext: string;
+        translatedPrevious: string;
+        translatedNext: string;
+    }) => void;
     restoreQuestionIfEmpty: (text: string) => void;
     getQuestion: () => string;
     getPromptImages: () => PromptImageAttachment[];
@@ -78,6 +86,7 @@ export class RendererSession {
     constructor(private readonly ui: RendererSessionUi) {
         this.streamController = new StreamController({
             updateRealtimeTranscript: ui.updateRealtimeTranscript,
+            updateRealtimeTranslation: ui.updateRealtimeTranslation,
             restoreQuestionIfEmpty: ui.restoreQuestionIfEmpty,
             setAudioInputPresentation: ui.setAudioInputPresentation,
         });
@@ -322,6 +331,10 @@ export class RendererSession {
                 typeof transcriptionMode === 'string' ? transcriptionMode : undefined,
                 typeof transcriptionModel === 'string' ? transcriptionModel : undefined,
             ),
+            realtimeTranslation: isOpenAiRealtimeTranslation(
+                typeof transcriptionMode === 'string' ? transcriptionMode : undefined,
+                typeof transcriptionModel === 'string' ? transcriptionModel : undefined,
+            ),
         });
     }
 
@@ -341,7 +354,11 @@ export class RendererSession {
                 };
             }
             if (applied) {
-                if (key === 'transcriptionMode' || key === 'transcriptionModel') {
+                if (
+                    key === 'transcriptionMode'
+                    || key === 'transcriptionModel'
+                    || key === 'realtimeTranslationLanguage'
+                ) {
                     const settings = settingsStore.get();
                     this.publishSettings(
                         settings.durations,

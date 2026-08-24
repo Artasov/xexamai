@@ -40,14 +40,18 @@ use crate::constants::{
     BACKEND_DOMAIN_RU, DEFAULT_API_LLM_TIMEOUT_MS, DEFAULT_API_STT_TIMEOUT_MS,
     DEFAULT_AUDIO_INPUT_TYPE, DEFAULT_BACKEND_DOMAIN, DEFAULT_DURATIONS, DEFAULT_LLM_HOST,
     DEFAULT_LLM_PROMPT, DEFAULT_LOCAL_DEVICE, DEFAULT_LOCAL_LLM_MODEL, DEFAULT_LOCAL_WHISPER_MODEL,
-    DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL, DEFAULT_STREAM_SEND_HOTKEY,
-    DEFAULT_TOGGLE_INPUT_HOTKEY, DEFAULT_TRANSCRIPTION_MODE, DEFAULT_TRANSCRIPTION_PROMPT,
-    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH,
-    DEFAULT_WINDOW_OPACITY, DEFAULT_WINDOW_SCALE, DEFAULT_WINDOW_WIDTH,
-    LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT, LEGACY_VERBOSE_LLM_PROMPT,
+    DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
+    DEFAULT_REALTIME_TRANSLATION_LANGUAGE, DEFAULT_STREAM_SEND_HOTKEY, DEFAULT_TOGGLE_INPUT_HOTKEY,
+    DEFAULT_TRANSCRIPTION_MODE, DEFAULT_TRANSCRIPTION_PROMPT, DEFAULT_WINDOW_HEIGHT,
+    DEFAULT_WINDOW_MIN_HEIGHT, DEFAULT_WINDOW_MIN_WIDTH, DEFAULT_WINDOW_OPACITY,
+    DEFAULT_WINDOW_SCALE, DEFAULT_WINDOW_WIDTH, LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT,
+    LEGACY_VERBOSE_LLM_PROMPT,
 };
 
 const VALID_LOCAL_DEVICES: &[&str] = &["auto", "cpu", "cuda", "metal", "gpu"];
+pub(crate) const VALID_REALTIME_TRANSLATION_LANGUAGES: &[&str] = &[
+    "en", "ru", "es", "de", "fr", "it", "pt", "pl", "tr", "uk", "ka", "ar", "hi", "zh", "ja", "ko",
+];
 const VALID_LOCAL_WHISPER_MODELS: &[&str] = &[
     "tiny", "base", "small", "medium", "large", "large-v2", "large-v3",
 ];
@@ -108,6 +112,17 @@ fn default_audio_input_type() -> String {
 
 fn default_transcription_model() -> String {
     DEFAULT_OPENAI_TRANSCRIPTION_MODEL.to_string()
+}
+
+pub(crate) fn normalize_translation_language(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    VALID_REALTIME_TRANSLATION_LANGUAGES
+        .contains(&normalized.as_str())
+        .then_some(normalized)
+}
+
+fn default_realtime_translation_language() -> String {
+    DEFAULT_REALTIME_TRANSLATION_LANGUAGE.to_string()
 }
 
 fn default_llm_model() -> String {
@@ -235,6 +250,8 @@ pub struct AppConfig {
     pub audio_input_type: String,
     #[serde(default = "default_transcription_model")]
     pub transcription_model: String,
+    #[serde(default = "default_realtime_translation_language")]
+    pub realtime_translation_language: String,
     #[serde(default = "default_transcription_prompt")]
     pub transcription_prompt: String,
     #[serde(default = "default_llm_model")]
@@ -324,6 +341,7 @@ impl Default for AppConfig {
             audio_input_device_id: None,
             audio_input_type: default_audio_input_type(),
             transcription_model: default_transcription_model(),
+            realtime_translation_language: default_realtime_translation_language(),
             transcription_prompt: default_transcription_prompt(),
             llm_model: default_llm_model(),
             api_llm_model: default_api_llm_model(),
@@ -391,6 +409,9 @@ impl AppConfig {
             self.transcription_model = DEFAULT_OPENAI_TRANSCRIPTION_MODEL.to_string();
         }
         self.transcription_model = migrate_retired_gemini_model(&self.transcription_model);
+        self.realtime_translation_language =
+            normalize_translation_language(&self.realtime_translation_language)
+                .unwrap_or_else(|| DEFAULT_REALTIME_TRANSLATION_LANGUAGE.to_string());
         if self.transcription_prompt.trim().is_empty()
             || self.transcription_prompt.trim() == LEGACY_TRANSLATING_TRANSCRIPTION_PROMPT
         {
@@ -558,6 +579,25 @@ mod tests {
         assert!(serialized.get("screenProcessingModel").is_none());
         assert!(serialized.get("screenProcessingPrompt").is_none());
         assert!(serialized.get("screenProcessingTimeoutMs").is_none());
+    }
+
+    #[test]
+    fn realtime_translation_language_is_normalized_and_bounded() {
+        assert_eq!(
+            normalize_translation_language(" RU ").as_deref(),
+            Some("ru")
+        );
+        assert!(normalize_translation_language("not-a-language").is_none());
+
+        let mut config: AppConfig = serde_json::from_value(serde_json::json!({
+            "realtimeTranslationLanguage": "invalid"
+        }))
+        .expect("config remains readable");
+        config.normalize();
+        assert_eq!(
+            config.realtime_translation_language,
+            DEFAULT_REALTIME_TRANSLATION_LANGUAGE
+        );
     }
 
     #[test]

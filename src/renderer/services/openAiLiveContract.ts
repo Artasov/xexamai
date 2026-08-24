@@ -1,7 +1,11 @@
-import {OPENAI_LIVE_TRANSCRIBE_MODEL} from '@shared/constants';
+import {
+    OPENAI_LIVE_TRANSCRIBE_MODEL,
+    OPENAI_REALTIME_TRANSLATE_MODEL,
+} from '@shared/constants';
 
 export const OPENAI_LIVE_MODEL = OPENAI_LIVE_TRANSCRIBE_MODEL;
 export const OPENAI_LIVE_ENDPOINT = 'wss://api.openai.com/v1/realtime';
+export const OPENAI_TRANSLATION_MODEL = OPENAI_REALTIME_TRANSLATE_MODEL;
 
 /**
  * A client secret is already bound to its transcription session. A `model`
@@ -13,6 +17,11 @@ export const isOpenAiRealtimeTranscription = (
     mode: string | undefined,
     model: string | undefined,
 ): boolean => mode !== 'local' && model === OPENAI_LIVE_MODEL;
+
+export const isOpenAiRealtimeTranslation = (
+    mode: string | undefined,
+    model: string | undefined,
+): boolean => mode !== 'local' && model === OPENAI_TRANSLATION_MODEL;
 
 const normalizePrompt = (prompt: string | undefined): string | undefined => {
     const normalized = prompt?.replace(/\s+/g, ' ').trim();
@@ -173,5 +182,55 @@ export class OpenAiTranscriptAssembler {
             output += text;
         }
         return output;
+    }
+}
+
+export type OpenAiTranslationTranscript = {
+    source: string;
+    translated: string;
+};
+
+/** Translation transcript events are append-only and share one session timeline. */
+export class OpenAiTranslationTranscriptAssembler {
+    private source = '';
+    private translated = '';
+    private acknowledgedSource = '';
+    private acknowledgedTranslation = '';
+
+    reset(): void {
+        this.source = '';
+        this.translated = '';
+        this.acknowledgedSource = '';
+        this.acknowledgedTranslation = '';
+    }
+
+    acknowledge(): void {
+        this.acknowledgedSource = this.source;
+        this.acknowledgedTranslation = this.translated;
+    }
+
+    apply(message: Record<string, any>): OpenAiTranslationTranscript | null {
+        const delta = typeof message.delta === 'string' ? message.delta : '';
+        if (!delta) return null;
+        if (message.type === 'session.input_transcript.delta') {
+            this.source += delta;
+        } else if (message.type === 'session.output_transcript.delta') {
+            this.translated += delta;
+        } else {
+            return null;
+        }
+        return this.render();
+    }
+
+    private render(): OpenAiTranslationTranscript {
+        return {
+            source: this.withoutAcknowledged(this.source, this.acknowledgedSource),
+            translated: this.withoutAcknowledged(this.translated, this.acknowledgedTranslation),
+        };
+    }
+
+    private withoutAcknowledged(value: string, acknowledged: string): string {
+        if (!acknowledged) return value;
+        return value.startsWith(acknowledged) ? value.slice(acknowledged.length) : '';
     }
 }

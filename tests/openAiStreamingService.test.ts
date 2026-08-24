@@ -71,4 +71,48 @@ describe('OpenAI streaming reconnect buffer', () => {
 
         await service.stop();
     });
+
+    it('starts translation once and exposes source plus translated transcript streams', async () => {
+        let messageListener: ((message: Record<string, any>) => void) | null = null;
+        const startLive = vi.fn(async () => undefined);
+        const sendAudioChunk = vi.fn();
+        const openai = {
+            getLiveCapability: vi.fn(async () => ({
+                supported: true,
+                configured: true,
+                model: 'gpt-live-transcribe',
+            })),
+            startLive,
+            sendAudioChunk,
+            stopLive: vi.fn(async () => undefined),
+            onMessage: vi.fn((listener: (message: Record<string, any>) => void) => {
+                messageListener = listener;
+                return vi.fn();
+            }),
+            onError: vi.fn(() => vi.fn()),
+        };
+        vi.stubGlobal('window', {api: {openai}});
+
+        const translated = vi.fn();
+        const service = new OpenAiStreamingService();
+        service.onTranslation(translated);
+        await service.start({targetLanguage: 'ru'});
+
+        expect(startLive).toHaveBeenCalledWith({prompt: undefined, targetLanguage: 'ru'});
+        const emitMessage = messageListener as unknown as (message: Record<string, any>) => void;
+        emitMessage({type: 'session.input_transcript.delta', delta: 'Hello'});
+        emitMessage({type: 'session.output_transcript.delta', delta: 'Привет'});
+        expect(translated).toHaveBeenLastCalledWith({source: 'Hello', translated: 'Привет'});
+
+        mocks.audioListener?.({
+            generation: 1,
+            sampleRate: 48_000,
+            channels: 1,
+            samples: [Float32Array.from({length: 9_600}, (_, index) => Math.sin(index / 12) * 0.4)],
+            rms: 0.2,
+        });
+        expect(sendAudioChunk).toHaveBeenCalledTimes(1);
+
+        await service.stop();
+    });
 });

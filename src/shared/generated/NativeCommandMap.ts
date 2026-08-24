@@ -138,6 +138,22 @@ export type NativeCommandMap = {
         args: undefined;
         result: Awaited<ReturnType<NativeBindings["openaiLiveCreateToken"]>>;
     };
+    "openai_translation_start": {
+        args: {
+            targetLanguage: Parameters<NativeBindings["openaiTranslationStart"]>[0];
+        };
+        result: Awaited<ReturnType<NativeBindings["openaiTranslationStart"]>>;
+    };
+    "openai_translation_send_audio": {
+        args: {
+            data: Parameters<NativeBindings["openaiTranslationSendAudio"]>[0];
+        };
+        result: Awaited<ReturnType<NativeBindings["openaiTranslationSendAudio"]>>;
+    };
+    "openai_translation_stop": {
+        args: undefined;
+        result: Awaited<ReturnType<NativeBindings["openaiTranslationStop"]>>;
+    };
     "provider_proxy_request": {
         args: {
             request: Parameters<NativeBindings["providerProxyRequest"]>[0];

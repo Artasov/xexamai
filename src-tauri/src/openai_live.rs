@@ -1,17 +1,29 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::{SinkExt, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION as WS_AUTHORIZATION;
+use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
+use uuid::Uuid;
 
 use crate::activity::ActivityGate;
 use crate::secret_store::{ProviderSecret, SecretStore};
+use crate::types::normalize_translation_language;
 
 pub const OPENAI_LIVE_TRANSCRIBE_MODEL: &str = "gpt-live-transcribe";
+pub const OPENAI_REALTIME_TRANSLATE_MODEL: &str = "gpt-realtime-translate";
 const OPENAI_CLIENT_SECRETS_URL: &str = "https://api.openai.com/v1/realtime/client_secrets";
+const OPENAI_TRANSLATION_WEBSOCKET_URL: &str =
+    "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate";
+const OPENAI_TRANSLATION_MESSAGE_EVENT: &str = "openai-translation-message";
+const MAX_TRANSLATION_AUDIO_BASE64_BYTES: usize = 1_500_000;
 
 #[derive(Debug, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +44,21 @@ pub struct OpenAiLiveToken {
 #[derive(Debug, Deserialize)]
 struct OpenAiClientSecretResponse {
     value: String,
+}
+
+#[derive(Default)]
+pub struct OpenAiTranslationState {
+    active: Mutex<Option<OpenAiTranslationSession>>,
+}
+
+struct OpenAiTranslationSession {
+    id: Uuid,
+    commands: mpsc::Sender<OpenAiTranslationCommand>,
+}
+
+enum OpenAiTranslationCommand {
+    Audio(String),
+    Close(oneshot::Sender<()>),
 }
 
 #[tauri::command]
@@ -64,6 +91,337 @@ pub async fn openai_live_create_token(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "OpenAI API key is not configured".to_string())?;
 
+    let token = request_client_secret(
+        &api_key,
+        OPENAI_CLIENT_SECRETS_URL,
+        &client_secret_request_body(),
+        "transcription",
+    )
+    .await?;
+
+    Ok(OpenAiLiveToken {
+        token,
+        model: OPENAI_LIVE_TRANSCRIBE_MODEL,
+    })
+}
+
+/// Opens the dedicated translation WebSocket from the native process. Unlike
+/// the browser WebSocket API, this transport can send the required Bearer
+/// header while keeping the permanent provider key inside the OS keyring.
+#[tauri::command]
+#[specta::specta]
+pub async fn openai_translation_start(
+    app: AppHandle,
+    activity: State<'_, Arc<ActivityGate>>,
+    secrets: State<'_, Arc<SecretStore>>,
+    state: State<'_, Arc<OpenAiTranslationState>>,
+    target_language: String,
+) -> Result<(), String> {
+    let _activity = activity.try_begin_work()?;
+    let target_language = normalize_translation_language(&target_language)
+        .ok_or_else(|| "Unsupported realtime translation language".to_string())?;
+    stop_translation_session(&state).await;
+    let api_key = secrets
+        .get_provider_secret(ProviderSecret::OpenAi)
+        .await?
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "OpenAI API key is not configured".to_string())?;
+
+    let mut request = OPENAI_TRANSLATION_WEBSOCKET_URL
+        .into_client_request()
+        .map_err(|_| "Could not initialize OpenAI Realtime translation".to_string())?;
+    request.headers_mut().insert(
+        WS_AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {}", api_key.trim()))
+            .map_err(|_| "OpenAI API key has an invalid format".to_string())?,
+    );
+    drop(api_key);
+
+    let (mut socket, _) = tokio::time::timeout(
+        Duration::from_secs(15),
+        tokio_tungstenite::connect_async(request),
+    )
+    .await
+    .map_err(|_| "OpenAI Realtime translation connection timed out".to_string())?
+    .map_err(translation_connect_error)?;
+
+    wait_for_translation_event(&mut socket, "session.created").await?;
+    socket
+        .send(Message::Text(
+            translation_session_update(&target_language)
+                .to_string()
+                .into(),
+        ))
+        .await
+        .map_err(|error| format!("Could not configure OpenAI translation: {error}"))?;
+    wait_for_translation_event(&mut socket, "session.updated").await?;
+
+    let id = Uuid::new_v4();
+    let (commands, receiver) = mpsc::channel(32);
+    *state.active.lock().await = Some(OpenAiTranslationSession { id, commands });
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn(run_translation_session(app, state, id, socket, receiver));
+    log::info!(
+        "OpenAI Realtime translation connected: model={} target_language={}",
+        OPENAI_REALTIME_TRANSLATE_MODEL,
+        target_language
+    );
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn openai_translation_send_audio(
+    state: State<'_, Arc<OpenAiTranslationState>>,
+    data: String,
+) -> Result<(), String> {
+    if data.is_empty() || data.len() > MAX_TRANSLATION_AUDIO_BASE64_BYTES {
+        return Err("Invalid OpenAI translation audio chunk".to_string());
+    }
+    let commands = state
+        .active
+        .lock()
+        .await
+        .as_ref()
+        .map(|session| session.commands.clone())
+        .ok_or_else(|| "OpenAI translation is not connected".to_string())?;
+    commands
+        .send(OpenAiTranslationCommand::Audio(data))
+        .await
+        .map_err(|_| "OpenAI translation connection is closed".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn openai_translation_stop(
+    state: State<'_, Arc<OpenAiTranslationState>>,
+) -> Result<(), String> {
+    stop_translation_session(&state).await;
+    Ok(())
+}
+
+async fn stop_translation_session(state: &OpenAiTranslationState) {
+    let session = state.active.lock().await.take();
+    let Some(session) = session else { return };
+    let (finished_tx, finished_rx) = oneshot::channel();
+    if session
+        .commands
+        .send(OpenAiTranslationCommand::Close(finished_tx))
+        .await
+        .is_ok()
+    {
+        let _ = tokio::time::timeout(Duration::from_secs(3), finished_rx).await;
+    }
+}
+
+async fn wait_for_translation_event<S>(
+    socket: &mut tokio_tungstenite::WebSocketStream<S>,
+    expected_type: &str,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let frame = socket
+                .next()
+                .await
+                .ok_or_else(|| "OpenAI closed the translation connection during setup".to_string())?
+                .map_err(|error| format!("OpenAI translation setup failed: {error}"))?;
+            let Some(event) = decode_translation_frame(frame)? else {
+                continue;
+            };
+            if let Some(message) = translation_server_error(&event) {
+                return Err(format!(
+                    "OpenAI rejected the translation session: {message}"
+                ));
+            }
+            if event.get("type").and_then(Value::as_str) == Some(expected_type) {
+                return Ok(());
+            }
+        }
+    })
+    .await
+    .map_err(|_| format!("OpenAI did not confirm {expected_type}"))?
+}
+
+async fn run_translation_session<S>(
+    app: AppHandle,
+    state: Arc<OpenAiTranslationState>,
+    id: Uuid,
+    mut socket: tokio_tungstenite::WebSocketStream<S>,
+    mut commands: mpsc::Receiver<OpenAiTranslationCommand>,
+) where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let mut close_waiter: Option<oneshot::Sender<()>> = None;
+    let mut closing = false;
+    loop {
+        tokio::select! {
+            command = commands.recv(), if !closing => {
+                match command {
+                    Some(OpenAiTranslationCommand::Audio(audio)) => {
+                        let payload = json!({
+                            "type": "session.input_audio_buffer.append",
+                            "audio": audio,
+                        });
+                        if let Err(error) = socket.send(Message::Text(payload.to_string().into())).await {
+                            emit_translation_error(&app, format!("OpenAI translation audio send failed: {error}"));
+                            break;
+                        }
+                    }
+                    Some(OpenAiTranslationCommand::Close(waiter)) => {
+                        close_waiter = Some(waiter);
+                        closing = true;
+                        if socket
+                            .send(Message::Text(json!({"type": "session.close"}).to_string().into()))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+            frame = socket.next() => {
+                let frame = match frame {
+                    Some(Ok(frame)) => frame,
+                    Some(Err(error)) => {
+                        if !closing {
+                            emit_translation_error(&app, format!("OpenAI translation connection failed: {error}"));
+                        }
+                        break;
+                    }
+                    None => {
+                        if !closing {
+                            emit_translation_error(
+                                &app,
+                                "OpenAI translation connection closed unexpectedly".to_string(),
+                            );
+                        }
+                        break;
+                    }
+                };
+                let event = match decode_translation_frame(frame) {
+                    Ok(Some(event)) => event,
+                    Ok(None) => continue,
+                    Err(error) => {
+                        emit_translation_error(&app, error);
+                        continue;
+                    }
+                };
+                let event_type = event.get("type").and_then(Value::as_str).unwrap_or_default();
+                if matches!(
+                    event_type,
+                    "session.input_transcript.delta"
+                        | "session.output_transcript.delta"
+                        | "session.input_transcript.completed"
+                        | "session.output_transcript.completed"
+                        | "error"
+                        | "session.closed"
+                ) {
+                    let _ = app.emit(OPENAI_TRANSLATION_MESSAGE_EVENT, &event);
+                }
+                if event_type == "session.closed" {
+                    break;
+                }
+            }
+        }
+    }
+    let _ = socket.close(None).await;
+    if let Some(waiter) = close_waiter {
+        let _ = waiter.send(());
+    }
+    let mut active = state.active.lock().await;
+    if active.as_ref().map(|session| session.id) == Some(id) {
+        active.take();
+    }
+}
+
+fn translation_session_update(target_language: &str) -> Value {
+    json!({
+        "type": "session.update",
+        "session": {
+            "audio": {
+                "input": {
+                    "transcription": {
+                        "model": "gpt-realtime-whisper"
+                    },
+                    "noise_reduction": {
+                        "type": "far_field"
+                    }
+                },
+                "output": {
+                    "language": target_language
+                }
+            }
+        }
+    })
+}
+
+fn decode_translation_frame(frame: Message) -> Result<Option<Value>, String> {
+    let bytes = match frame {
+        Message::Text(text) => {
+            return serde_json::from_str(text.as_ref())
+                .map(Some)
+                .map_err(|_| "OpenAI returned an unreadable translation event".to_string())
+        }
+        Message::Binary(bytes) => bytes,
+        Message::Close(_) => return Err("OpenAI closed the translation connection".to_string()),
+        Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => return Ok(None),
+    };
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|_| "OpenAI returned an unreadable translation event".to_string())
+}
+
+fn translation_server_error(event: &Value) -> Option<String> {
+    (event.get("type").and_then(Value::as_str) == Some("error")).then(|| {
+        event
+            .get("error")
+            .and_then(|error| error.get("message"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown OpenAI translation error")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
+}
+
+fn translation_connect_error(error: WebSocketError) -> String {
+    match error {
+        WebSocketError::Http(response) if matches!(response.status().as_u16(), 401 | 403) => {
+            "OpenAI API key is invalid or cannot access Realtime translation".to_string()
+        }
+        WebSocketError::Http(response) if response.status().as_u16() == 429 => {
+            "OpenAI Realtime translation rate limit or quota was reached".to_string()
+        }
+        WebSocketError::Http(response) => format!(
+            "OpenAI Realtime translation connection failed (HTTP {})",
+            response.status().as_u16()
+        ),
+        other => format!("Could not reach OpenAI Realtime translation: {other}"),
+    }
+}
+
+fn emit_translation_error(app: &AppHandle, message: String) {
+    log::warn!("{message}");
+    let _ = app.emit(
+        OPENAI_TRANSLATION_MESSAGE_EVENT,
+        json!({
+            "type": "error",
+            "error": {"message": message},
+        }),
+    );
+}
+
+async fn request_client_secret(
+    api_key: &str,
+    endpoint: &str,
+    body: &Value,
+    capability: &str,
+) -> Result<String, String> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
@@ -80,9 +438,9 @@ pub async fn openai_live_create_token(
         .map_err(|error| format!("Failed to initialize OpenAI Realtime: {error}"))?;
 
     let response = client
-        .post(OPENAI_CLIENT_SECRETS_URL)
+        .post(endpoint)
         .headers(headers)
-        .json(&client_secret_request_body())
+        .json(body)
         .send()
         .await
         .map_err(|error| {
@@ -107,7 +465,7 @@ pub async fn openai_live_create_token(
         );
         return Err(match (status.as_u16(), detail) {
             (401 | 403, _) => {
-                "OpenAI API key is invalid or cannot access Realtime transcription".to_string()
+                format!("OpenAI API key is invalid or cannot access Realtime {capability}")
             }
             (429, _) => "OpenAI Realtime rate limit or quota was reached".to_string(),
             (code, Some(detail)) => {
@@ -123,10 +481,7 @@ pub async fn openai_live_create_token(
         return Err("OpenAI returned an empty temporary token".to_string());
     }
 
-    Ok(OpenAiLiveToken {
-        token: token.value,
-        model: OPENAI_LIVE_TRANSCRIBE_MODEL,
-    })
+    Ok(token.value)
 }
 
 fn client_secret_request_body() -> Value {
@@ -208,5 +563,64 @@ mod tests {
             Some("Invalid session")
         );
         assert!(openai_error_message(b"not json").is_none());
+    }
+
+    #[test]
+    fn translation_session_update_requests_source_and_translated_transcripts() {
+        let body = translation_session_update("ru");
+        assert_eq!(body["type"], "session.update");
+        assert_eq!(
+            body["session"]["audio"]["input"]["transcription"]["model"],
+            "gpt-realtime-whisper"
+        );
+        assert_eq!(body["session"]["audio"]["output"]["language"], "ru");
+    }
+
+    #[tokio::test]
+    #[ignore = "manual live check; requires the user's saved OpenAI key and network access"]
+    async fn live_translation_websocket_handshake() {
+        let api_key = keyring::Entry::new("xlartas-xexamai", "provider.openai.api-key")
+            .expect("open keyring entry")
+            .get_password()
+            .expect("read saved OpenAI key");
+        let mut request = OPENAI_TRANSLATION_WEBSOCKET_URL
+            .into_client_request()
+            .expect("build translation request");
+        request.headers_mut().insert(
+            WS_AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", api_key.trim()))
+                .expect("valid authorization header"),
+        );
+        drop(api_key);
+
+        let (mut socket, _) = tokio::time::timeout(
+            Duration::from_secs(15),
+            tokio_tungstenite::connect_async(request),
+        )
+        .await
+        .expect("translation WebSocket timeout")
+        .map_err(translation_connect_error)
+        .expect("translation WebSocket connection");
+        wait_for_translation_event(&mut socket, "session.created")
+            .await
+            .expect("session.created");
+        socket
+            .send(Message::Text(
+                translation_session_update("en").to_string().into(),
+            ))
+            .await
+            .expect("send session.update");
+        wait_for_translation_event(&mut socket, "session.updated")
+            .await
+            .expect("session.updated");
+        socket
+            .send(Message::Text(
+                json!({"type": "session.close"}).to_string().into(),
+            ))
+            .await
+            .expect("send session.close");
+        wait_for_translation_event(&mut socket, "session.closed")
+            .await
+            .expect("session.closed");
     }
 }

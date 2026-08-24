@@ -32,6 +32,7 @@ export type AppSettings = {
     audioInputDeviceId?: string | null;
     audioInputType?: 'microphone' | 'system' | 'mixed';
     transcriptionModel?: string;
+    realtimeTranslationLanguage?: string;
     transcriptionPrompt?: string;
     llmModel?: string;
     apiLlmModel?: string;
@@ -65,6 +66,7 @@ export const DefaultSettings: AppSettings = {
     welcomeModalDismissed: false,
     audioInputType: 'microphone',
     transcriptionMode: 'api',
+    realtimeTranslationLanguage: 'en',
     llmHost: 'api',
     llmModel: 'gpt-4.1-nano',
     apiLlmModel: 'gpt-4.1-nano',
@@ -238,6 +240,7 @@ export type AssistantAPI = {
         setToggleInputHotkey: (key: string) => Promise<void>;
         setAudioInputType: (type: 'microphone' | 'system' | 'mixed') => Promise<void>;
         setTranscriptionModel: (model: string) => Promise<void>;
+        setRealtimeTranslationLanguage: (language: string) => Promise<void>;
         setTranscriptionPrompt: (prompt: string) => Promise<void>;
         setLlmModel: (model: string, host?: 'api' | 'local') => Promise<void>;
         setLlmPrompt: (prompt: string) => Promise<void>;
@@ -286,7 +289,7 @@ export type AssistantAPI = {
     };
     openai: {
         getLiveCapability: () => Promise<{ supported: boolean; configured: boolean; reason?: string | null; model: string }>;
-        startLive: (opts: {prompt?: string}) => Promise<void>;
+        startLive: (opts: {prompt?: string; targetLanguage?: string}) => Promise<void>;
         sendAudioChunk: (params: {data: string}) => void;
         stopLive: () => Promise<void>;
         onMessage: (cb: (message: Record<string, any>) => void) => () => void;

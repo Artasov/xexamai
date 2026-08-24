@@ -24,8 +24,8 @@ Use the application only where AI assistance and recording are permitted. You ar
 
 - Native Rust audio capture with microphone, system-audio, and mixed modes.
 - Live input switching while recording, plus configurable buffer durations and global hotkeys.
-- OpenAI, OpenAI Realtime (`gpt-live-transcribe`), Google Gemini, Google Live, Winky, Ollama, and local `fast-fast-whisper` modes.
-- Streaming answers and realtime OpenAI or Google transcription into the question field. OpenAI Realtime does not force a language, allowing the service to handle multilingual speech and code-switching automatically.
+- OpenAI, OpenAI Realtime (`gpt-live-transcribe` and `gpt-realtime-translate`), Google Gemini, Google Live, Winky, Ollama, and local `fast-fast-whisper` modes.
+- Streaming answers and realtime OpenAI or Google transcription into the question field. OpenAI Live Transcribe preserves multilingual speech and code-switching. OpenAI Realtime Translate keeps both the detected source transcript and the selected-language translation, with the translation shown by default and an in-field source/translation toggle.
 - Local conversation history with search, filters, pinning, rename, retry, export, deletion, and configurable retention.
 - User-initiated screenshot analysis through OpenAI or Google.
 - OAuth or email/password sign-in for the XEXAMAI backend and Winky features.
@@ -40,7 +40,7 @@ Local modes do not incur OpenAI or Google API usage, but they require local soft
 2. Sign in, then choose an AI and transcription mode in **Settings**.
 3. For OpenAI or Google BYOK modes, add the corresponding API key. For local modes, start Ollama and/or the local speech service.
 4. Select **Microphone**, **System audio**, or **Mic + System**, and choose the microphone device when applicable.
-5. Start recording. XEXAMAI keeps only the configured recent portion in its rolling memory buffer. If OpenAI Realtime or Google Live transcription is selected, recording also starts continuous audio streaming to that provider until recording or that mode stops.
+5. Start recording. XEXAMAI keeps only the configured recent portion in its rolling memory buffer. If OpenAI Realtime, Realtime Translate, or Google Live transcription is selected, recording also starts continuous audio streaming to that provider until recording or that mode stops.
 6. Send the desired duration, type a question, start a stream, or explicitly capture a screenshot.
 
 Test audio and provider access before an important session. The first local request may be slower while models are downloaded or loaded into RAM/VRAM.
@@ -55,6 +55,7 @@ Test audio and provider access before an important session. The first local requ
 | Local LLM (Ollama) | Prompt and selected conversation context | The local service at `127.0.0.1:11434` |
 | OpenAI buffered transcription/LLM | Selected audio, prompts/context, or a screenshot, depending on the action | `api.openai.com` |
 | OpenAI Realtime (`gpt-live-transcribe`) | Starting recording with this model selected continuously streams the selected audio over a direct WebSocket. The long-lived key stays in Rust; the renderer receives only a short-lived client secret. Recognized text is written into the question field. | `wss://api.openai.com` |
+| OpenAI Realtime Translate (`gpt-realtime-translate`) | Starting recording continuously streams the selected audio to OpenAI's dedicated translation WebSocket. OpenAI returns source and translated transcript deltas; the selected output language is written into the question field by default. Rust owns the WebSocket and reads the long-lived key only from the OS credential store, so the key never enters renderer state. | `wss://api.openai.com` |
 | Google standard | Selected audio, prompts/context, or a screenshot, depending on the action | `generativelanguage.googleapis.com` |
 | Google Live | Starting recording with a Live transcription model selected continuously sends the selected audio over a direct WebSocket; a one-use temporary token is used by the renderer | Google Live API |
 | Winky | Account/profile requests, prompts/context, or an uploaded audio fragment | The selected `xlartas.com` or `xlartas.ru` backend |

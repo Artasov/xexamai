@@ -10,6 +10,7 @@ pub const DEFAULT_WINDOW_OPACITY: u32 = 100;
 
 pub const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1-nano";
 pub const DEFAULT_OPENAI_TRANSCRIPTION_MODEL: &str = "gpt-4o-mini-transcribe";
+pub const DEFAULT_REALTIME_TRANSLATION_LANGUAGE: &str = "en";
 pub const DEFAULT_LOCAL_LLM_MODEL: &str = "gpt-oss:20b";
 pub const DEFAULT_LOCAL_WHISPER_MODEL: &str = "base";
 pub const DEFAULT_LOCAL_DEVICE: &str = "cpu";

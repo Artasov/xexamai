@@ -17,6 +17,7 @@ import {
     LOCAL_TRANSCRIBE_MODELS,
     OPENAI_BATCH_TRANSCRIBE_MODELS,
     OPENAI_LIVE_TRANSCRIBE_MODEL,
+    OPENAI_REALTIME_TRANSLATE_MODEL,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
     WINKY_LLM_MODELS,
@@ -1294,7 +1295,10 @@ async function transcribeAudioBuffer({
                 : transcriptionModel;
             return transcribeWithGoogle(buffer, mime, settings, batchModel, requestId);
         }
-        const batchModel = transcriptionModel === OPENAI_LIVE_TRANSCRIBE_MODEL
+        const batchModel = (
+            transcriptionModel === OPENAI_LIVE_TRANSCRIBE_MODEL
+            || transcriptionModel === OPENAI_REALTIME_TRANSLATE_MODEL
+        )
             ? OPENAI_BATCH_TRANSCRIBE_MODELS[0]
             : transcriptionModel;
         return transcribeWithOpenAi(buffer, mime, filename, settings, batchModel, requestId);

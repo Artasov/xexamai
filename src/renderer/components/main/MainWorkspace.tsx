@@ -1,6 +1,7 @@
 import {useEffect, useRef, type ClipboardEvent, type KeyboardEvent} from 'react';
-import {TextField} from '@mui/material';
+import {IconButton, InputAdornment, TextField, Tooltip} from '@mui/material';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import TranslateRoundedIcon from '@mui/icons-material/TranslateRounded';
 import {createNewChat} from '../../ui/outputs';
 import type {useRendererSession} from '../../hooks/useRendererSession';
 import type {AppState} from '../../state/appState';
@@ -169,9 +170,32 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                         minRows={1}
                         maxRows={7}
                         inputProps={{'aria-label': 'Question for the assistant'}}
+                        InputProps={renderer.settings.realtimeTranslation ? {
+                            endAdornment: (
+                                <InputAdornment position="end" sx={{alignSelf: 'center', ml: 0.5}}>
+                                    <Tooltip
+                                        title={renderer.translationView === 'translated'
+                                            ? 'Show original transcript'
+                                            : 'Show translated transcript'}
+                                    >
+                                        <IconButton
+                                            size="small"
+                                            edge="end"
+                                            onClick={renderer.toggleTranslationView}
+                                            aria-label={renderer.translationView === 'translated'
+                                                ? 'Show original transcript'
+                                                : 'Show translated transcript'}
+                                            color={renderer.translationView === 'translated' ? 'primary' : 'default'}
+                                        >
+                                            <TranslateRoundedIcon sx={{fontSize: 18}}/>
+                                        </IconButton>
+                                    </Tooltip>
+                                </InputAdornment>
+                            ),
+                        } : undefined}
                         sx={{
                             '& .MuiInputBase-root': {
-                                alignItems: 'flex-start',
+                                alignItems: 'center',
                                 minHeight: '36px',
                                 padding: '6px 10px',
                             },

@@ -17,13 +17,16 @@ import {
 import {listen} from '@tauri-apps/api/event';
 import {
     GEMINI_LLM_MODELS,
+    DEFAULT_REALTIME_TRANSLATION_LANGUAGE,
     GOOGLE_LIVE_TRANSCRIBE_MODEL,
     GOOGLE_TRANSCRIBE_MODELS,
     LOCAL_LLM_MODELS,
     LOCAL_TRANSCRIBE_MODELS,
     OPENAI_LIVE_TRANSCRIBE_MODEL,
+    OPENAI_REALTIME_TRANSLATE_MODEL,
     OPENAI_LLM_MODELS,
     OPENAI_TRANSCRIBE_MODELS,
+    REALTIME_TRANSLATION_LANGUAGES,
     WINKY_LLM_MODELS,
     WINKY_TRANSCRIBE_MODELS,
 } from '@shared/constants';
@@ -85,9 +88,12 @@ const GEMINI_LLM_SET = new Set<string>(GEMINI_LLM_MODELS as readonly string[]);
 const WINKY_LLM_SET = new Set<string>(WINKY_LLM_MODELS as readonly string[]);
 const API_TRANSCRIBE_OPTIONS = [
     OPENAI_LIVE_TRANSCRIBE_MODEL,
+    OPENAI_REALTIME_TRANSLATE_MODEL,
     GOOGLE_LIVE_TRANSCRIBE_MODEL,
     ...(WINKY_TRANSCRIBE_MODELS as readonly string[]),
-    ...(OPENAI_TRANSCRIBE_MODELS as readonly string[]).filter((model) => model !== OPENAI_LIVE_TRANSCRIBE_MODEL),
+    ...(OPENAI_TRANSCRIBE_MODELS as readonly string[]).filter((model) => (
+        model !== OPENAI_LIVE_TRANSCRIBE_MODEL && model !== OPENAI_REALTIME_TRANSLATE_MODEL
+    )),
     ...(GOOGLE_TRANSCRIBE_MODELS as readonly string[]).filter((model) => model !== GOOGLE_LIVE_TRANSCRIBE_MODEL),
 ];
 
@@ -504,6 +510,19 @@ export const AiSettings = () => {
         }
     };
 
+    const handleTranslationLanguageChange = async (language: string) => {
+        const supported = REALTIME_TRANSLATION_LANGUAGES.some((option) => option.value === language);
+        if (!supported) return;
+        try {
+            await window.api.settings.setRealtimeTranslationLanguage(language);
+            patchLocal({realtimeTranslationLanguage: language});
+            emitSettingsChange('realtimeTranslationLanguage', language);
+        } catch (error) {
+            logger.error('settings', 'Failed to set realtime translation language', {error});
+            showMessage('Failed to update translation language', 'error');
+        }
+    };
+
     const handleLocalWhisperChange = async (model: string) => {
         const normalized = normalizeLocalWhisperModel(model) || DEFAULT_LOCAL_TRANSCRIBE_MODEL;
         try {
@@ -740,6 +759,8 @@ export const AiSettings = () => {
     }, []);
 
     const apiTranscribeModel = settings.transcriptionModel ?? DEFAULT_API_TRANSCRIBE_MODEL;
+    const translationLanguage = settings.realtimeTranslationLanguage
+        ?? DEFAULT_REALTIME_TRANSLATION_LANGUAGE;
     const localTranscribeModel = settings.localWhisperModel ?? DEFAULT_LOCAL_TRANSCRIBE_MODEL;
     const apiLlmModel = settings.apiLlmModel ?? settings.llmModel ?? DEFAULT_API_LLM_MODEL;
     const localLlmModel = settings.localLlmModel ?? settings.llmModel ?? DEFAULT_LOCAL_LLM_MODEL;
@@ -1134,6 +1155,26 @@ export const AiSettings = () => {
                             </div>
                         ) : null}
                     </div>
+
+                    {settings.transcriptionMode === 'api'
+                    && apiTranscribeModel === OPENAI_REALTIME_TRANSLATE_MODEL ? (
+                        <div className="settings-field">
+                            <TextField
+                                select
+                                size="small"
+                                fullWidth
+                                label="Translation output language"
+                                value={translationLanguage}
+                                onChange={(event) => void handleTranslationLanguageChange(event.target.value)}
+                            >
+                                {REALTIME_TRANSLATION_LANGUAGES.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                        </div>
+                    ) : null}
 
                     <div className="settings-field">
                         <div className="ai-settings__select-wrapper">

@@ -89,6 +89,7 @@ const settingsApi: AssistantAPI["settings"] = {
   setToggleInputHotkey: makeSettingSetter("toggleInputHotkey"),
   setAudioInputType: makeSettingSetter("audioInputType"),
   setTranscriptionModel: makeSettingSetter("transcriptionModel"),
+  setRealtimeTranslationLanguage: makeSettingSetter("realtimeTranslationLanguage"),
   setTranscriptionPrompt: makeSettingSetter("transcriptionPrompt"),
   setLlmModel: async (model, host) => {
     const payload: Record<string, unknown> = { llmModel: model };
@@ -242,6 +243,11 @@ const openAiLiveErrorListeners = new Set<(error: string) => void>();
 let openAiLiveSocket: WebSocket | null = null;
 let openAiLiveReady = false;
 let openAiLiveAudioPending = false;
+let openAiLiveMode: "transcribe" | "translate" = "transcribe";
+let openAiNativeTranslationActive = false;
+let openAiTranslationUnlisten: UnlistenFn | null = null;
+let openAiTranslationListenPromise: Promise<void> | null = null;
+let openAiTranslationAudioChain: Promise<void> = Promise.resolve();
 const openAiLiveOutstandingItems = new Set<string>();
 const openAiLiveCommitWaiters = new Set<(itemId: string) => void>();
 const openAiLiveFinalWaiters = new Map<string, Set<() => void>>();
@@ -535,11 +541,45 @@ const notifyOpenAiLiveError = (message: string) => {
   }
 };
 
+const ensureOpenAiTranslationListener = async () => {
+  if (openAiTranslationUnlisten) return;
+  if (!openAiTranslationListenPromise) {
+    openAiTranslationListenPromise = listen<Record<string, any>>(
+      "openai-translation-message",
+      ({ payload }) => {
+        if (!payload || typeof payload !== "object") return;
+        const serverError = getOpenAiLiveError(payload);
+        if (serverError) {
+          notifyOpenAiLiveError(`OpenAI Realtime rejected the translation session: ${serverError}`);
+        }
+        for (const listener of openAiLiveMessageListeners) {
+          try {
+            listener(payload);
+          } catch {}
+        }
+        if (payload.type === "session.closed" && openAiNativeTranslationActive) {
+          openAiNativeTranslationActive = false;
+          openAiLiveReady = false;
+          notifyOpenAiLiveError("OpenAI Realtime translation connection closed.");
+        }
+      },
+    )
+      .then((unlisten) => {
+        openAiTranslationUnlisten = unlisten;
+      })
+      .finally(() => {
+        openAiTranslationListenPromise = null;
+      });
+  }
+  await openAiTranslationListenPromise;
+};
+
 const closeOpenAiLiveSocket = () => {
   const socket = openAiLiveSocket;
   openAiLiveSocket = null;
   openAiLiveReady = false;
   openAiLiveAudioPending = false;
+  openAiLiveMode = "transcribe";
   openAiLiveOutstandingItems.clear();
   openAiLiveCommitWaiters.clear();
   resolveOpenAiLiveFinalWaiters();
@@ -550,6 +590,20 @@ const closeOpenAiLiveSocket = () => {
 };
 
 const stopOpenAiLiveGracefully = async () => {
+  if (openAiNativeTranslationActive || openAiLiveMode === "translate") {
+    const shouldStop = openAiNativeTranslationActive;
+    openAiNativeTranslationActive = false;
+    openAiLiveReady = false;
+    openAiLiveAudioPending = false;
+    openAiLiveMode = "transcribe";
+    if (shouldStop) {
+      try {
+        await openAiTranslationAudioChain;
+        await invoke("openai_translation_stop");
+      } catch {}
+    }
+    return;
+  }
   const socket = openAiLiveSocket;
   if (!socket) return;
   if (openAiLiveReady && socket.readyState === WebSocket.OPEN) {
@@ -611,8 +665,26 @@ const openaiApi: AssistantAPI["openai"] = {
       };
     }
   },
-  startLive: async ({ prompt }) => {
+  startLive: async ({ prompt, targetLanguage }) => {
     closeOpenAiLiveSocket();
+    const translating = Boolean(targetLanguage?.trim());
+    if (translating) {
+      await ensureOpenAiTranslationListener();
+      openAiLiveMode = "translate";
+      try {
+        await invoke("openai_translation_start", {
+          targetLanguage: targetLanguage!.trim(),
+        });
+        openAiTranslationAudioChain = Promise.resolve();
+        openAiNativeTranslationActive = true;
+        openAiLiveReady = true;
+        return;
+      } catch (error) {
+        openAiLiveMode = "transcribe";
+        openAiLiveReady = false;
+        throw error;
+      }
+    }
     if (typeof WebSocket === "undefined") {
       throw new Error("OpenAI Realtime is not supported by this WebView.");
     }
@@ -634,6 +706,7 @@ const openaiApi: AssistantAPI["openai"] = {
       );
       socket.binaryType = "arraybuffer";
       openAiLiveSocket = socket;
+      openAiLiveMode = "transcribe";
       const timeout = window.setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -641,7 +714,7 @@ const openaiApi: AssistantAPI["openai"] = {
         reject(
           new Error(
             opened
-              ? "OpenAI Realtime did not confirm the transcription session."
+              ? `OpenAI Realtime did not confirm the ${translating ? "translation" : "transcription"} session.`
               : "OpenAI Realtime WebSocket connection timed out.",
           ),
         );
@@ -674,7 +747,10 @@ const openaiApi: AssistantAPI["openai"] = {
               fail(`OpenAI Realtime rejected the session: ${serverError}`);
               return;
             }
-            if (message.type === "session.updated" && !settled) {
+            if (
+              message.type === "session.updated" &&
+              !settled
+            ) {
               settled = true;
               openAiLiveReady = true;
               window.clearTimeout(timeout);
@@ -686,8 +762,7 @@ const openaiApi: AssistantAPI["openai"] = {
                 typeof message.item_id === "string" ? message.item_id : "",
               );
             }
-            if (
-              message.type ===
+            if (message.type ===
               "conversation.item.input_audio_transcription.delta"
             ) {
               const itemId =
@@ -695,10 +770,10 @@ const openaiApi: AssistantAPI["openai"] = {
               if (itemId) openAiLiveOutstandingItems.add(itemId);
             }
             if (
-              message.type ===
+              (message.type ===
                 "conversation.item.input_audio_transcription.completed" ||
-              message.type ===
-                "conversation.item.input_audio_transcription.failed"
+                message.type ===
+                  "conversation.item.input_audio_transcription.failed")
             ) {
               const itemId =
                 typeof message.item_id === "string" ? message.item_id : "";
@@ -726,7 +801,7 @@ const openaiApi: AssistantAPI["openai"] = {
       };
       socket.onerror = () =>
         fail(
-          "OpenAI Realtime connection failed. Check the API key and network access.",
+          `OpenAI Realtime ${translating ? "translation" : "transcription"} connection failed. Check the API key and network access.`,
         );
       socket.onclose = (event) => {
         resolveOpenAiLiveFinalWaiters();
@@ -747,6 +822,19 @@ const openaiApi: AssistantAPI["openai"] = {
     });
   },
   sendAudioChunk: ({ data }) => {
+    if (openAiNativeTranslationActive && openAiLiveReady) {
+      // Tauri commands are asynchronous; serialize them explicitly so PCM
+      // frames cannot overtake one another before they reach the native
+      // WebSocket writer.
+      openAiTranslationAudioChain = openAiTranslationAudioChain
+        .then(() => invoke("openai_translation_send_audio", { data }))
+        .catch((error) => {
+          notifyOpenAiLiveError(
+            error instanceof Error ? error.message : String(error),
+          );
+        });
+      return;
+    }
     const socket = openAiLiveSocket;
     if (!socket || socket.readyState !== WebSocket.OPEN || !openAiLiveReady) return;
     socket.send(
@@ -755,7 +843,7 @@ const openaiApi: AssistantAPI["openai"] = {
         audio: data,
       }),
     );
-    openAiLiveAudioPending = true;
+    if (openAiLiveMode === "transcribe") openAiLiveAudioPending = true;
   },
   stopLive: stopOpenAiLiveGracefully,
   onMessage: (callback) => {

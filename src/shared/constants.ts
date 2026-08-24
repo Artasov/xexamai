@@ -15,6 +15,28 @@ export const LLM_HOSTS = {
 } as const;
 
 export const OPENAI_LIVE_TRANSCRIBE_MODEL = 'gpt-live-transcribe' as const;
+export const OPENAI_REALTIME_TRANSLATE_MODEL = 'gpt-realtime-translate' as const;
+
+export const REALTIME_TRANSLATION_LANGUAGES = [
+    {value: 'en', label: 'English'},
+    {value: 'ru', label: 'Russian'},
+    {value: 'es', label: 'Spanish'},
+    {value: 'de', label: 'German'},
+    {value: 'fr', label: 'French'},
+    {value: 'it', label: 'Italian'},
+    {value: 'pt', label: 'Portuguese'},
+    {value: 'pl', label: 'Polish'},
+    {value: 'tr', label: 'Turkish'},
+    {value: 'uk', label: 'Ukrainian'},
+    {value: 'ka', label: 'Georgian'},
+    {value: 'ar', label: 'Arabic'},
+    {value: 'hi', label: 'Hindi'},
+    {value: 'zh', label: 'Chinese'},
+    {value: 'ja', label: 'Japanese'},
+    {value: 'ko', label: 'Korean'},
+] as const;
+
+export const DEFAULT_REALTIME_TRANSLATION_LANGUAGE = 'en' as const;
 
 export const OPENAI_BATCH_TRANSCRIBE_MODELS = [
     'gpt-4o-mini-transcribe',
@@ -24,6 +46,7 @@ export const OPENAI_BATCH_TRANSCRIBE_MODELS = [
 
 export const OPENAI_TRANSCRIBE_MODELS = [
     OPENAI_LIVE_TRANSCRIBE_MODEL,
+    OPENAI_REALTIME_TRANSLATE_MODEL,
     ...OPENAI_BATCH_TRANSCRIBE_MODELS,
 ] as const;
 
