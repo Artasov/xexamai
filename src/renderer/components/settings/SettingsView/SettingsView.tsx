@@ -1,14 +1,13 @@
 import type {ReactNode} from 'react';
-import {createContext, useContext, useMemo, useState} from 'react';
+import {createContext, useContext, useMemo} from 'react';
 import type {AppSettings} from '@renderer/types';
+import type {SettingsTab} from '@renderer/state/navigationState';
 import {useSettings} from '@renderer/hooks/useSettings';
 import {GeneralSettings} from '../GeneralSettings/GeneralSettings';
 import {AiSettings} from '../AiSettings/AiSettings';
 import {AudioSettings} from '../AudioSettings/AudioSettings';
 import {HotkeysSettings} from '../HotkeysSettings/HotkeysSettings';
 import './SettingsView.scss';
-
-type SettingsTab = 'general' | 'ai' | 'audio' | 'hotkeys';
 
 type SettingsContextValue = {
     settings: AppSettings;
@@ -35,9 +34,13 @@ const TAB_ORDER = [
     {id: 'hotkeys', label: 'Hotkeys'},
 ] as const;
 
-export const SettingsView = () => {
+type SettingsViewProps = {
+    activeTab: SettingsTab;
+    onActiveTabChange: (tab: SettingsTab) => void;
+};
+
+export const SettingsView = ({activeTab, onActiveTabChange}: SettingsViewProps) => {
     const {settings, loading, error, refresh, patchLocal} = useSettings();
-    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
     const contextValue = useMemo<SettingsContextValue>(() => ({
         settings,
@@ -71,7 +74,7 @@ export const SettingsView = () => {
                             key={tab.id}
                             type="button"
                             className={`tab settings-tab ${activeTab === tab.id ? 'active' : ''}`}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => onActiveTabChange(tab.id)}
                         >
                             {tab.label}
                         </button>

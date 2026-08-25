@@ -9,6 +9,11 @@ import {
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PublishedWithChangesOutlinedIcon from '@mui/icons-material/PublishedWithChangesOutlined';
 import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
+import {useState} from 'react';
+import {
+    getProviderKeyFieldState,
+    normalizeProviderKeyDraftInput,
+} from './providerKeyFieldState';
 
 type Provider = 'openai' | 'google';
 
@@ -35,7 +40,8 @@ function ProviderKeyField({
     onSave,
     onTest,
 }: ProviderKeyFieldProps) {
-    const hasDraft = Boolean(value.trim());
+    const [editing, setEditing] = useState(false);
+    const fieldState = getProviderKeyFieldState({draft: value, saved, editing});
 
     return (
         <div className="settings-field">
@@ -43,15 +49,31 @@ function ProviderKeyField({
                 label={label}
                 type="password"
                 size="small"
-                value={value}
-                placeholder={saved ? 'Saved securely — enter a replacement' : `Enter your ${label} API key`}
-                onChange={(event) => onChange(event.target.value)}
+                value={fieldState.displayValue}
+                placeholder={fieldState.placeholder}
+                onFocus={() => setEditing(true)}
+                onBlur={() => {
+                    setEditing(false);
+                    if (!value.trim() && value) onChange('');
+                }}
+                onChange={(event) => {
+                    setEditing(true);
+                    onChange(normalizeProviderKeyDraftInput(
+                        event.target.value,
+                        fieldState.showingSavedMask,
+                    ));
+                }}
                 fullWidth
                 slotProps={{
+                    htmlInput: {
+                        autoComplete: 'new-password',
+                        'aria-label': `${label} API key`,
+                    },
                     input: {
+                        readOnly: fieldState.showingSavedMask,
                         endAdornment: (
                             <InputAdornment position="end" sx={{gap: 0.1, mr: -0.5}}>
-                                {hasDraft ? (
+                                {fieldState.hasDraft ? (
                                     <Tooltip title={saved ? 'Replace key' : 'Save key'} arrow>
                                         <IconButton
                                             size="small"

@@ -23,13 +23,22 @@ import { useAnswerFontSize } from "./hooks/useAnswerFontSize";
 import { WelcomeModal } from "./ui/welcomeModal";
 import { initializeRendererActivitySession } from "./state/rendererActivity";
 import { hasFeatureAccess } from "./utils/features";
+import {
+  INITIAL_APP_NAVIGATION_STATE,
+  selectAppTab,
+  selectSettingsTab,
+  type AppTab,
+} from "./state/navigationState";
 
-type AppTab = "main" | "settings" | "profile";
 const TABS: AppTab[] = ["main", "settings", "profile"];
 
 function AuthenticatedApp() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<AppTab>("main");
+  const [navigation, setNavigation] = useState(INITIAL_APP_NAVIGATION_STATE);
+  const { activeTab, activeSettingsTab } = navigation;
+  const setActiveTab = (tab: AppTab) => {
+    setNavigation((current) => selectAppTab(current, tab));
+  };
   const [historyOpen, setHistoryOpen] = useState(false);
   const answerFontSizeNotice = useAnswerFontSize();
   const renderer = useRendererSession();
@@ -223,7 +232,14 @@ function AuthenticatedApp() {
           className="content-area flex flex-col overflow-auto"
           hidden={activeTab !== "settings"}
         >
-          {activeTab === "settings" ? <SettingsView /> : null}
+          {activeTab === "settings" ? (
+            <SettingsView
+              activeTab={activeSettingsTab}
+              onActiveTabChange={(tab) => {
+                setNavigation((current) => selectSettingsTab(current, tab));
+              }}
+            />
+          ) : null}
         </div>
         <div
           id="panel-profile"
