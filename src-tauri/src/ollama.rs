@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::ipc::Channel;
@@ -21,9 +22,86 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const LIST_JSON_FLAG: &str = "--json";
 const OLLAMA_CHAT_URL: &str = "http://127.0.0.1:11434/v1/chat/completions";
+const OLLAMA_CANCELLATION_TOMBSTONE_TTL: Duration = Duration::from_secs(30);
+const MAX_OLLAMA_CANCELLATION_TOMBSTONES: usize = 128;
 
-static STREAM_CANCELLATIONS: Lazy<Mutex<HashMap<String, watch::Sender<bool>>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+#[derive(Default)]
+struct OllamaStreamRequests {
+    active: HashMap<String, (u64, watch::Sender<bool>)>,
+    cancelled_before_start: HashMap<String, Instant>,
+}
+
+#[derive(Default)]
+struct OllamaStreamCancellationState {
+    next_generation: AtomicU64,
+    requests: Mutex<OllamaStreamRequests>,
+}
+
+impl OllamaStreamCancellationState {
+    async fn register(&self, request_id: &str) -> Result<(u64, watch::Receiver<bool>), String> {
+        let mut requests = self.requests.lock().await;
+        Self::prune_tombstones(&mut requests);
+        if requests.cancelled_before_start.contains_key(request_id) {
+            return Err("Ollama request was cancelled before it started".to_string());
+        }
+        if let Some((_, previous)) = requests.active.remove(request_id) {
+            let _ = previous.send(true);
+        }
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed) + 1;
+        let (sender, receiver) = watch::channel(false);
+        requests
+            .active
+            .insert(request_id.to_string(), (generation, sender));
+        Ok((generation, receiver))
+    }
+
+    async fn finish(&self, request_id: &str, generation: u64) {
+        let mut requests = self.requests.lock().await;
+        if requests
+            .active
+            .get(request_id)
+            .is_some_and(|(current, _)| *current == generation)
+        {
+            requests.active.remove(request_id);
+        }
+    }
+
+    async fn cancel(&self, request_id: &str) {
+        let mut requests = self.requests.lock().await;
+        Self::prune_tombstones(&mut requests);
+        if let Some((_, sender)) = requests.active.remove(request_id) {
+            let _ = sender.send(true);
+        }
+        requests
+            .cancelled_before_start
+            .insert(request_id.to_string(), Instant::now());
+        Self::enforce_tombstone_limit(&mut requests);
+    }
+
+    fn prune_tombstones(requests: &mut OllamaStreamRequests) {
+        let now = Instant::now();
+        requests
+            .cancelled_before_start
+            .retain(|_, created| now.duration_since(*created) < OLLAMA_CANCELLATION_TOMBSTONE_TTL);
+    }
+
+    fn enforce_tombstone_limit(requests: &mut OllamaStreamRequests) {
+        while requests.cancelled_before_start.len() > MAX_OLLAMA_CANCELLATION_TOMBSTONES {
+            let Some(oldest) = requests
+                .cancelled_before_start
+                .iter()
+                .min_by_key(|(_, created)| **created)
+                .map(|(request_id, _)| request_id.clone())
+            else {
+                break;
+            };
+            requests.cancelled_before_start.remove(&oldest);
+        }
+    }
+}
+
+static STREAM_CANCELLATIONS: Lazy<OllamaStreamCancellationState> =
+    Lazy::new(OllamaStreamCancellationState::default);
 
 #[derive(Clone, Serialize, specta::Type)]
 #[serde(
@@ -39,9 +117,10 @@ pub enum OllamaStreamEvent {
 #[tauri::command]
 #[specta::specta]
 pub async fn ollama_cancel_chat(request_id: String) -> Result<(), String> {
-    if let Some(sender) = STREAM_CANCELLATIONS.lock().await.remove(&request_id) {
-        let _ = sender.send(true);
+    if request_id.trim().is_empty() {
+        return Err("Request ID is required.".into());
     }
+    STREAM_CANCELLATIONS.cancel(&request_id).await;
     Ok(())
 }
 
@@ -78,14 +157,7 @@ pub async fn ollama_stream_chat(
         .build()
         .map_err(|error| error.to_string())?;
 
-    let (cancel_tx, mut cancel_rx) = watch::channel(false);
-    if let Some(previous) = STREAM_CANCELLATIONS
-        .lock()
-        .await
-        .insert(request_id.clone(), cancel_tx)
-    {
-        let _ = previous.send(true);
-    }
+    let (generation, mut cancel_rx) = STREAM_CANCELLATIONS.register(&request_id).await?;
 
     let result = async {
         let response = tokio::select! {
@@ -138,7 +210,7 @@ pub async fn ollama_stream_chat(
     }
     .await;
 
-    STREAM_CANCELLATIONS.lock().await.remove(&request_id);
+    STREAM_CANCELLATIONS.finish(&request_id, generation).await;
     result
 }
 
@@ -293,5 +365,62 @@ pub async fn warmup_model(model: &str) -> Result<()> {
             model,
             stderr.trim()
         ))
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancellation_before_registration_prevents_ollama_start() {
+        let state = OllamaStreamCancellationState::default();
+        state.cancel("cancel-before-start").await;
+
+        let error = state.register("cancel-before-start").await.unwrap_err();
+
+        assert!(error.contains("cancelled before it started"));
+        assert!(state.register("cancel-before-start").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn cancelling_active_ollama_generation_blocks_late_duplicate() {
+        let state = OllamaStreamCancellationState::default();
+        let (_, mut cancellation) = state.register("active-then-cancelled").await.unwrap();
+
+        state.cancel("active-then-cancelled").await;
+
+        assert!(*cancellation.borrow_and_update());
+        assert!(state.register("active-then-cancelled").await.is_err());
+        assert!(state.register("active-then-cancelled").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn old_ollama_generation_cannot_remove_new_registration() {
+        let state = OllamaStreamCancellationState::default();
+        let (old_generation, mut old_cancellation) = state.register("reused-id").await.unwrap();
+        let (new_generation, _) = state.register("reused-id").await.unwrap();
+
+        assert!(*old_cancellation.borrow_and_update());
+        state.finish("reused-id", old_generation).await;
+
+        let requests = state.requests.lock().await;
+        assert_eq!(
+            requests
+                .active
+                .get("reused-id")
+                .map(|(generation, _)| *generation),
+            Some(new_generation),
+        );
+    }
+
+    #[tokio::test]
+    async fn oldest_ollama_tombstone_survives_at_exact_capacity() {
+        let state = OllamaStreamCancellationState::default();
+        for index in 0..MAX_OLLAMA_CANCELLATION_TOMBSTONES {
+            state.cancel(&format!("cancel-{index}")).await;
+        }
+
+        assert!(state.register("cancel-0").await.is_err());
     }
 }

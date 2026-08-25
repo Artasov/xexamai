@@ -103,6 +103,23 @@ type TranscriptItem = {
     acknowledgedText: string;
 };
 
+export type OpenAiTranscriptAcknowledgement = {
+    items: Array<{id: string; text: string}>;
+};
+
+const advanceAcknowledgement = (
+    current: string,
+    existing: string,
+    captured: string,
+): string => {
+    if (captured && current.startsWith(captured)) return captured;
+    if (existing && current.startsWith(existing)) return existing;
+    // The provider can replace a partial with an authoritative completion.
+    // If it no longer shares the acknowledged prefix, publishing the complete
+    // revision is safer than silently swallowing text the user never sent.
+    return '';
+};
+
 /** Reconciles interleaved Realtime transcript events by item_id. */
 export class OpenAiTranscriptAssembler {
     private readonly order: string[] = [];
@@ -113,8 +130,30 @@ export class OpenAiTranscriptAssembler {
         this.items.clear();
     }
 
-    acknowledge(): void {
-        for (const item of this.items.values()) item.acknowledgedText = item.text;
+    captureAcknowledgement(): OpenAiTranscriptAcknowledgement {
+        return {
+            items: this.order.flatMap((id) => {
+                const item = this.items.get(id);
+                return item ? [{id, text: item.text}] : [];
+            }),
+        };
+    }
+
+    acknowledge(
+        acknowledgement: OpenAiTranscriptAcknowledgement = this.captureAcknowledgement(),
+    ): void {
+        const capturedById = new Map(
+            acknowledgement.items.map(({id, text}) => [id, text]),
+        );
+        for (const [id, item] of this.items) {
+            const captured = capturedById.get(id);
+            if (captured === undefined) continue;
+            item.acknowledgedText = advanceAcknowledgement(
+                item.text,
+                item.acknowledgedText,
+                captured,
+            );
+        }
     }
 
     apply(message: Record<string, any>): string | null {
@@ -174,9 +213,7 @@ export class OpenAiTranscriptAssembler {
             if (!item) continue;
             const text = item.acknowledgedText && item.text.startsWith(item.acknowledgedText)
                 ? item.text.slice(item.acknowledgedText.length)
-                : item.acknowledgedText
-                    ? ''
-                    : item.text;
+                : item.text;
             if (!text) continue;
             if (output && !/\s$/.test(output) && !/^\s/.test(text)) output += ' ';
             output += text;
@@ -190,36 +227,116 @@ export type OpenAiTranslationTranscript = {
     translated: string;
 };
 
-/** Translation transcript events are append-only and share one session timeline. */
+export type OpenAiTranslationCompletion = {
+    input: boolean;
+    output: boolean;
+};
+
+export type OpenAiTranslationAcknowledgement = OpenAiTranslationTranscript & {
+    revision: number;
+};
+
+/** Assembles translation deltas while treating completed transcripts as authoritative. */
 export class OpenAiTranslationTranscriptAssembler {
     private source = '';
     private translated = '';
     private acknowledgedSource = '';
     private acknowledgedTranslation = '';
+    private inputCompleted = false;
+    private outputCompleted = false;
+    private outputBoundaryPending = false;
+    private revision = 0;
 
     reset(): void {
         this.source = '';
         this.translated = '';
         this.acknowledgedSource = '';
         this.acknowledgedTranslation = '';
+        this.revision = 0;
+        this.resetCompletion();
     }
 
-    acknowledge(): void {
-        this.acknowledgedSource = this.source;
-        this.acknowledgedTranslation = this.translated;
+    captureAcknowledgement(): OpenAiTranslationAcknowledgement {
+        return {
+            source: this.source,
+            translated: this.translated,
+            revision: this.revision,
+        };
+    }
+
+    acknowledge(
+        acknowledgement: OpenAiTranslationAcknowledgement = this.captureAcknowledgement(),
+    ): void {
+        this.acknowledgedSource = advanceAcknowledgement(
+            this.source,
+            this.acknowledgedSource,
+            acknowledgement.source,
+        );
+        this.acknowledgedTranslation = advanceAcknowledgement(
+            this.translated,
+            this.acknowledgedTranslation,
+            acknowledgement.translated,
+        );
+        if (acknowledgement.revision === this.revision) this.resetCompletion();
+    }
+
+    completionState(): OpenAiTranslationCompletion {
+        return {
+            input: this.inputCompleted,
+            output: this.outputCompleted,
+        };
+    }
+
+    isOutputCompleted(): boolean {
+        return this.outputCompleted;
+    }
+
+    /** Returns true once for each newly completed translated-output boundary. */
+    consumeOutputBoundary(): boolean {
+        const pending = this.outputBoundaryPending;
+        this.outputBoundaryPending = false;
+        return pending;
     }
 
     apply(message: Record<string, any>): OpenAiTranslationTranscript | null {
-        const delta = typeof message.delta === 'string' ? message.delta : '';
-        if (!delta) return null;
-        if (message.type === 'session.input_transcript.delta') {
-            this.source += delta;
-        } else if (message.type === 'session.output_transcript.delta') {
-            this.translated += delta;
-        } else {
+        const type = message.type;
+        const inputDelta = type === 'session.input_transcript.delta';
+        const outputDelta = type === 'session.output_transcript.delta';
+        const inputComplete = type === 'session.input_transcript.completed';
+        const outputComplete = type === 'session.output_transcript.completed';
+        if (!inputDelta && !outputDelta && !inputComplete && !outputComplete) {
             return null;
         }
+        this.revision += 1;
+
+        if (inputDelta || outputDelta) {
+            // Either stream beginning another delta means the previous output
+            // boundary is no longer the current turn. `acknowledge` performs
+            // the same reset after the coordinator consumes a turn.
+            this.resetCompletion();
+            const delta = typeof message.delta === 'string' ? message.delta : '';
+            if (inputDelta) this.source += delta;
+            else this.translated += delta;
+        } else {
+            const transcript = typeof message.transcript === 'string'
+                ? message.transcript
+                : null;
+            if (inputComplete) {
+                if (transcript !== null) this.source = transcript;
+                this.inputCompleted = true;
+            } else {
+                if (transcript !== null) this.translated = transcript;
+                if (!this.outputCompleted) this.outputBoundaryPending = true;
+                this.outputCompleted = true;
+            }
+        }
         return this.render();
+    }
+
+    private resetCompletion(): void {
+        this.inputCompleted = false;
+        this.outputCompleted = false;
+        this.outputBoundaryPending = false;
     }
 
     private render(): OpenAiTranslationTranscript {
@@ -231,6 +348,6 @@ export class OpenAiTranslationTranscriptAssembler {
 
     private withoutAcknowledged(value: string, acknowledged: string): string {
         if (!acknowledged) return value;
-        return value.startsWith(acknowledged) ? value.slice(acknowledged.length) : '';
+        return value.startsWith(acknowledged) ? value.slice(acknowledged.length) : value;
     }
 }

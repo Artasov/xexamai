@@ -77,6 +77,16 @@ export const commands = {
 	audioListDevices: () => __TAURI_INVOKE<AudioDeviceInfo[]>("audio_list_devices"),
 	audioStartCapture: (source: string, deviceId: string | null, onChunk: Channel<AudioChunk>) => __TAURI_INVOKE<null>("audio_start_capture", { source, deviceId, onChunk: mapChannel(onChunk, (v) => new Uint8Array(v)) }),
 	audioStopCapture: () => __TAURI_INVOKE<null>("audio_stop_capture"),
+	screenCaptureStart: (sessionId: number) => __TAURI_INVOKE<null>("screen_capture_start", { sessionId }),
+	screenCaptureOverlayReady: (sessionId: number) => __TAURI_INVOKE<null>("screen_capture_overlay_ready", { sessionId }),
+	screenCaptureFinish: (sessionId: number, region: {
+	x: number | null,
+	y: number | null,
+	width: number | null,
+	height: number | null,
+} | null) => __TAURI_INVOKE<null>("screen_capture_finish", { sessionId, region }),
+	screenCaptureCancel: (sessionId: number) => __TAURI_INVOKE<null>("screen_capture_cancel", { sessionId }),
+	screenCaptureAbort: (sessionId: number) => __TAURI_INVOKE<null>("screen_capture_abort", { sessionId }),
 	checkAppUpdate: () => __TAURI_INVOKE<UpdateCheckResult>("check_app_update"),
 	downloadAppUpdate: () => __TAURI_INVOKE<UpdateMetadata>("download_app_update"),
 	installAppUpdate: () => __TAURI_INVOKE<null>("install_app_update"),
@@ -304,6 +314,17 @@ export type PublicAppConfig_Serialize = {
 	hasOpenaiApiKey: boolean,
 	hasGoogleApiKey: boolean,
 } & AppConfig_Serialize;
+
+/**
+ *  A rectangle expressed as fractions of the overlay viewport. Normalized
+ *  coordinates keep the renderer independent of Windows DPI and monitor scale.
+ */
+export type ScreenCaptureRegion = {
+	x: number | null,
+	y: number | null,
+	width: number | null,
+	height: number | null,
+};
 
 export type TranscriptionRequest = {
 	request_id?: string | null,

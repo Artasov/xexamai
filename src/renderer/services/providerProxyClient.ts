@@ -22,12 +22,21 @@ export async function providerProxyFetch(
         body,
         timeoutMs: options.timeoutMs,
     };
+    const cancelNativeRequest = () => {
+        void invoke('provider_proxy_cancel', {requestId}).catch(() => undefined);
+    };
     if (!options.stream) {
         if (options.signal?.aborted) throw new DOMException('Request aborted', 'AbortError');
-        const cancel = () => {
-            void invoke('provider_proxy_cancel', {requestId});
-        };
+        const cancel = () => cancelNativeRequest();
         options.signal?.addEventListener('abort', cancel, {once: true});
+        if (options.signal?.aborted) {
+            // Abort may land between the initial check and listener
+            // registration. Leave a native tombstone before returning so a
+            // concurrently queued command cannot start afterward.
+            cancel();
+            options.signal.removeEventListener('abort', cancel);
+            throw new DOMException('Request aborted', 'AbortError');
+        }
         try {
             const result = await invoke('provider_proxy_request', {request});
             if (options.signal?.aborted) throw new DOMException('Request aborted', 'AbortError');
@@ -39,6 +48,11 @@ export async function providerProxyFetch(
             options.signal?.removeEventListener('abort', cancel);
         }
     }
+
+    // Do not dispatch a native command after an auto-supersession has already
+    // won the race. Native tombstones are a final safety net, not a reason to
+    // enqueue work that can already be proven stale in the renderer.
+    if (options.signal?.aborted) throw new DOMException('Request aborted', 'AbortError');
 
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
     let settledHeaders = false;
@@ -55,7 +69,7 @@ export async function providerProxyFetch(
         },
         cancel() {
             closed = true;
-            void invoke('provider_proxy_cancel', {requestId});
+            cancelNativeRequest();
         },
     });
     const fail = (error: unknown) => {
@@ -65,11 +79,20 @@ export async function providerProxyFetch(
         else streamController?.error(error);
     };
     const onAbort = () => {
-        void invoke('provider_proxy_cancel', {requestId});
+        cancelNativeRequest();
         fail(new DOMException('Request aborted', 'AbortError'));
     };
     options.signal?.addEventListener('abort', onAbort, {once: true});
-    if (options.signal?.aborted) onAbort();
+    if (options.signal?.aborted) {
+        options.signal.removeEventListener('abort', onAbort);
+        cancelNativeRequest();
+        // A deliberately adversarial AbortSignal can fire the newly-added
+        // listener synchronously. In that case `onAbort` has already rejected
+        // this private promise; observe it before throwing to avoid an
+        // unhandled-rejection leak.
+        void headers.catch(() => undefined);
+        throw new DOMException('Request aborted', 'AbortError');
+    }
 
     const channel = new Channel<ProviderStreamEvent>();
     channel.onmessage = (event) => {

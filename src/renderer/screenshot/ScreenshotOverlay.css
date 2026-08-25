@@ -1,0 +1,215 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", sans-serif;
+  background: transparent;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font: inherit;
+}
+
+.screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.screenshot-overlay__canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.screenshot-overlay__toolbar {
+  position: fixed;
+  z-index: 3;
+  top: 18px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 7px 6px 14px;
+  color: rgba(248, 246, 255, 0.96);
+  background: linear-gradient(180deg, rgba(27, 26, 38, 0.96), rgba(13, 13, 21, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(20px) saturate(1.15);
+  transform: translateX(-50%);
+  animation: screenshot-toolbar-enter 150ms ease-out both;
+}
+
+.screenshot-overlay__hint {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 188px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.screenshot-overlay__hint kbd {
+  padding: 2px 6px;
+  color: rgba(220, 216, 232, 0.68);
+  font: 600 10px/1.4 Inter, "Segoe UI", sans-serif;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+}
+
+.screenshot-overlay__crosshair {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid rgba(204, 181, 255, 0.94);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(150, 95, 255, 0.28);
+}
+
+.screenshot-overlay__crosshair::before,
+.screenshot-overlay__crosshair::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  content: "";
+  background: rgba(204, 181, 255, 0.94);
+  transform: translate(-50%, -50%);
+}
+
+.screenshot-overlay__crosshair::before {
+  width: 21px;
+  height: 1px;
+}
+
+.screenshot-overlay__crosshair::after {
+  width: 1px;
+  height: 21px;
+}
+
+.screenshot-overlay__divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.screenshot-overlay__button,
+.screenshot-overlay__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(247, 244, 255, 0.92);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+
+.screenshot-overlay__button {
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 650;
+  border-radius: 9px;
+}
+
+.screenshot-overlay__button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.screenshot-overlay__close {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.screenshot-overlay__close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+.screenshot-overlay__button:hover,
+.screenshot-overlay__close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.screenshot-overlay__button:active,
+.screenshot-overlay__close:active {
+  transform: scale(0.97);
+}
+
+.screenshot-overlay__button:disabled,
+.screenshot-overlay__close:disabled {
+  cursor: wait;
+  opacity: 0.46;
+}
+
+.screenshot-overlay__button:focus,
+.screenshot-overlay__close:focus {
+  outline: none;
+}
+
+.screenshot-overlay__error {
+  position: fixed;
+  z-index: 4;
+  top: 78px;
+  left: 50%;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 8px 12px;
+  color: #ffd7d7;
+  font-size: 12px;
+  background: rgba(76, 19, 24, 0.94);
+  border: 1px solid rgba(255, 122, 133, 0.42);
+  border-radius: 9px;
+  transform: translateX(-50%);
+}
+
+@keyframes screenshot-toolbar-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screenshot-overlay__toolbar {
+    animation: none;
+  }
+}

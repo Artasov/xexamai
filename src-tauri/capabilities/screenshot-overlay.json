@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screenshot-overlay",
+  "description": "Minimal capability set for the temporary screenshot selection overlay",
+  "windows": [
+    "screenshot-overlay"
+  ],
+  "permissions": []
+}

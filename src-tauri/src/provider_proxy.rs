@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use reqwest::{redirect::Policy, Client, Method};
@@ -20,6 +20,8 @@ const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ERROR_BYTES: usize = 64 * 1024;
 const MAX_ENTITLEMENT_RESPONSE_BYTES: usize = 16 * 1024;
+const CANCELLATION_TOMBSTONE_TTL: Duration = Duration::from_secs(30);
+const MAX_CANCELLATION_TOMBSTONES: usize = 128;
 
 #[derive(Debug, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -36,9 +38,15 @@ pub struct ProviderProxyRequest {
 }
 
 #[derive(Default)]
+struct ProviderProxyRequests {
+    active: HashMap<String, (u64, watch::Sender<bool>)>,
+    cancelled_before_start: HashMap<String, Instant>,
+}
+
+#[derive(Default)]
 pub struct ProviderProxyState {
     next_generation: AtomicU64,
-    active: Mutex<HashMap<String, (u64, watch::Sender<bool>)>>,
+    requests: Mutex<ProviderProxyRequests>,
 }
 
 impl ProviderProxyState {
@@ -48,35 +56,72 @@ impl ProviderProxyState {
 
     async fn register(&self, request_id: &str) -> Result<(u64, watch::Receiver<bool>), String> {
         validate_request_id(request_id)?;
-        let mut active = self.active.lock().await;
-        if active.len() >= 32 && !active.contains_key(request_id) {
+        let mut requests = self.requests.lock().await;
+        Self::prune_cancellation_tombstones(&mut requests);
+        if requests.cancelled_before_start.contains_key(request_id) {
+            return Err("Provider request was cancelled before it started".to_string());
+        }
+        if requests.active.len() >= 32 && !requests.active.contains_key(request_id) {
             return Err("Too many provider requests are active".to_string());
         }
-        if let Some((_, previous)) = active.remove(request_id) {
+        if let Some((_, previous)) = requests.active.remove(request_id) {
             let _ = previous.send(true);
         }
         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed) + 1;
         let (sender, receiver) = watch::channel(false);
-        active.insert(request_id.to_string(), (generation, sender));
+        requests
+            .active
+            .insert(request_id.to_string(), (generation, sender));
         Ok((generation, receiver))
     }
 
     async fn finish(&self, request_id: &str, generation: u64) {
-        let mut active = self.active.lock().await;
-        if active
+        let mut requests = self.requests.lock().await;
+        if requests
+            .active
             .get(request_id)
             .is_some_and(|(current, _)| *current == generation)
         {
-            active.remove(request_id);
+            requests.active.remove(request_id);
         }
     }
 
     async fn cancel(&self, request_id: &str) -> Result<(), String> {
         validate_request_id(request_id)?;
-        if let Some((_, sender)) = self.active.lock().await.remove(request_id) {
+        let mut requests = self.requests.lock().await;
+        Self::prune_cancellation_tombstones(&mut requests);
+        if let Some((_, sender)) = requests.active.remove(request_id) {
             let _ = sender.send(true);
         }
+        // Cancellation may beat registration, or duplicate native commands may
+        // arrive after the active generation was signalled. Remember the id
+        // briefly so none of those commands can start an invisible request.
+        requests
+            .cancelled_before_start
+            .insert(request_id.to_string(), Instant::now());
+        Self::enforce_cancellation_tombstone_limit(&mut requests);
         Ok(())
+    }
+
+    fn prune_cancellation_tombstones(requests: &mut ProviderProxyRequests) {
+        let now = Instant::now();
+        requests
+            .cancelled_before_start
+            .retain(|_, created| now.duration_since(*created) < CANCELLATION_TOMBSTONE_TTL);
+    }
+
+    fn enforce_cancellation_tombstone_limit(requests: &mut ProviderProxyRequests) {
+        while requests.cancelled_before_start.len() > MAX_CANCELLATION_TOMBSTONES {
+            let Some(oldest) = requests
+                .cancelled_before_start
+                .iter()
+                .min_by_key(|(_, created)| **created)
+                .map(|(request_id, _)| request_id.clone())
+            else {
+                break;
+            };
+            requests.cancelled_before_start.remove(&oldest);
+        }
     }
 }
 
@@ -147,11 +192,11 @@ pub async fn provider_proxy_request(
     let _activity = activity.try_begin_work()?;
     let request_id = request.request_id.clone();
     let prepared = prepare_request(request, false)?;
-    if let Some(feature) = prepared.required_entitlement {
-        require_entitlement(config.inner(), sessions.inner(), secrets.inner(), feature).await?;
-    }
     let (generation, mut cancellation) = proxy_state.register(&request_id).await?;
     let operation = async {
+        if let Some(feature) = prepared.required_entitlement {
+            require_entitlement(config.inner(), sessions.inner(), secrets.inner(), feature).await?;
+        }
         let response = send(prepared, secrets.inner().clone()).await?;
         let status = response.status();
         let content_type = response
@@ -193,11 +238,13 @@ pub async fn provider_proxy_stream(
     let _activity = activity.try_begin_work()?;
     let request_id = request.request_id.clone();
     let prepared = prepare_request(request, true)?;
-    if let Some(feature) = prepared.required_entitlement {
-        require_entitlement(config.inner(), sessions.inner(), secrets.inner(), feature).await?;
-    }
     let (generation, mut cancellation) = proxy_state.register(&request_id).await?;
-    let operation = stream_response(prepared, secrets.inner().clone(), &on_event);
+    let operation = async {
+        if let Some(feature) = prepared.required_entitlement {
+            require_entitlement(config.inner(), sessions.inner(), secrets.inner(), feature).await?;
+        }
+        stream_response(prepared, secrets.inner().clone(), &on_event).await
+    };
     let result = tokio::select! {
         result = operation => result,
         _ = wait_for_cancellation(&mut cancellation) => Err("Provider request was cancelled".to_string()),
@@ -604,6 +651,41 @@ mod tests {
             body,
             timeout_ms: None,
         }
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_registration_prevents_request_start() {
+        let state = ProviderProxyState::new();
+        state.cancel("cancel-before-start").await.unwrap();
+
+        let error = state.register("cancel-before-start").await.unwrap_err();
+
+        assert!(error.contains("cancelled before it started"));
+        assert!(state.register("cancel-before-start").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn cancelling_an_active_generation_blocks_a_late_duplicate() {
+        let state = ProviderProxyState::new();
+        let (_, mut cancellation) = state.register("active-then-cancelled").await.unwrap();
+
+        state.cancel("active-then-cancelled").await.unwrap();
+
+        assert!(*cancellation.borrow_and_update());
+        assert!(state.register("active-then-cancelled").await.is_err());
+        assert!(state.register("active-then-cancelled").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn tombstone_at_capacity_is_observed_before_any_eviction() {
+        let state = ProviderProxyState::new();
+        for index in 0..MAX_CANCELLATION_TOMBSTONES {
+            state.cancel(&format!("cancel-{index}")).await.unwrap();
+        }
+
+        // The old `>=` pruning loop evicted cancel-0 here before register could
+        // observe it, allowing precisely the oldest cancelled request to run.
+        assert!(state.register("cancel-0").await.is_err());
     }
 
     #[test]

@@ -222,9 +222,255 @@ const loopbackApi: AssistantAPI["loopback"] = {
   disable: async () => ({ success: false, error: "Not implemented" }),
 };
 
+type ScreenCaptureResult = {
+  sessionId: number;
+  base64: string;
+  width: number;
+  height: number;
+  mime: string;
+};
+
+type ScreenCaptureErrorPayload = { sessionId: number; message?: string };
+
+const SCREEN_CAPTURE_STARTUP_TIMEOUT_MS = 12_000;
+const SCREEN_CAPTURE_SELECTION_TIMEOUT_MS = 10 * 60_000;
+const SCREEN_CAPTURE_PROCESSING_TIMEOUT_MS = 30_000;
+let screenCaptureSessionSequence = (() => {
+  try {
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0] & 0x3fffffff;
+    return seed || 1;
+  } catch {
+    return (Date.now() & 0x3fffffff) || 1;
+  }
+})();
+let activeScreenCapture: {
+  sessionId: number;
+  cancel: () => Promise<void>;
+  completion: () => Promise<ScreenCaptureResult | null>;
+} | null = null;
+let activeFallbackScreenCapture: {
+  cancel: () => void;
+  completion: Promise<Awaited<ReturnType<typeof captureScreenFrame>> | null>;
+  workerCompletion: Promise<void>;
+} | null = null;
+
+const nextScreenCaptureSessionId = () => {
+  screenCaptureSessionSequence = (screenCaptureSessionSequence + 1) & 0x3fffffff;
+  if (!screenCaptureSessionSequence) screenCaptureSessionSequence = 1;
+  return screenCaptureSessionSequence;
+};
+
+async function captureNativeScreenSelection(): Promise<ScreenCaptureResult | null> {
+  if (activeScreenCapture) {
+    throw new Error("A screen capture selection is already in progress");
+  }
+  const completion = new Promise<ScreenCaptureResult | null>((resolve, reject) => {
+    const sessionId = nextScreenCaptureSessionId();
+    let settled = false;
+    let overlayReady = false;
+    let captureProcessing = false;
+    let phaseTimer: ReturnType<typeof setTimeout> | null = null;
+    const unlisteners: UnlistenFn[] = [];
+
+    const cleanup = () => {
+      if (phaseTimer !== null) clearTimeout(phaseTimer);
+      phaseTimer = null;
+      for (const unlisten of unlisteners.splice(0)) {
+        try {
+          unlisten();
+        } catch {}
+      }
+      if (activeScreenCapture?.sessionId === sessionId) {
+        activeScreenCapture = null;
+      }
+    };
+
+    const requestNativeAbort = () => {
+      // Native cleanup is session-scoped and deliberately best-effort. Do not
+      // keep the caller pending if the cleanup IPC itself is unavailable.
+      void invoke("screen_capture_abort", { sessionId }).catch(() => undefined);
+    };
+    const abortAfterTimeout = (message: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      requestNativeAbort();
+      reject(new Error(message));
+    };
+    const resolveOnce = (value: ScreenCaptureResult | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const rejectOnce = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        error instanceof Error
+          ? error
+          : new Error(typeof error === "string" ? error : "Screen capture failed"),
+      );
+    };
+
+    const registerListener = async <T>(
+      eventName: string,
+      handler: (event: { payload: T }) => void,
+    ): Promise<boolean> => {
+      const unlisten = await listen<T>(eventName, handler);
+      // The startup timeout may settle while listener registration is still
+      // pending. Immediately dispose a late listener and stop the setup chain.
+      if (settled) {
+        try {
+          unlisten();
+        } catch {}
+        return false;
+      }
+      unlisteners.push(unlisten);
+      return true;
+    };
+
+    const cancelFromRenderer = async () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(null);
+      await invoke("screen_capture_abort", { sessionId }).catch(() => undefined);
+    };
+
+    activeScreenCapture = {
+      sessionId,
+      cancel: cancelFromRenderer,
+      completion: () => completion,
+    };
+
+    // Include listener registration in the startup bound. Otherwise a stalled
+    // event subscription can leave the capture promise pending forever.
+    phaseTimer = setTimeout(
+      () => abortAfterTimeout("Screen capture overlay did not start"),
+      SCREEN_CAPTURE_STARTUP_TIMEOUT_MS,
+    );
+
+    void (async () => {
+      try {
+        // Register each listener into the cleanup set immediately. If a later
+        // registration fails, earlier listeners cannot leak into the next run.
+        if (!await registerListener<number>("screen-capture:ready", (event) => {
+            if (event.payload !== sessionId || settled || overlayReady) return;
+            overlayReady = true;
+            if (phaseTimer !== null) clearTimeout(phaseTimer);
+            phaseTimer = setTimeout(
+              () => abortAfterTimeout("Screen capture selection timed out"),
+              SCREEN_CAPTURE_SELECTION_TIMEOUT_MS,
+            );
+          })) return;
+        if (!await registerListener<number>("screen-capture:capturing", (event) => {
+            if (event.payload !== sessionId || settled || captureProcessing) return;
+            captureProcessing = true;
+            if (phaseTimer !== null) clearTimeout(phaseTimer);
+            phaseTimer = setTimeout(
+              () => abortAfterTimeout("Screen capture did not finish"),
+              SCREEN_CAPTURE_PROCESSING_TIMEOUT_MS,
+            );
+          })) return;
+        if (!await registerListener<ScreenCaptureResult>("screen-capture:completed", (event) => {
+            if (event.payload?.sessionId !== sessionId) return;
+            resolveOnce(event.payload);
+          })) return;
+        if (!await registerListener<number>("screen-capture:cancelled", (event) => {
+            if (event.payload !== sessionId) return;
+            resolveOnce(null);
+          })) return;
+        if (!await registerListener<ScreenCaptureErrorPayload>("screen-capture:error", (event) => {
+            if (event.payload?.sessionId !== sessionId) return;
+            requestNativeAbort();
+            rejectOnce(new Error(event.payload?.message || "Screen capture failed"));
+          })) return;
+
+        if (settled) return;
+        await invoke("screen_capture_start", { sessionId });
+      } catch (error) {
+        if (settled) return;
+        requestNativeAbort();
+        rejectOnce(error);
+      }
+    })();
+  });
+  return completion;
+}
+
+function captureFallbackScreenSelection() {
+  if (activeFallbackScreenCapture) {
+    return Promise.reject(new Error("A screen capture selection is already in progress"));
+  }
+  const controller = new AbortController();
+  let resolveCancellation!: (value: null) => void;
+  const cancelled = new Promise<null>((resolve) => {
+    resolveCancellation = resolve;
+  });
+  const capture = captureScreenFrame(controller.signal).catch((error) => {
+    if (controller.signal.aborted) return null;
+    throw error;
+  });
+  const completion = Promise.race([capture, cancelled]);
+  let workerCompletion!: Promise<void>;
+  workerCompletion = capture.then(
+    () => undefined,
+    () => undefined,
+  ).finally(() => {
+    if (activeFallbackScreenCapture?.workerCompletion === workerCompletion) {
+      activeFallbackScreenCapture = null;
+    }
+  });
+  activeFallbackScreenCapture = {
+    cancel: () => {
+      if (controller.signal.aborted) return;
+      controller.abort();
+      // getDisplayMedia does not accept AbortSignal in every WebView. Resolve
+      // the app operation now; if the picker later returns a stream, the
+      // aborted capture worker immediately stops all of its tracks.
+      resolveCancellation(null);
+    },
+    completion,
+    workerCompletion,
+  };
+  return completion;
+}
+
 const screenApi: AssistantAPI["screen"] = {
   capture: async () => {
-    return captureScreenFrame();
+    if (activeScreenCapture || activeFallbackScreenCapture) {
+      throw new Error("A screen capture selection is already in progress");
+    }
+    try {
+      const capture = await captureNativeScreenSelection();
+      if (!capture) return null;
+      return {
+        base64: capture.base64,
+        width: capture.width,
+        height: capture.height,
+        mime: capture.mime,
+      };
+    } catch (error) {
+      if (navigator.userAgent.includes("Windows")) throw error;
+      try {
+        return await captureFallbackScreenSelection();
+      } catch (pickerError) {
+        if (isScreenPickerCancellation(pickerError)) return null;
+        throw pickerError;
+      }
+    }
+  },
+  cancel: async () => {
+    const nativeCapture = activeScreenCapture;
+    const fallbackCapture = activeFallbackScreenCapture;
+    if (nativeCapture) await nativeCapture.cancel();
+    fallbackCapture?.cancel();
+    await Promise.all([
+      nativeCapture?.completion().catch(() => undefined),
+      fallbackCapture?.completion.catch(() => undefined),
+    ]);
   },
 };
 
@@ -249,8 +495,24 @@ let openAiTranslationUnlisten: UnlistenFn | null = null;
 let openAiTranslationListenPromise: Promise<void> | null = null;
 let openAiTranslationAudioChain: Promise<void> = Promise.resolve();
 const openAiLiveOutstandingItems = new Set<string>();
-const openAiLiveCommitWaiters = new Set<(itemId: string) => void>();
-const openAiLiveFinalWaiters = new Map<string, Set<() => void>>();
+const openAiLiveCommitWaiters = new Map<number, (itemId: string) => void>();
+type OpenAiLiveFinalOutcome = { success: true } | { success: false; message: string };
+const openAiLiveFinalWaiters = new Map<
+  string,
+  Set<(outcome: OpenAiLiveFinalOutcome) => void>
+>();
+const openAiLiveFinalOutcomes = new Map<string, OpenAiLiveFinalOutcome>();
+let openAiLiveCommitSequenceSent = 0;
+let openAiLiveCommitSequenceReceived = 0;
+let openAiLiveTransportGeneration = 0;
+let openAiLiveFinalizeTail: Promise<void> = Promise.resolve();
+let openAiLiveLifecycleTail: Promise<void> = Promise.resolve();
+let openAiLiveLifecycleIntent = 0;
+let openAiLiveActiveLifecycleIntent = 0;
+let openAiLivePendingStartAbort: AbortController | null = null;
+
+const OPENAI_LIVE_COMMIT_TIMEOUT_MS = 1_500;
+const OPENAI_LIVE_FINAL_TIMEOUT_MS = 3_000;
 
 const resolveGoogleLiveTurnWaiters = () => {
   for (const resolve of googleLiveTurnWaiters) resolve();
@@ -506,31 +768,256 @@ const googleApi: AssistantAPI["google"] = {
   },
 };
 
-const resolveOpenAiLiveFinalWaiters = (itemId?: string) => {
+const resolveOpenAiLiveFinalWaiters = (
+  itemId?: string,
+  outcome: OpenAiLiveFinalOutcome = {
+    success: false,
+    message: "OpenAI Realtime transcription session closed before the transcript finished.",
+  },
+) => {
   const ids = itemId ? [itemId] : [...openAiLiveFinalWaiters.keys()];
   for (const id of ids) {
     const waiters = openAiLiveFinalWaiters.get(id);
     if (!waiters) continue;
-    for (const resolve of waiters) resolve();
+    for (const resolve of waiters) resolve(outcome);
     openAiLiveFinalWaiters.delete(id);
   }
 };
 
-const waitForOpenAiLiveFinal = (itemId: string): Promise<void> =>
-  new Promise((resolve) => {
+const waitForOpenAiLiveFinal = (itemId: string) => {
+  const completed = openAiLiveFinalOutcomes.get(itemId);
+  if (completed) {
+    return {
+      promise: Promise.resolve(completed),
+      cancel: () => undefined,
+    };
+  }
+  let resolveWaiter!: (outcome: OpenAiLiveFinalOutcome) => void;
+  const promise = new Promise<OpenAiLiveFinalOutcome>((resolve) => {
+    resolveWaiter = resolve;
     const waiters = openAiLiveFinalWaiters.get(itemId) ?? new Set();
     waiters.add(resolve);
     openAiLiveFinalWaiters.set(itemId, waiters);
   });
+  return {
+    promise,
+    cancel: () => {
+      const waiters = openAiLiveFinalWaiters.get(itemId);
+      if (!waiters) return;
+      waiters.delete(resolveWaiter);
+      if (!waiters.size) openAiLiveFinalWaiters.delete(itemId);
+    },
+  };
+};
 
-const waitForOpenAiLiveCommit = (): Promise<string> =>
-  new Promise((resolve) => openAiLiveCommitWaiters.add(resolve));
+const waitForOpenAiLiveCommit = () => {
+  const sequence = ++openAiLiveCommitSequenceSent;
+  const promise = new Promise<string>((resolve) => {
+    openAiLiveCommitWaiters.set(sequence, resolve);
+  });
+  return {
+    sequence,
+    promise,
+    cancel: (rollback = false) => {
+      openAiLiveCommitWaiters.delete(sequence);
+      if (
+        rollback
+        && openAiLiveCommitSequenceSent === sequence
+        && openAiLiveCommitSequenceReceived < sequence
+      ) {
+        openAiLiveCommitSequenceSent -= 1;
+      }
+    },
+  };
+};
 
 const publishOpenAiLiveCommit = (itemId: string) => {
-  if (!itemId) return;
-  openAiLiveOutstandingItems.add(itemId);
-  for (const resolve of openAiLiveCommitWaiters) resolve(itemId);
-  openAiLiveCommitWaiters.clear();
+  const sequence = ++openAiLiveCommitSequenceReceived;
+  const resolve = openAiLiveCommitWaiters.get(sequence);
+  openAiLiveCommitWaiters.delete(sequence);
+  if (itemId && !openAiLiveFinalOutcomes.has(itemId)) {
+    openAiLiveOutstandingItems.add(itemId);
+  }
+  resolve?.(itemId);
+};
+
+const waitForOpenAiLiveFinals = async (
+  itemIds: Iterable<string>,
+  timeoutMs: number,
+): Promise<{ completed: boolean; failure?: string }> => {
+  const pendingItemIds = [...new Set(itemIds)].filter(Boolean);
+  if (!pendingItemIds.length) return { completed: true };
+  const waits = pendingItemIds.map((itemId) => ({
+    itemId,
+    ...waitForOpenAiLiveFinal(itemId),
+  }));
+  let timer: number | null = null;
+  let timedOut = false;
+  try {
+    await Promise.race([
+      Promise.all(waits.map(({ promise }) => promise)).then(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+    for (const wait of waits) wait.cancel();
+  }
+  const outcomes = waits.map(({ itemId }) => openAiLiveFinalOutcomes.get(itemId));
+  const failed = outcomes.find(
+    (outcome): outcome is Extract<OpenAiLiveFinalOutcome, { success: false }> =>
+      outcome?.success === false,
+  );
+  if (!timedOut || outcomes.every(Boolean)) {
+    for (const itemId of pendingItemIds) openAiLiveFinalOutcomes.delete(itemId);
+  }
+  return {
+    completed: outcomes.every(Boolean),
+    ...(failed ? { failure: failed.message } : {}),
+  };
+};
+
+const openAiLiveSessionChangedError = () =>
+  new Error("OpenAI Realtime transcription session changed before the turn was finalized.");
+
+const failOpenAiLiveFinalization = (
+  socket: WebSocket,
+  transportGeneration: number,
+  message: string,
+): never => {
+  if (
+    openAiLiveSocket === socket
+    && openAiLiveTransportGeneration === transportGeneration
+  ) {
+    // A missing commit/final acknowledgement makes event ordering ambiguous.
+    // Reset instead of letting the next acknowledgement satisfy the wrong
+    // sequence and silently submitting a partial transcript.
+    const currentIntent = openAiLiveActiveLifecycleIntent === openAiLiveLifecycleIntent;
+    closeOpenAiLiveSocket();
+    if (currentIntent) notifyOpenAiLiveError(message);
+  }
+  throw new Error(message);
+};
+
+/**
+ * Finalizes one manual transcription turn without closing the Realtime socket.
+ * Translation sessions are continuous and intentionally have no commit event.
+ */
+const commitOpenAiLiveTurnNow = async (transportGeneration: number) => {
+  if (openAiLiveTransportGeneration !== transportGeneration) {
+    throw openAiLiveSessionChangedError();
+  }
+  const socket = openAiLiveSocket;
+  if (!socket || socket.readyState !== WebSocket.OPEN || !openAiLiveReady) {
+    throw new Error("OpenAI Realtime transcription is not connected.");
+  }
+
+  let committedItemId = "";
+  if (openAiLiveAudioPending) {
+    const committed = waitForOpenAiLiveCommit();
+    let timer: number | null = null;
+    try {
+      socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    } catch (error) {
+      committed.cancel(true);
+      throw error;
+    }
+
+    // Audio appended after this synchronous send belongs to the next turn;
+    // the later committed event must not clear that newer pending state.
+    openAiLiveAudioPending = false;
+    let commitTimedOut = false;
+    try {
+      committedItemId = await Promise.race([
+        committed.promise,
+        new Promise<string>((resolve) => {
+          timer = window.setTimeout(() => {
+            commitTimedOut = true;
+            resolve("");
+          }, OPENAI_LIVE_COMMIT_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer !== null) window.clearTimeout(timer);
+      committed.cancel();
+    }
+
+    if (
+      openAiLiveTransportGeneration !== transportGeneration
+      || openAiLiveSocket !== socket
+    ) {
+      throw openAiLiveSessionChangedError();
+    }
+    if (commitTimedOut) {
+      failOpenAiLiveFinalization(
+        socket,
+        transportGeneration,
+        "OpenAI Realtime did not acknowledge the audio commit. Reconnecting before this turn can be submitted.",
+      );
+    }
+    if (!committedItemId) {
+      failOpenAiLiveFinalization(
+        socket,
+        transportGeneration,
+        "OpenAI Realtime acknowledged an audio commit without a transcript item. Reconnecting before this turn can be submitted.",
+      );
+    }
+  }
+
+  const finalItemIds = new Set([
+    ...openAiLiveOutstandingItems,
+    ...openAiLiveFinalOutcomes.keys(),
+  ]);
+  if (committedItemId) finalItemIds.add(committedItemId);
+  const finalResult = await waitForOpenAiLiveFinals(
+    finalItemIds,
+    OPENAI_LIVE_FINAL_TIMEOUT_MS,
+  );
+  if (
+    openAiLiveTransportGeneration !== transportGeneration
+    || openAiLiveSocket !== socket
+  ) {
+    throw openAiLiveSessionChangedError();
+  }
+  if (finalResult.failure) {
+    failOpenAiLiveFinalization(
+      socket,
+      transportGeneration,
+      `OpenAI Realtime failed to transcribe the committed audio: ${finalResult.failure}`,
+    );
+  }
+  if (!finalResult.completed) {
+    failOpenAiLiveFinalization(
+      socket,
+      transportGeneration,
+      "OpenAI Realtime did not finish the committed transcript. Reconnecting before this turn can be submitted.",
+    );
+  }
+};
+
+const commitOpenAiLiveTurn = (): Promise<void> => {
+  // Translation has provider-owned continuous turn detection. Its service
+  // waits for translation completion events instead of issuing manual commits.
+  if (openAiNativeTranslationActive || openAiLiveMode === "translate") {
+    return Promise.resolve();
+  }
+  if (
+    !openAiLiveSocket
+    || openAiLiveSocket.readyState !== WebSocket.OPEN
+    || !openAiLiveReady
+  ) {
+    return Promise.reject(new Error("OpenAI Realtime transcription is not connected."));
+  }
+  const transportGeneration = openAiLiveTransportGeneration;
+  const operation = openAiLiveFinalizeTail
+    .catch(() => undefined)
+    .then(() => commitOpenAiLiveTurnNow(transportGeneration));
+  openAiLiveFinalizeTail = operation.catch(() => undefined);
+  return operation;
 };
 
 const notifyOpenAiLiveError = (message: string) => {
@@ -549,7 +1036,8 @@ const ensureOpenAiTranslationListener = async () => {
       ({ payload }) => {
         if (!payload || typeof payload !== "object") return;
         const serverError = getOpenAiLiveError(payload);
-        if (serverError) {
+        const currentIntent = openAiLiveActiveLifecycleIntent === openAiLiveLifecycleIntent;
+        if (serverError && currentIntent) {
           notifyOpenAiLiveError(`OpenAI Realtime rejected the translation session: ${serverError}`);
         }
         for (const listener of openAiLiveMessageListeners) {
@@ -560,7 +1048,9 @@ const ensureOpenAiTranslationListener = async () => {
         if (payload.type === "session.closed" && openAiNativeTranslationActive) {
           openAiNativeTranslationActive = false;
           openAiLiveReady = false;
-          notifyOpenAiLiveError("OpenAI Realtime translation connection closed.");
+          if (currentIntent) {
+            notifyOpenAiLiveError("OpenAI Realtime translation connection closed.");
+          }
         }
       },
     )
@@ -574,65 +1064,98 @@ const ensureOpenAiTranslationListener = async () => {
   await openAiTranslationListenPromise;
 };
 
-const closeOpenAiLiveSocket = () => {
-  const socket = openAiLiveSocket;
+const resetOpenAiLiveSocketState = (expectedSocket?: WebSocket): boolean => {
+  if (expectedSocket && openAiLiveSocket !== expectedSocket) return false;
   openAiLiveSocket = null;
   openAiLiveReady = false;
   openAiLiveAudioPending = false;
   openAiLiveMode = "transcribe";
+  openAiLiveActiveLifecycleIntent = 0;
+  openAiLiveTransportGeneration += 1;
   openAiLiveOutstandingItems.clear();
+  for (const resolve of openAiLiveCommitWaiters.values()) resolve("");
   openAiLiveCommitWaiters.clear();
+  openAiLiveCommitSequenceSent = 0;
+  openAiLiveCommitSequenceReceived = 0;
   resolveOpenAiLiveFinalWaiters();
+  openAiLiveFinalOutcomes.clear();
+  return true;
+};
+
+const closeOpenAiLiveSocket = () => {
+  const socket = openAiLiveSocket;
+  resetOpenAiLiveSocketState();
   if (!socket) return;
   try {
     socket.close(1000, "client stop");
   } catch {}
 };
 
-const stopOpenAiLiveGracefully = async () => {
+const enqueueOpenAiLiveLifecycle = <T>(operation: () => Promise<T>): Promise<T> => {
+  const result = openAiLiveLifecycleTail.then(operation, operation);
+  openAiLiveLifecycleTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+};
+
+class OpenAiLiveStartSupersededError extends Error {
+  constructor() {
+    super("OpenAI Realtime start was superseded");
+    this.name = "OpenAiLiveStartSupersededError";
+  }
+}
+
+const throwIfOpenAiLiveStartSuperseded = (signal: AbortSignal) => {
+  if (signal.aborted) throw new OpenAiLiveStartSupersededError();
+};
+
+const raceOpenAiLiveStart = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> => {
+  if (signal.aborted) return Promise.reject(new OpenAiLiveStartSupersededError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(new OpenAiLiveStartSupersededError());
+    };
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+};
+
+const stopOpenAiLiveGracefullyNow = async () => {
   if (openAiNativeTranslationActive || openAiLiveMode === "translate") {
-    const shouldStop = openAiNativeTranslationActive;
     openAiNativeTranslationActive = false;
+    openAiLiveActiveLifecycleIntent = 0;
     openAiLiveReady = false;
     openAiLiveAudioPending = false;
     openAiLiveMode = "transcribe";
-    if (shouldStop) {
-      try {
-        await openAiTranslationAudioChain;
-        await invoke("openai_translation_stop");
-      } catch {}
-    }
+    try {
+      await openAiTranslationAudioChain;
+      await invoke("openai_translation_stop");
+    } catch {}
+    openAiTranslationAudioChain = Promise.resolve();
     return;
   }
   const socket = openAiLiveSocket;
   if (!socket) return;
   if (openAiLiveReady && socket.readyState === WebSocket.OPEN) {
     try {
-      let itemIds = [...openAiLiveOutstandingItems];
-      // gpt-live-transcribe has no VAD events. Commit whenever at least one
-      // audio chunk was appended, and never send an empty-buffer commit.
-      if (openAiLiveAudioPending) {
-        const committed = waitForOpenAiLiveCommit();
-        socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-        openAiLiveAudioPending = false;
-        const itemId = await Promise.race([
-          committed,
-          new Promise<string>((resolve) =>
-            window.setTimeout(() => resolve(""), 1_500),
-          ),
-        ]);
-        if (itemId) itemIds = [...new Set([...itemIds, itemId])];
-      }
-      itemIds = [...new Set([...itemIds, ...openAiLiveOutstandingItems])];
-      const pendingItemIds = itemIds.filter((itemId) =>
-        openAiLiveOutstandingItems.has(itemId),
-      );
-      if (pendingItemIds.length) {
-        await Promise.race([
-          Promise.all(pendingItemIds.map(waitForOpenAiLiveFinal)).then(() => undefined),
-          new Promise<void>((resolve) => window.setTimeout(resolve, 3_000)),
-        ]);
-      }
+      await commitOpenAiLiveTurn();
     } catch {
     }
   }
@@ -665,160 +1188,252 @@ const openaiApi: AssistantAPI["openai"] = {
       };
     }
   },
-  startLive: async ({ prompt, targetLanguage }) => {
-    closeOpenAiLiveSocket();
-    const translating = Boolean(targetLanguage?.trim());
-    if (translating) {
-      await ensureOpenAiTranslationListener();
-      openAiLiveMode = "translate";
+  startLive: ({ prompt, targetLanguage }) => {
+    const lifecycleIntent = ++openAiLiveLifecycleIntent;
+    openAiLivePendingStartAbort?.abort();
+    const startAbort = new AbortController();
+    openAiLivePendingStartAbort = startAbort;
+    const { signal } = startAbort;
+    return enqueueOpenAiLiveLifecycle(async () => {
       try {
-        await invoke("openai_translation_start", {
-          targetLanguage: targetLanguage!.trim(),
-        });
-        openAiTranslationAudioChain = Promise.resolve();
-        openAiNativeTranslationActive = true;
-        openAiLiveReady = true;
-        return;
-      } catch (error) {
-        openAiLiveMode = "transcribe";
-        openAiLiveReady = false;
-        throw error;
-      }
-    }
-    if (typeof WebSocket === "undefined") {
-      throw new Error("OpenAI Realtime is not supported by this WebView.");
-    }
-
-    const auth = await invoke("openai_live_create_token");
-    if (!auth?.token) {
-      throw new Error("OpenAI Realtime could not create a temporary session token.");
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      let opened = false;
-      const socket = new WebSocket(
-        // The client secret is already bound to a transcription session.
-        // Supplying ?model= here would override that session as a generic
-        // Realtime model and makes gpt-live-transcribe fail at session.update.
-        buildOpenAiLiveWebSocketUrl(),
-        ["realtime", `openai-insecure-api-key.${auth.token}`],
-      );
-      socket.binaryType = "arraybuffer";
-      openAiLiveSocket = socket;
-      openAiLiveMode = "transcribe";
-      const timeout = window.setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        closeOpenAiLiveSocket();
-        reject(
-          new Error(
-            opened
-              ? `OpenAI Realtime did not confirm the ${translating ? "translation" : "transcription"} session.`
-              : "OpenAI Realtime WebSocket connection timed out.",
-          ),
+        throwIfOpenAiLiveStartSuperseded(signal);
+        // Replacing a transport is one lifecycle transaction: finish/drain the old
+        // session first, then establish the requested one. Concurrent start/stop
+        // calls are ordered by the lifecycle queue, so a stale start cannot win.
+        await stopOpenAiLiveGracefullyNow();
+        throwIfOpenAiLiveStartSuperseded(signal);
+        // Also clear a native worker whose start may have succeeded after an IPC
+        // delivery failure, before its frontend routing flag could be committed.
+        await raceOpenAiLiveStart(
+          invoke("openai_translation_stop").catch(() => undefined),
+          signal,
         );
-      }, 10_000);
-
-      const fail = (message: string) => {
-        notifyOpenAiLiveError(message);
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(timeout);
-        reject(new Error(message));
-      };
-
-      socket.onopen = () => {
-        opened = true;
-        try {
-          socket.send(JSON.stringify(buildOpenAiLiveSessionUpdate(prompt)));
-        } catch (error) {
-          fail(error instanceof Error ? error.message : String(error));
-        }
-      };
-
-      socket.onmessage = (event) => {
-        void (async () => {
+        const translating = Boolean(targetLanguage?.trim());
+        if (translating) {
+          await raceOpenAiLiveStart(ensureOpenAiTranslationListener(), signal);
+          openAiLiveMode = "translate";
           try {
-            const message = await decodeOpenAiLiveMessage(event.data);
-            if (openAiLiveSocket !== socket) return;
-            const serverError = getOpenAiLiveError(message);
-            if (serverError) {
-              fail(`OpenAI Realtime rejected the session: ${serverError}`);
+            openAiTranslationAudioChain = Promise.resolve();
+            // Mark the setup generation before awaiting IPC. A session.closed
+            // event can be delivered after Rust installs the worker but before
+            // the command promise resolves in this WebView.
+            openAiNativeTranslationActive = true;
+            openAiLiveActiveLifecycleIntent = lifecycleIntent;
+            const nativeStart = invoke("openai_translation_start", {
+              targetLanguage: targetLanguage!.trim(),
+            });
+            const cancelPendingNativeStart = () => {
+              void invoke("openai_translation_stop").catch(() => undefined);
+            };
+            signal.addEventListener("abort", cancelPendingNativeStart, { once: true });
+            try {
+              await raceOpenAiLiveStart(nativeStart, signal);
+            } finally {
+              signal.removeEventListener("abort", cancelPendingNativeStart);
+            }
+            throwIfOpenAiLiveStartSuperseded(signal);
+            if (!openAiNativeTranslationActive) {
+              throw new Error("OpenAI Realtime translation connection closed during setup.");
+            }
+            openAiLiveReady = true;
+            return;
+          } catch (error) {
+            // The command may have established the native worker before an IPC
+            // delivery failure. A best-effort stop prevents an orphaned translator
+            // from continuing to emit into a later transcription session.
+            await invoke("openai_translation_stop").catch(() => undefined);
+            openAiNativeTranslationActive = false;
+            openAiLiveActiveLifecycleIntent = 0;
+            openAiLiveMode = "transcribe";
+            openAiLiveReady = false;
+            throw error;
+          }
+        }
+        if (typeof WebSocket === "undefined") {
+          throw new Error("OpenAI Realtime is not supported by this WebView.");
+        }
+
+        const auth = await raceOpenAiLiveStart(
+          invoke("openai_live_create_token"),
+          signal,
+        );
+        if (!auth?.token) {
+          throw new Error("OpenAI Realtime could not create a temporary session token.");
+        }
+        throwIfOpenAiLiveStartSuperseded(signal);
+
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          let opened = false;
+          const socket = new WebSocket(
+            // The client secret is already bound to a transcription session.
+            // Supplying ?model= here would override that session as a generic
+            // Realtime model and makes gpt-live-transcribe fail at session.update.
+            buildOpenAiLiveWebSocketUrl(),
+            ["realtime", `openai-insecure-api-key.${auth.token}`],
+          );
+          socket.binaryType = "arraybuffer";
+          openAiLiveTransportGeneration += 1;
+          openAiLiveSocket = socket;
+          openAiLiveMode = "transcribe";
+          const timeout = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener("abort", abortPendingSocket);
+            closeOpenAiLiveSocket();
+            reject(
+              new Error(
+                opened
+                  ? `OpenAI Realtime did not confirm the ${translating ? "translation" : "transcription"} session.`
+                  : "OpenAI Realtime WebSocket connection timed out.",
+              ),
+            );
+          }, 10_000);
+
+          const abortPendingSocket = () => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            signal.removeEventListener("abort", abortPendingSocket);
+            if (openAiLiveSocket === socket) closeOpenAiLiveSocket();
+            reject(new OpenAiLiveStartSupersededError());
+          };
+          signal.addEventListener("abort", abortPendingSocket, { once: true });
+          if (signal.aborted) {
+            abortPendingSocket();
+            return;
+          }
+
+          const fail = (message: string) => {
+            const wasCurrent = openAiLiveSocket === socket;
+            if (wasCurrent) closeOpenAiLiveSocket();
+            const superseded = lifecycleIntent !== openAiLiveLifecycleIntent;
+            if (settled) {
+              if (wasCurrent && !superseded) notifyOpenAiLiveError(message);
               return;
             }
-            if (
-              message.type === "session.updated" &&
-              !settled
-            ) {
-              settled = true;
-              openAiLiveReady = true;
-              window.clearTimeout(timeout);
-              resolve();
+            settled = true;
+            window.clearTimeout(timeout);
+            signal.removeEventListener("abort", abortPendingSocket);
+            if (!superseded) notifyOpenAiLiveError(message);
+            reject(new Error(message));
+          };
+
+          socket.onopen = () => {
+            opened = true;
+            try {
+              socket.send(JSON.stringify(buildOpenAiLiveSessionUpdate(prompt)));
+            } catch (error) {
+              fail(error instanceof Error ? error.message : String(error));
             }
-            if (message.type === "input_audio_buffer.committed") {
-              openAiLiveAudioPending = false;
-              publishOpenAiLiveCommit(
-                typeof message.item_id === "string" ? message.item_id : "",
-              );
-            }
-            if (message.type ===
-              "conversation.item.input_audio_transcription.delta"
-            ) {
-              const itemId =
-                typeof message.item_id === "string" ? message.item_id : "";
-              if (itemId) openAiLiveOutstandingItems.add(itemId);
-            }
-            if (
-              (message.type ===
-                "conversation.item.input_audio_transcription.completed" ||
-                message.type ===
-                  "conversation.item.input_audio_transcription.failed")
-            ) {
-              const itemId =
-                typeof message.item_id === "string" ? message.item_id : "";
-              if (itemId) {
-                openAiLiveOutstandingItems.delete(itemId);
-                resolveOpenAiLiveFinalWaiters(itemId);
-              }
-            }
-            for (const listener of openAiLiveMessageListeners) {
+          };
+
+          socket.onmessage = (event) => {
+            void (async () => {
               try {
-                listener(message);
-              } catch {}
-            }
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
+                const message = await decodeOpenAiLiveMessage(event.data);
+                if (openAiLiveSocket !== socket) return;
+                // Item-level transcription failures belong to the current turn;
+                // record and forward them below so finalizeTurn rejects with that
+                // outcome. Only a top-level Realtime `error` invalidates setup or
+                // the entire socket immediately.
+                const serverError = message.type === "error"
+                  ? getOpenAiLiveError(message)
+                  : null;
+                if (serverError) {
+                  fail(`OpenAI Realtime rejected the session: ${serverError}`);
+                  return;
+                }
+                if (
+                  message.type === "session.updated" &&
+                  !settled
+                ) {
+                  settled = true;
+                  openAiLiveReady = true;
+                  openAiLiveActiveLifecycleIntent = lifecycleIntent;
+                  window.clearTimeout(timeout);
+                  signal.removeEventListener("abort", abortPendingSocket);
+                  resolve();
+                }
+                if (message.type === "input_audio_buffer.committed") {
+                  publishOpenAiLiveCommit(
+                    typeof message.item_id === "string" ? message.item_id : "",
+                  );
+                }
+                if (message.type ===
+                  "conversation.item.input_audio_transcription.delta"
+                ) {
+                  const itemId =
+                    typeof message.item_id === "string" ? message.item_id : "";
+                  if (itemId) openAiLiveOutstandingItems.add(itemId);
+                }
+                if (
+                  (message.type ===
+                    "conversation.item.input_audio_transcription.completed" ||
+                    message.type ===
+                      "conversation.item.input_audio_transcription.failed")
+                ) {
+                  const itemId =
+                    typeof message.item_id === "string" ? message.item_id : "";
+                  if (itemId) {
+                    const outcome: OpenAiLiveFinalOutcome = message.type.endsWith(".failed")
+                      ? {
+                          success: false,
+                          message: getOpenAiLiveError(message)
+                            || "OpenAI could not transcribe the committed audio segment.",
+                        }
+                      : { success: true };
+                    openAiLiveFinalOutcomes.set(itemId, outcome);
+                    openAiLiveOutstandingItems.delete(itemId);
+                    resolveOpenAiLiveFinalWaiters(itemId, outcome);
+                  }
+                }
+                for (const listener of openAiLiveMessageListeners) {
+                  try {
+                    listener(message);
+                  } catch {}
+                }
+              } catch (error) {
+                const detail = error instanceof Error ? error.message : String(error);
+                if (!settled) {
+                  fail(`OpenAI Realtime returned an unreadable setup response: ${detail}`);
+                } else {
+                  notifyOpenAiLiveError(
+                    `OpenAI Realtime returned an unreadable response: ${detail}`,
+                  );
+                }
+              }
+            })();
+          };
+          socket.onerror = () =>
+            fail(
+              `OpenAI Realtime ${translating ? "translation" : "transcription"} connection failed. Check the API key and network access.`,
+            );
+          socket.onclose = (event) => {
+            const wasCurrent = resetOpenAiLiveSocketState(socket);
             if (!settled) {
-              fail(`OpenAI Realtime returned an unreadable setup response: ${detail}`);
-            } else {
+              fail(event.reason || `OpenAI Realtime closed during setup (${event.code}).`);
+            } else if (wasCurrent) {
               notifyOpenAiLiveError(
-                `OpenAI Realtime returned an unreadable response: ${detail}`,
+                event.reason || `OpenAI Realtime connection closed (${event.code}).`,
               );
             }
-          }
-        })();
-      };
-      socket.onerror = () =>
-        fail(
-          `OpenAI Realtime ${translating ? "translation" : "transcription"} connection failed. Check the API key and network access.`,
-        );
-      socket.onclose = (event) => {
-        resolveOpenAiLiveFinalWaiters();
-        const wasCurrent = openAiLiveSocket === socket;
-        if (wasCurrent) {
-          openAiLiveSocket = null;
-          openAiLiveReady = false;
-          openAiLiveAudioPending = false;
+          };
+        });
+      } catch (error) {
+        // A later start/stop owns the final state. Let that queued operation
+        // complete without surfacing the superseded setup failure as a false
+        // "realtime unavailable" status to the user.
+        if (
+          error instanceof OpenAiLiveStartSupersededError
+          || lifecycleIntent !== openAiLiveLifecycleIntent
+        ) return;
+        throw error;
+      } finally {
+        if (openAiLivePendingStartAbort === startAbort) {
+          openAiLivePendingStartAbort = null;
         }
-        if (!settled) {
-          fail(event.reason || `OpenAI Realtime closed during setup (${event.code}).`);
-        } else if (wasCurrent) {
-          notifyOpenAiLiveError(
-            event.reason || `OpenAI Realtime connection closed (${event.code}).`,
-          );
-        }
-      };
+      }
     });
   },
   sendAudioChunk: ({ data }) => {
@@ -829,6 +1444,8 @@ const openaiApi: AssistantAPI["openai"] = {
       openAiTranslationAudioChain = openAiTranslationAudioChain
         .then(() => invoke("openai_translation_send_audio", { data }))
         .catch((error) => {
+          openAiNativeTranslationActive = false;
+          openAiLiveReady = false;
           notifyOpenAiLiveError(
             error instanceof Error ? error.message : String(error),
           );
@@ -837,15 +1454,29 @@ const openaiApi: AssistantAPI["openai"] = {
     }
     const socket = openAiLiveSocket;
     if (!socket || socket.readyState !== WebSocket.OPEN || !openAiLiveReady) return;
-    socket.send(
-      JSON.stringify({
-        type: "input_audio_buffer.append",
-        audio: data,
-      }),
-    );
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: data,
+        }),
+      );
+    } catch (error) {
+      if (openAiLiveSocket === socket) closeOpenAiLiveSocket();
+      notifyOpenAiLiveError(
+        error instanceof Error ? error.message : "OpenAI Realtime audio send failed.",
+      );
+      return;
+    }
     if (openAiLiveMode === "transcribe") openAiLiveAudioPending = true;
   },
-  stopLive: stopOpenAiLiveGracefully,
+  commitLiveTurn: commitOpenAiLiveTurn,
+  stopLive: () => {
+    openAiLiveLifecycleIntent += 1;
+    openAiLivePendingStartAbort?.abort();
+    openAiLivePendingStartAbort = null;
+    return enqueueOpenAiLiveLifecycle(stopOpenAiLiveGracefullyNow);
+  },
   onMessage: (callback) => {
     openAiLiveMessageListeners.add(callback);
     return () => openAiLiveMessageListeners.delete(callback);
@@ -998,7 +1629,67 @@ function dispatchAuthPayload(payload: AuthDeepLinkPayload) {
   });
 }
 
-async function captureScreenFrame(): Promise<{
+function isScreenPickerCancellation(error: unknown): boolean {
+  const name = error instanceof DOMException
+    ? error.name
+    : typeof error === "object" && error !== null && "name" in error
+      ? String((error as { name?: unknown }).name ?? "")
+      : "";
+  return name === "AbortError" || name === "NotAllowedError";
+}
+
+function waitForVideoMetadata(video: HTMLVideoElement, timeoutMs: number): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    let timer: number | null = null;
+    const cleanup = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      video.removeEventListener("loadedmetadata", handleLoaded);
+      video.removeEventListener("error", handleError);
+    };
+    const handleLoaded = () => {
+      cleanup();
+      if (video.videoWidth > 0 && video.videoHeight > 0) resolve();
+      else reject(new Error("The selected screen did not provide a video frame"));
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("The selected screen could not be read"));
+    };
+    video.addEventListener("loadedmetadata", handleLoaded);
+    video.addEventListener("error", handleError);
+    timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out while preparing the selected screen"));
+    }, timeoutMs);
+  });
+}
+
+function waitForVideoFrame(video: HTMLVideoElement, timeoutMs: number): Promise<void> {
+  if (typeof video.requestVideoFrameCallback !== "function") {
+    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: number | null = null;
+    const callbackId = video.requestVideoFrameCallback(() => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      resolve();
+    });
+    timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      video.cancelVideoFrameCallback(callbackId);
+      reject(new Error("Timed out while reading the selected screen"));
+    }, timeoutMs);
+  });
+}
+
+async function captureScreenFrame(signal?: AbortSignal): Promise<{
   base64: string;
   width: number;
   height: number;
@@ -1010,15 +1701,24 @@ async function captureScreenFrame(): Promise<{
     },
     audio: false,
   });
+  const stopTracks = () => stream.getTracks().forEach((track) => track.stop());
+  const throwIfAborted = () => {
+    if (signal?.aborted) throw new Error("Screen capture was cancelled");
+  };
+  signal?.addEventListener("abort", stopTracks, { once: true });
   try {
+    throwIfAborted();
     const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
     video.srcObject = stream;
-    await new Promise<void>((resolve) => {
-      video.onloadedmetadata = () => resolve();
-    });
-    await video.play().catch(() => {});
-    const sourceWidth = video.videoWidth || 1920;
-    const sourceHeight = video.videoHeight || 1080;
+    await waitForVideoMetadata(video, 8_000);
+    throwIfAborted();
+    await video.play();
+    await waitForVideoFrame(video, 8_000);
+    throwIfAborted();
+    const sourceWidth = video.videoWidth;
+    const sourceHeight = video.videoHeight;
     const maxDimension = 1920;
     const scale = Math.min(
       1,
@@ -1036,6 +1736,7 @@ async function captureScreenFrame(): Promise<{
     ctx.drawImage(video, 0, 0, sourceWidth, sourceHeight, 0, 0, width, height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.86);
     const base64 = dataUrl.split(",")[1] || "";
+    if (!base64) throw new Error("The selected screen returned an empty image");
     return {
       base64,
       width,
@@ -1043,6 +1744,7 @@ async function captureScreenFrame(): Promise<{
       mime: "image/jpeg",
     };
   } finally {
-    stream.getTracks().forEach((t) => t.stop());
+    signal?.removeEventListener("abort", stopTracks);
+    stopTracks();
   }
 }

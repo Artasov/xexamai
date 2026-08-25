@@ -26,8 +26,9 @@ Use the application only where AI assistance and recording are permitted. You ar
 - Live input switching while recording, plus configurable buffer durations and global hotkeys.
 - OpenAI, OpenAI Realtime (`gpt-live-transcribe` and `gpt-realtime-translate`), Google Gemini, Google Live, Winky, Ollama, and local `fast-fast-whisper` modes.
 - Streaming answers and realtime OpenAI or Google transcription into the question field. OpenAI Live Transcribe preserves multilingual speech and code-switching. OpenAI Realtime Translate keeps both the detected source transcript and the selected-language translation, with the translation shown by default and an in-field source/translation toggle.
+- Optional Auto mode detects completed speech turns, submits them without a separate Send click, and cancels a superseded answer when speech resumes. Useful interrupted drafts can remain visible, while a continued question does not inherit its obsolete draft as model context. Auto works with realtime transcription/translation and buffered transcription; enabling it from idle also starts recording.
 - Local conversation history with search, filters, pinning, rename, retry, export, deletion, and configurable retention.
-- User-initiated screenshot analysis through OpenAI or Google.
+- User-initiated screenshot attachments through OpenAI or Google, with native area selection or one-click full-monitor capture on Windows.
 - OAuth or email/password sign-in for the XEXAMAI backend and Winky features.
 - Signed in-app update downloads with an explicit install step.
 - Always-on-top, opacity, scaling, and a best-effort Windows capture-exclusion option.
@@ -103,8 +104,8 @@ GPU acceleration depends on the local helper, model, drivers, CUDA/cuDNN compati
 - **Windows:** native WASAPI loopback is used for system audio and mixed capture. This is the primary tested path.
 - **macOS:** microphone capture uses the system audio API. System/mixed capture requires a virtual input such as BlackHole, Loopback, or Soundflower and the required OS permissions.
 - **Linux:** system/mixed capture requires a usable PulseAudio or PipeWire monitor source. Desktop portal, compositor, tray, and shortcut behavior can vary.
-- **Screen capture:** the OS/webview display picker is shown for each capture. The selected frame is resized before processing.
-- **Hide from capture:** Windows uses `SetWindowDisplayAffinity` as a best-effort measure. It is not a promise of invisibility and can vary by Windows version, capture software, remote desktop, or capture method. Equivalent exclusion is not implemented for macOS or Linux.
+- **Screen capture:** on Windows, the screenshot button opens a native dimmed overlay on the monitor containing XEXAMAI. Drag a rectangle to attach that area, or use **Full screen** in the top toolbar; no OS source picker is shown. On macOS and Linux, the OS/webview display picker is shown. The frame is resized before processing.
+- **Hide from capture:** Windows uses `SetWindowDisplayAffinity` as a best-effort measure. When enabled, it is also applied before the temporary screenshot overlay becomes visible, so the selector is excluded from supported recording and screen-sharing paths. This is not a promise of invisibility and can vary by Windows version, capture software, remote desktop, or capture method. Equivalent exclusion is not implemented for macOS or Linux.
 
 ## Development
 

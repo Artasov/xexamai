@@ -273,7 +273,8 @@ export type AssistantAPI = {
         disable: () => Promise<{ success: boolean; error?: string }>;
     };
     screen: {
-        capture: () => Promise<{ base64: string; width: number; height: number; mime: string }>;
+        capture: () => Promise<{ base64: string; width: number; height: number; mime: string } | null>;
+        cancel: () => Promise<void>;
     };
     google: {
         getLiveCapability: () => Promise<{ supported: boolean; configured: boolean; reason?: string | null; model: string }>;
@@ -291,6 +292,7 @@ export type AssistantAPI = {
         getLiveCapability: () => Promise<{ supported: boolean; configured: boolean; reason?: string | null; model: string }>;
         startLive: (opts: {prompt?: string; targetLanguage?: string}) => Promise<void>;
         sendAudioChunk: (params: {data: string}) => void;
+        commitLiveTurn: () => Promise<void>;
         stopLive: () => Promise<void>;
         onMessage: (cb: (message: Record<string, any>) => void) => () => void;
         onError: (cb: (error: string) => void) => () => void;

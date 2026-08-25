@@ -24,6 +24,12 @@ export default defineConfig({
         emptyOutDir: true,
         sourcemap: true,
         target: 'es2020',
+        rollupOptions: {
+            input: {
+                main: path.resolve(__dirname, 'src/renderer/index.html'),
+                screenshot: path.resolve(__dirname, 'src/renderer/screenshot.html'),
+            },
+        },
     },
     resolve: {
         alias: {

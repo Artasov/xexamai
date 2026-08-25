@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tokio::fs;
 use tokio::sync::{watch, Mutex};
@@ -20,6 +20,8 @@ use tokio::sync::{watch, Mutex};
 const MAX_AUDIO_BYTES: usize = 64 * 1024 * 1024;
 const MAX_TRANSCRIPTION_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_ACTIVE_TRANSCRIPTIONS: usize = 16;
+const TRANSCRIPTION_CANCELLATION_TOMBSTONE_TTL: Duration = Duration::from_secs(30);
+const MAX_TRANSCRIPTION_CANCELLATION_TOMBSTONES: usize = 128;
 
 #[derive(Debug, Serialize, Deserialize, specta::Type)]
 pub struct TranscriptionRequest {
@@ -36,42 +38,85 @@ pub struct TranscriptionRequest {
 }
 
 #[derive(Default)]
+struct TranscriptionRequests {
+    active: HashMap<String, (u64, watch::Sender<bool>)>,
+    cancelled_before_start: HashMap<String, Instant>,
+}
+
+#[derive(Default)]
 pub struct TranscriptionCancellationState {
     next_generation: AtomicU64,
-    active: Mutex<HashMap<String, (u64, watch::Sender<bool>)>>,
+    requests: Mutex<TranscriptionRequests>,
 }
 
 impl TranscriptionCancellationState {
     async fn register(&self, request_id: &str) -> Result<(u64, watch::Receiver<bool>), String> {
         validate_request_id(request_id)?;
-        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed) + 1;
-        let (sender, receiver) = watch::channel(false);
-        let mut active = self.active.lock().await;
-        if active.len() >= MAX_ACTIVE_TRANSCRIPTIONS && !active.contains_key(request_id) {
+        let mut requests = self.requests.lock().await;
+        Self::prune_cancellation_tombstones(&mut requests);
+        if requests.cancelled_before_start.contains_key(request_id) {
+            return Err("Transcription was cancelled before it started".to_string());
+        }
+        if requests.active.len() >= MAX_ACTIVE_TRANSCRIPTIONS
+            && !requests.active.contains_key(request_id)
+        {
             return Err("Too many transcriptions are active".to_string());
         }
-        if let Some((_, previous)) = active.insert(request_id.to_string(), (generation, sender)) {
+        if let Some((_, previous)) = requests.active.remove(request_id) {
             let _ = previous.send(true);
         }
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed) + 1;
+        let (sender, receiver) = watch::channel(false);
+        requests
+            .active
+            .insert(request_id.to_string(), (generation, sender));
         Ok((generation, receiver))
     }
 
     async fn finish(&self, request_id: &str, generation: u64) {
-        let mut active = self.active.lock().await;
-        if active
+        let mut requests = self.requests.lock().await;
+        if requests
+            .active
             .get(request_id)
             .is_some_and(|(value, _)| *value == generation)
         {
-            active.remove(request_id);
+            requests.active.remove(request_id);
         }
     }
 
     async fn cancel(&self, request_id: &str) -> Result<(), String> {
         validate_request_id(request_id)?;
-        if let Some((_, sender)) = self.active.lock().await.remove(request_id) {
+        let mut requests = self.requests.lock().await;
+        Self::prune_cancellation_tombstones(&mut requests);
+        if let Some((_, sender)) = requests.active.remove(request_id) {
             let _ = sender.send(true);
         }
+        requests
+            .cancelled_before_start
+            .insert(request_id.to_string(), Instant::now());
+        Self::enforce_cancellation_tombstone_limit(&mut requests);
         Ok(())
+    }
+
+    fn prune_cancellation_tombstones(requests: &mut TranscriptionRequests) {
+        let now = Instant::now();
+        requests.cancelled_before_start.retain(|_, created| {
+            now.duration_since(*created) < TRANSCRIPTION_CANCELLATION_TOMBSTONE_TTL
+        });
+    }
+
+    fn enforce_cancellation_tombstone_limit(requests: &mut TranscriptionRequests) {
+        while requests.cancelled_before_start.len() > MAX_TRANSCRIPTION_CANCELLATION_TOMBSTONES {
+            let Some(oldest) = requests
+                .cancelled_before_start
+                .iter()
+                .min_by_key(|(_, created)| **created)
+                .map(|(request_id, _)| request_id.clone())
+            else {
+                break;
+            };
+            requests.cancelled_before_start.remove(&oldest);
+        }
     }
 }
 
@@ -505,7 +550,40 @@ async fn collect_response_bounded(response: reqwest::Response, limit: usize) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_local_device, validate_transcription_request, TranscriptionRequest};
+    use super::*;
+
+    #[tokio::test]
+    async fn cancellation_before_registration_prevents_transcription_start() {
+        let state = TranscriptionCancellationState::default();
+        state.cancel("cancel-before-start").await.unwrap();
+
+        let error = state.register("cancel-before-start").await.unwrap_err();
+
+        assert!(error.contains("cancelled before it started"));
+        assert!(state.register("cancel-before-start").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn cancelling_active_transcription_blocks_late_duplicate() {
+        let state = TranscriptionCancellationState::default();
+        let (_, mut cancellation) = state.register("active-then-cancelled").await.unwrap();
+
+        state.cancel("active-then-cancelled").await.unwrap();
+
+        assert!(*cancellation.borrow_and_update());
+        assert!(state.register("active-then-cancelled").await.is_err());
+        assert!(state.register("active-then-cancelled").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn oldest_transcription_tombstone_survives_at_exact_capacity() {
+        let state = TranscriptionCancellationState::default();
+        for index in 0..MAX_TRANSCRIPTION_CANCELLATION_TOMBSTONES {
+            state.cancel(&format!("cancel-{index}")).await.unwrap();
+        }
+
+        assert!(state.register("cancel-0").await.is_err());
+    }
 
     #[test]
     fn normalizes_devices_to_fast_whisper_contract() {

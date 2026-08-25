@@ -15,6 +15,7 @@ mod oauth;
 mod ollama;
 mod openai_live;
 mod provider_proxy;
+mod screen_capture;
 mod secret_store;
 mod transcription;
 mod tray;
@@ -1027,9 +1028,8 @@ fn apply_window_preferences(
                     if let Ok(hwnd) = w.hwnd() {
                         use windows::Win32::Foundation::HWND;
                         use windows::Win32::UI::WindowsAndMessaging::{
-                            GetWindowLongPtrW, SetLayeredWindowAttributes,
-                            SetWindowDisplayAffinity, SetWindowLongPtrW, GWL_EXSTYLE, LWA_ALPHA,
-                            WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WS_EX_LAYERED,
+                            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW,
+                            GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
                         };
 
                         let hwnd_handle = HWND(hwnd.0);
@@ -1050,14 +1050,10 @@ fn apply_window_preferences(
                             );
                         }
 
-                        // Применяем скрытие от записи экрана
-                        unsafe {
-                            if hide_app_value {
-                                let _ =
-                                    SetWindowDisplayAffinity(hwnd_handle, WDA_EXCLUDEFROMCAPTURE);
-                            } else {
-                                let _ = SetWindowDisplayAffinity(hwnd_handle, WDA_NONE);
-                            }
+                        if let Err(error) =
+                            screen_capture::set_window_capture_exclusion(&w, hide_app_value)
+                        {
+                            log::warn!(target: "window", "Could not apply screen-capture privacy: {error}");
                         }
                     }
                 }
@@ -1328,6 +1324,8 @@ fn main() {
                 Arc::new(RendererActivityLeases::new(activity_gate.clone()));
             let openai_translation_state =
                 Arc::new(openai_live::OpenAiTranslationState::default());
+            let screen_capture_state =
+                Arc::new(screen_capture::ScreenCaptureState::default());
             let shutdown_state = Arc::new(ShutdownState::default());
 
             app.manage(config_state.clone());
@@ -1342,6 +1340,7 @@ fn main() {
             app.manage(activity_gate);
             app.manage(renderer_activity_leases);
             app.manage(openai_translation_state);
+            app.manage(screen_capture_state);
             app.manage(shutdown_state.clone());
             app.manage(update::UpdateManager::default());
 

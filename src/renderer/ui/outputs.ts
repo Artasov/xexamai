@@ -20,6 +20,8 @@ export type ChatMessage = {
     pending?: boolean;
     retryText?: string;
     interrupted?: boolean;
+    /** Visible in the conversation, but deliberately omitted from future LLM context. */
+    historyExcluded?: boolean;
     source?: ChatSource;
     provider?: ChatProvider;
     createdAt: number;
@@ -49,6 +51,7 @@ export type ChatSessionSummary = {
 export type ChatMessageMetadata = {
     source?: ChatSource;
     provider?: ChatProvider;
+    historyExcluded?: boolean;
 };
 
 export type ChatViewSnapshot = {
@@ -213,6 +216,7 @@ function normalizeChatMessage(raw: unknown): ChatMessage | null {
         pending: false,
         retryText: typeof input.retryText === 'string' ? input.retryText : undefined,
         interrupted,
+        historyExcluded: input.historyExcluded === true,
         source: isChatSource(input.source) ? input.source : undefined,
         provider: isChatProvider(input.provider) ? input.provider : undefined,
         createdAt: typeof input.createdAt === 'number' ? input.createdAt : Date.now(),
@@ -228,6 +232,23 @@ function normalizeChatSession(raw: unknown): ChatSession | null {
     const messages = messagesRaw
         .map((item) => normalizeChatMessage(item))
         .filter((item): item is ChatMessage => !!item);
+
+    // A persisted pending request is normalized into a retryable error above.
+    // Keep its unanswered user turn out of future context until a retry
+    // succeeds; otherwise a restart leaves two consecutive user prompts.
+    for (let index = 0; index < messages.length; index += 1) {
+        const message = messages[index];
+        const retryText = message.role === 'error' ? message.retryText?.trim() : '';
+        if (!retryText) continue;
+        message.historyExcluded = true;
+        const priorUser = [...messages.slice(0, index)].reverse().find((candidate) => (
+            candidate.role === 'user' && (
+                candidate.text.trim() === retryText
+                || candidate.text.trim().endsWith(`\n${retryText}`)
+            )
+        ));
+        if (priorUser) priorUser.historyExcluded = true;
+    }
 
     return {
         id: typeof input.id === 'string' && input.id ? input.id : nextChatId(),
@@ -567,6 +588,7 @@ export function appendChatMessage(
         retryText?: string;
         source?: ChatSource;
         provider?: ChatProvider;
+        historyExcluded?: boolean;
     }
 ): string {
     const session = getSessionById(options?.chatId ?? null);
@@ -578,6 +600,7 @@ export function appendChatMessage(
         pending: options?.pending ?? false,
         retryText: options?.retryText?.trim() || undefined,
         interrupted: false,
+        historyExcluded: options?.historyExcluded ?? false,
         source: options?.source,
         provider: options?.provider,
         createdAt: Date.now(),
@@ -620,6 +643,31 @@ export function updateChatMessage(
     }
 }
 
+/** Removes related chat entries atomically, primarily for unstarted/superseded turns. */
+export function removeChatMessages(
+    ids: readonly string[],
+    options?: { chatId?: string }
+): boolean {
+    const wanted = new Set(ids.filter(Boolean));
+    if (!wanted.size) return false;
+    hydrateSessions();
+    const session = options?.chatId
+        ? chatSessions.find((candidate) => candidate.id === options.chatId)
+        : getActiveSession();
+    if (!session) return false;
+    const next = session.messages.filter((message) => !wanted.has(message.id));
+    if (next.length === session.messages.length) return false;
+    session.messages = next;
+    session.updatedAt = Date.now();
+    if (!session.messages.some((message) => message.role === 'user')) {
+        session.title = initialChatTitle();
+    }
+    persistSessions();
+    renderChat();
+    notifyChatSessionsChanged();
+    return true;
+}
+
 export function clearChatHistory(chatId?: string): void {
     const session = getSessionById(chatId ?? null);
     session.messages = [];
@@ -636,6 +684,7 @@ export function getConversationContext(chatId?: string, maxTurns = 20): ChatHist
         .filter(isHistoryRole)
         .filter((message) => (
             !message.pending &&
+            !message.historyExcluded &&
             typeof message.text === 'string' &&
             message.text.trim().length > 0
         ));
@@ -789,12 +838,20 @@ export function beginRetryChatMessage(chatId: string, messageId: string): {
     const userText = message?.retryText?.trim();
     if (!message || !userText) return null;
     const priorUser = [...session.messages.slice(0, index)].reverse()
-        .find((candidate) => candidate.role === 'user' && candidate.text.trim() === userText);
+        .find((candidate) => candidate.role === 'user' && (
+            candidate.text.trim() === userText
+            || candidate.text.trim().endsWith(`\n${userText}`)
+        ));
+    // Retrying an orphaned error would create an assistant-only history entry
+    // on success. Refuse corrupted/stale pairs instead of poisoning context.
+    if (!priorUser) return null;
+    priorUser.historyExcluded = true;
     message.role = 'assistant';
     message.text = 'Syncing...';
     message.pending = true;
     message.interrupted = false;
     message.retryText = undefined;
+    message.historyExcluded = true;
     session.updatedAt = Date.now();
     activeChatId = session.id;
     persistSessions();
@@ -803,10 +860,10 @@ export function beginRetryChatMessage(chatId: string, messageId: string): {
     return {
         chatId: session.id,
         userText,
-        userMessageId: priorUser?.id || '',
+        userMessageId: priorUser.id,
         assistantMessageId: message.id,
-        source: message.source || priorUser?.source,
-        provider: message.provider || priorUser?.provider,
+        source: message.source || priorUser.source,
+        provider: message.provider || priorUser.provider,
     };
 }
 

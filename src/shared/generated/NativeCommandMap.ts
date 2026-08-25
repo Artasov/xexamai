@@ -266,6 +266,37 @@ export type NativeCommandMap = {
         args: undefined;
         result: Awaited<ReturnType<NativeBindings["audioStopCapture"]>>;
     };
+    "screen_capture_start": {
+        args: {
+            sessionId: Parameters<NativeBindings["screenCaptureStart"]>[0];
+        };
+        result: Awaited<ReturnType<NativeBindings["screenCaptureStart"]>>;
+    };
+    "screen_capture_overlay_ready": {
+        args: {
+            sessionId: Parameters<NativeBindings["screenCaptureOverlayReady"]>[0];
+        };
+        result: Awaited<ReturnType<NativeBindings["screenCaptureOverlayReady"]>>;
+    };
+    "screen_capture_finish": {
+        args: {
+            sessionId: Parameters<NativeBindings["screenCaptureFinish"]>[0];
+            region?: Parameters<NativeBindings["screenCaptureFinish"]>[1];
+        };
+        result: Awaited<ReturnType<NativeBindings["screenCaptureFinish"]>>;
+    };
+    "screen_capture_cancel": {
+        args: {
+            sessionId: Parameters<NativeBindings["screenCaptureCancel"]>[0];
+        };
+        result: Awaited<ReturnType<NativeBindings["screenCaptureCancel"]>>;
+    };
+    "screen_capture_abort": {
+        args: {
+            sessionId: Parameters<NativeBindings["screenCaptureAbort"]>[0];
+        };
+        result: Awaited<ReturnType<NativeBindings["screenCaptureAbort"]>>;
+    };
     "check_app_update": {
         args: undefined;
         result: Awaited<ReturnType<NativeBindings["checkAppUpdate"]>>;

@@ -4,6 +4,8 @@ import {onAudioChunk, type AudioChunk} from './nativeAudio';
 import {
     OpenAiTranscriptAssembler,
     OpenAiTranslationTranscriptAssembler,
+    type OpenAiTranscriptAcknowledgement,
+    type OpenAiTranslationAcknowledgement,
     type OpenAiTranslationTranscript,
 } from './openAiLiveContract';
 
@@ -19,10 +21,18 @@ type OpenAiStreamOptions = {
     targetLanguage?: string;
 };
 
+export type OpenAiRealtimeAcknowledgement = {
+    generation: number;
+    transcript: OpenAiTranscriptAcknowledgement;
+    translation: OpenAiTranslationAcknowledgement;
+};
+
 /** Feeds native capture into the dedicated OpenAI realtime transcription API. */
 export class OpenAiStreamingService {
     private transcriptCallback: ((text: string) => void) | null = null;
     private translationCallback: ((text: OpenAiTranslationTranscript) => void) | null = null;
+    private translationTurnCompletedCallback: (() => void) | null = null;
+    private readonly translationTurnWaiters = new Set<() => void>();
     private errorCallback: ((error: string) => void) | null = null;
     private audioUnsubscribe: (() => void) | null = null;
     private messageUnsubscribe: (() => void) | null = null;
@@ -36,6 +46,7 @@ export class OpenAiStreamingService {
     private readonly transcripts = new OpenAiTranscriptAssembler();
     private readonly translations = new OpenAiTranslationTranscriptAssembler();
     private translationMode = false;
+    private sessionGeneration = 0;
 
     async start(options: OpenAiStreamOptions = {}): Promise<void> {
         const reconnectBuffer = !this.transportReady ? [...this.bufferedSamples] : [];
@@ -53,7 +64,13 @@ export class OpenAiStreamingService {
             if (this.translationMode) {
                 const text = this.translations.apply(message);
                 if (text && (text.source.trim() || text.translated.trim())) {
-                    this.translationCallback?.(text);
+                    try {
+                        this.translationCallback?.(text);
+                    } catch {
+                    }
+                }
+                if (this.translations.consumeOutputBoundary()) {
+                    this.notifyTranslationTurnCompleted();
                 }
                 return;
             }
@@ -107,12 +124,68 @@ export class OpenAiStreamingService {
         }
     }
 
-    acknowledgeTranscript(): void {
-        this.transcripts.acknowledge();
-        this.translations.acknowledge();
+    captureAcknowledgement(): OpenAiRealtimeAcknowledgement {
+        return {
+            generation: this.sessionGeneration,
+            transcript: this.transcripts.captureAcknowledgement(),
+            translation: this.translations.captureAcknowledgement(),
+        };
+    }
+
+    acknowledgeTranscript(
+        acknowledgement: OpenAiRealtimeAcknowledgement = this.captureAcknowledgement(),
+    ): boolean {
+        if (acknowledgement.generation !== this.sessionGeneration) return false;
+        this.transcripts.acknowledge(acknowledgement.transcript);
+        this.translations.acknowledge(acknowledgement.translation);
+        return true;
+    }
+
+    /** Commits the current manual transcription turn without stopping capture. */
+    async finalizeTurn(): Promise<void> {
+        if (this.translationMode) {
+            // Translation owns its continuous server-side turn detection. The
+            // bridge method is intentionally a no-op for this mode, but keep a
+            // single service entry point for callers switching between modes.
+            await window.api.openai.commitLiveTurn();
+            return;
+        }
+        if (!this.active || !this.transportReady) {
+            throw new Error('OpenAI Realtime is reconnecting; the current turn is not final yet.');
+        }
+        this.enqueueAudio(this.resampler.finish());
+        this.flushAudio();
+        await window.api.openai.commitLiveTurn();
+    }
+
+    isTranslationOutputComplete(): boolean {
+        return this.translationMode && this.translations.isOutputCompleted();
+    }
+
+    waitForTranslationTurnCompleted(timeoutMs = 1_200): Promise<void> {
+        if (this.isTranslationOutputComplete()) return Promise.resolve();
+        return new Promise((resolve) => {
+            let settled = false;
+            const resolveOnce = () => {
+                if (settled) return;
+                settled = true;
+                globalThis.clearTimeout(timer);
+                this.translationTurnWaiters.delete(resolveOnce);
+                resolve();
+            };
+            const timer = globalThis.setTimeout(resolveOnce, Math.max(0, timeoutMs));
+            this.translationTurnWaiters.add(resolveOnce);
+            // Keep the waiter race-free if a caller checks immediately after
+            // the completed event was applied.
+            if (this.isTranslationOutputComplete()) resolveOnce();
+        });
     }
 
     async stop(): Promise<void> {
+        // Invalidate acknowledgement snapshots synchronously. A manual send
+        // can overlap a reconnect, and a watermark from the previous socket
+        // must never consume text from the replacement session.
+        this.sessionGeneration += 1;
         if (this.active) {
             this.enqueueAudio(this.resampler.finish());
             this.flushAudio();
@@ -138,6 +211,7 @@ export class OpenAiStreamingService {
         this.transcripts.reset();
         this.translations.reset();
         this.translationMode = false;
+        this.resolveTranslationTurnWaiters();
     }
 
     onTranscript(callback: (text: string) => void): void {
@@ -148,8 +222,25 @@ export class OpenAiStreamingService {
         this.translationCallback = callback;
     }
 
+    onTranslationTurnCompleted(callback: () => void): void {
+        this.translationTurnCompletedCallback = callback;
+    }
+
     onError(callback: (error: string) => void): void {
         this.errorCallback = callback;
+    }
+
+    private notifyTranslationTurnCompleted(): void {
+        try {
+            this.translationTurnCompletedCallback?.();
+        } catch {
+        }
+        this.resolveTranslationTurnWaiters();
+    }
+
+    private resolveTranslationTurnWaiters(): void {
+        for (const resolve of this.translationTurnWaiters) resolve();
+        this.translationTurnWaiters.clear();
     }
 
     private handleNativeAudio(chunk: AudioChunk): void {

@@ -1,5 +1,7 @@
 import {useEffect, useRef, type ClipboardEvent, type KeyboardEvent} from 'react';
 import {IconButton, InputAdornment, TextField, Tooltip} from '@mui/material';
+import AutoModeRoundedIcon from '@mui/icons-material/AutoModeRounded';
+import ImageRoundedIcon from '@mui/icons-material/ImageRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import TranslateRoundedIcon from '@mui/icons-material/TranslateRounded';
 import {createNewChat} from '../../ui/outputs';
@@ -8,6 +10,7 @@ import type {AppState} from '../../state/appState';
 import {ChatHistory} from '../history/ChatHistory';
 import {registerWaveCanvas} from '../../ui/waveform';
 import {imagePreviewUrl} from '../../utils/promptImages';
+import {toast} from 'react-toastify';
 
 type RendererController = ReturnType<typeof useRendererSession>;
 
@@ -53,7 +56,7 @@ function Waveform({visible}: {visible: boolean}) {
 
     return (
         <div
-            className={`${visible ? '' : 'hidden'} h-10 flex-1 overflow-hidden rounded-md`}
+            className={`${visible ? '' : 'hidden'} h-10 min-w-0 flex-1 overflow-hidden rounded-md`}
             style={{background: '#0001', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.02)'}}
             aria-hidden="true"
         >
@@ -75,6 +78,10 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
         const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'));
         if (!images.length) return;
         event.preventDefault();
+        if (appState.isProcessing) {
+            toast.info('Wait for the current operation before attaching an image.');
+            return;
+        }
         void renderer.addPastedImages(images);
     };
 
@@ -90,6 +97,7 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                                     key={seconds}
                                     className="btn btn-secondary fcsc !px-1 !pb-1 !pt-0"
                                     type="button"
+                                    disabled={!renderer.ready || appState.isProcessing}
                                     onClick={() => void renderer.askWindow(seconds)}
                                 >
                                     <span>{seconds}s</span>
@@ -104,13 +112,13 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                     </div>
                 ) : null}
 
-                <div className="mt-2 flex items-center gap-4">
+                <div className="mt-2 flex items-center gap-2">
                     <button
                         className="btn"
                         data-state={appState.isRecording ? 'rec' : 'idle'}
                         type="button"
                         aria-pressed={appState.isRecording}
-                        disabled={!renderer.ready || appState.isProcessing}
+                        disabled={!renderer.ready || (appState.isProcessing && !appState.isRecording)}
                         onClick={() => void renderer.toggleRecording()}
                     >
                         {appState.isRecording ? 'Stop' : 'Start Audio Loop'}
@@ -126,16 +134,47 @@ export function MainWorkspace({renderer, appState, stopVisible, onOpenHistory}: 
                         <AudioInputIcon type={renderer.audioInput}/>
                     </button>
                     <Waveform visible={appState.isRecording}/>
-                    <button
-                        type="button"
-                        className="btn btn-secondary"
-                        aria-label="Capture screenshot and attach"
-                        title="Capture screenshot and attach"
-                        disabled={!renderer.ready || appState.isProcessing}
-                        onClick={() => void renderer.captureScreenshot()}
-                    >
-                        <img src="img/icons/image.png" alt="" className="h-5 w-5 invert" aria-hidden="true"/>
-                    </button>
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                        <button
+                            type="button"
+                            className="btn btn-secondary workspace-action-button"
+                            aria-label="Capture screenshot and attach"
+                            title="Capture screenshot and attach"
+                            disabled={!renderer.ready || appState.isProcessing}
+                            onClick={() => void renderer.captureScreenshot()}
+                        >
+                            <ImageRoundedIcon aria-hidden="true"/>
+                        </button>
+                        <Tooltip
+                            title={renderer.autoModeSwitching
+                                ? 'Changing automatic answer mode…'
+                                : renderer.autoModeEnabled
+                                ? 'Disable automatic answers'
+                                : 'Enable auto mode and start listening'}
+                            arrow
+                        >
+                            <span className="inline-flex">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary workspace-action-button auto-mode-toggle"
+                                    aria-label={renderer.autoModeSwitching
+                                        ? 'Changing automatic answer mode'
+                                        : renderer.autoModeEnabled && appState.isRecording
+                                            ? 'Auto mode on — listening'
+                                            : renderer.autoModeEnabled
+                                                ? 'Auto mode on — waiting'
+                                        : 'Enable automatic answer mode'}
+                                    aria-busy={renderer.autoModeSwitching}
+                                    aria-pressed={renderer.autoModeEnabled}
+                                    data-listening={renderer.autoModeEnabled && appState.isRecording}
+                                    disabled={!renderer.ready || renderer.autoModeSwitching}
+                                    onClick={() => void renderer.toggleAutoMode()}
+                                >
+                                    <AutoModeRoundedIcon aria-hidden="true"/>
+                                </button>
+                            </span>
+                        </Tooltip>
+                    </div>
                 </div>
 
                 <div className="mt-2 flex flex-col">

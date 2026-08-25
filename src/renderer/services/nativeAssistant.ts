@@ -78,6 +78,9 @@ function runWithActiveStream(
     runner: (controller: AbortController) => Promise<void>
 ): AbortController {
     const controller = new AbortController();
+    // Request ids are expected to be unique, but replacing one must not leave
+    // the earlier generation running without an owner.
+    activeStreams.get(requestId)?.abort();
     activeStreams.set(requestId, controller);
     runner(controller)
         .catch((error) => {
@@ -87,7 +90,11 @@ function runWithActiveStream(
             emit('error', {requestId, error: message});
         })
         .finally(() => {
-            activeStreams.delete(requestId);
+            // An older generation may finish after a newer request reused the
+            // id. Never delete the newer controller from the registry.
+            if (activeStreams.get(requestId) === controller) {
+                activeStreams.delete(requestId);
+            }
         });
     return controller;
 }
@@ -542,7 +549,8 @@ async function transcribeWithGoogle(
 async function transcribeWithWinky(
     buffer: ArrayBuffer,
     mime: string,
-    settings: AppSettings
+    settings: AppSettings,
+    signal?: AbortSignal,
 ): Promise<string> {
     assertWinkySession();
     const fileName = getAudioFileNameByMime(mime);
@@ -563,6 +571,7 @@ async function transcribeWithWinky(
             visibility: 'private',
             fileName,
             contentType: mime || 'audio/webm',
+            signal,
         });
         const data = await authClient.request({
             url: '/ai/transcribe/media/',
@@ -572,6 +581,7 @@ async function transcribeWithWinky(
                 media_file_id: media.id,
                 model: modelLevel,
             },
+            signal,
         });
         const text = extractSpeechText(data)?.trim();
         if (!text) {
@@ -1242,6 +1252,7 @@ type TranscriptionRunOptions = {
     filename: string;
     stream?: boolean;
     requestId?: string;
+    signal?: AbortSignal;
 };
 
 type TranscriptionRunResult = {
@@ -1267,13 +1278,15 @@ const resolveTranscriptionTarget = (settings: AppSettings): { mode: Transcriptio
 };
 
 async function transcribeAudioBuffer({
-                                         settings,
-                                         buffer,
-                                         mime,
-                                          filename,
-                                          stream = false,
-                                          requestId,
-                                     }: TranscriptionRunOptions): Promise<TranscriptionRunResult> {
+    settings,
+    buffer,
+    mime,
+    filename,
+    stream = false,
+    requestId,
+    signal,
+}: TranscriptionRunOptions): Promise<TranscriptionRunResult> {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const {mode: transcriptionMode, model: transcriptionModel} = resolveTranscriptionTarget(settings);
 
     const logPayload = buildTranscriptionLogContext(transcriptionMode, transcriptionModel, mime, stream);
@@ -1284,7 +1297,7 @@ async function transcribeAudioBuffer({
             return transcribeWithLocal(buffer, mime, filename, settings, requestId);
         }
         if (WINKY_TRANSCRIBE_SET.has(transcriptionModel)) {
-            return transcribeWithWinky(buffer, mime, settings);
+            return transcribeWithWinky(buffer, mime, settings, signal);
         }
         if (GOOGLE_TRANSCRIBE_SET.has(transcriptionModel)) {
             // Live is a persistent WebSocket model and cannot be sent to the
@@ -1303,6 +1316,7 @@ async function transcribeAudioBuffer({
             : transcriptionModel;
         return transcribeWithOpenAi(buffer, mime, filename, settings, batchModel, requestId);
     })();
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     logRequest('transcribe', 'ok', {
         ...logPayload,
@@ -1316,39 +1330,58 @@ export async function assistantTranscribeOnly(args: ProcessAudioArgs): Promise<{
     ok: false;
     error: string
 }> {
-    const settings = await loadSettings();
-    const buffer = args.arrayBuffer;
-    if (buffer.byteLength === 0) {
-        return {ok: false, error: 'Empty audio'};
+    const requestId = args.requestId || crypto.randomUUID();
+    const controller = new AbortController();
+    activeStreams.get(requestId)?.abort();
+    activeStreams.set(requestId, controller);
+    try {
+        const settings = await loadSettings();
+        if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        const buffer = args.arrayBuffer;
+        if (buffer.byteLength === 0) {
+            return {ok: false, error: 'Empty audio'};
+        }
+        const {text} = await transcribeAudioBuffer({
+            settings,
+            buffer,
+            mime: args.mime,
+            filename: args.filename || 'lastN.webm',
+            requestId,
+            signal: controller.signal,
+        });
+        if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        return {ok: true, text};
+    } finally {
+        if (activeStreams.get(requestId) === controller) {
+            activeStreams.delete(requestId);
+        }
     }
-    const {text} = await transcribeAudioBuffer({
-        settings,
-        buffer,
-        mime: args.mime,
-        filename: args.filename || 'lastN.webm',
-        requestId: args.requestId,
-    });
-    return {ok: true, text};
 }
 
 export async function assistantAskChat(args: AskChatRequest) {
-    const settings = await loadSettings();
     const requestId = args.requestId || crypto.randomUUID();
     const history = normalizeChatHistory(args.history);
     const images = normalizePromptImages(args.images);
-    runWithActiveStream(requestId, (controller) =>
-        streamChatCompletion(args.text, requestId, settings, history, controller, images)
-    );
+    // Register cancellation before the first asynchronous read. Auto mode can
+    // supersede a request while config/keyring access is still pending; loading
+    // settings first used to let that request start later without any UI owner.
+    runWithActiveStream(requestId, async (controller) => {
+        const settings = await loadSettings();
+        if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        await streamChatCompletion(args.text, requestId, settings, history, controller, images);
+    });
 }
 
 export async function assistantStopStream(args: StopStreamRequest): Promise<void> {
     const requestId = args.requestId || 'default';
-    await invoke('cancel_transcription', {requestId}).catch(() => undefined);
     const controller = activeStreams.get(requestId);
     if (controller) {
         controller.abort();
         activeStreams.delete(requestId);
     }
+    // Batch transcription has separate native cancellation state. Abort an LLM
+    // controller first so it cannot start while this IPC call is in flight.
+    await invoke('cancel_transcription', {requestId}).catch(() => undefined);
 }
 
 export function assistantOnStreamTranscript(cb: StreamListener<{ requestId?: string; delta: string }>) {

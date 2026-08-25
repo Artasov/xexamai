@@ -3,16 +3,20 @@ import {
   beginRetryChatMessage,
   getActiveChatId,
   getConversationContext,
+  removeChatMessages,
   showError,
   updateChatMessage,
 } from "../ui/outputs";
-import { setStatus } from "../ui/status";
+import { getStatusSnapshot, setStatus } from "../ui/status";
 import { setProcessing, setRecording, state } from "../state/appState";
 import { floatsToWav } from "../audio/encoder";
 import { logger } from "../utils/logger";
 import { settingsStore } from "../state/settingsStore";
 import { GoogleStreamingService } from "../services/googleStreamingService";
-import { OpenAiStreamingService } from "../services/openAiStreamingService";
+import {
+  OpenAiStreamingService,
+  type OpenAiRealtimeAcknowledgement,
+} from "../services/openAiStreamingService";
 import { LatestIntentQueue } from "./latestIntentQueue";
 import {
   checkOllamaInstalled,
@@ -42,7 +46,21 @@ import {
   type ChatSource,
 } from "../ui/chatMetadata";
 import { migrateLegacyAudioDeviceSelection } from "./audioSession/deviceSelection";
-import type { PromptImageAttachment } from "@shared/ipc";
+import type {
+  AppSettings,
+  AssistantAPI,
+  PromptImageAttachment,
+} from "@shared/ipc";
+
+type StreamDeltaHandler = Parameters<
+  AssistantAPI["assistant"]["onStreamDelta"]
+>[0];
+type StreamDoneHandler = Parameters<
+  AssistantAPI["assistant"]["onStreamDone"]
+>[0];
+type StreamErrorHandler = Parameters<
+  AssistantAPI["assistant"]["onStreamError"]
+>[0];
 
 export type AudioInputType = "microphone" | "system" | "mixed";
 
@@ -54,11 +72,86 @@ export type StreamControllerUi = {
     translatedPrevious: string;
     translatedNext: string;
   }) => void;
+  applyRealtimeAcknowledgement?: (update: RealtimeAcknowledgementUpdate) => void;
   restoreQuestionIfEmpty?: (text: string) => void;
+  onOperationSettled?: (settlement: StreamOperationSettlement) => void;
   setAudioInputPresentation?: (
     type: AudioInputType,
     switching: boolean,
   ) => void;
+  onAudioInputChanged?: () => void;
+};
+
+export type StopDisposition = "manual" | "auto-continuation" | "auto-new-turn";
+
+export type StopActiveOperationOptions = {
+  disposition?: StopDisposition;
+  /**
+   * Keep a cancelled turn visible, but never feed it back to the model.
+   * This is required for superseded multimodal turns because chat history
+   * stores only an attachment marker, not the image pixels.
+   */
+  excludeFromHistory?: boolean;
+};
+
+export type StreamOperationSettlement = {
+  requestId: string;
+  status: "completed" | "failed" | "cancelled";
+  disposition?: StopDisposition;
+  chatId?: string;
+  userText?: string;
+  userMessageId?: string;
+  assistantMessageId?: string;
+  partialText: string;
+};
+
+export type StreamOperationSnapshot = {
+  inProgress: boolean;
+  requestId: string | null;
+  chatId: string | null;
+  userText: string;
+  partialText: string;
+};
+
+export type RealtimeCanonicalSnapshot = {
+  target: RealtimeTranscriptionTarget | null;
+  revision: number;
+  /** Text auto mode should submit; translation deliberately wins over the visible toggle. */
+  text: string;
+  source: string;
+  translated: string;
+};
+
+export type RealtimeAcknowledgementUpdate = {
+  target: RealtimeTranscriptionTarget;
+  /** Exact textarea text handed to the manual request, when applicable. */
+  submittedText?: string;
+  submittedTranslationView?: "source" | "translated";
+  acknowledgedTranscript: string;
+  acknowledgedSource: string;
+  acknowledgedTranslated: string;
+  /** Provider text received after the submitted watermark. */
+  transcript: string;
+  source: string;
+  translated: string;
+};
+
+type RealtimeSubmissionAcknowledgement = {
+  target: RealtimeTranscriptionTarget;
+  submittedText?: string;
+  submittedTranslationView?: "source" | "translated";
+  transcript: string;
+  source: string;
+  translated: string;
+  openAi?: OpenAiRealtimeAcknowledgement;
+};
+
+type PendingRealtimeAcknowledgement = {
+  acknowledgement: RealtimeSubmissionAcknowledgement | null;
+};
+
+export type TextSendOptions = {
+  submittedTranslationView?: "source" | "translated";
 };
 
 type PendingConversation = {
@@ -77,9 +170,9 @@ export class StreamController {
 
   private currentRequestId: string | null = null;
   private activeOpId = 0;
-  private streamDeltaHandler: any = null;
-  private streamDoneHandler: any = null;
-  private streamErrorHandler: any = null;
+  private streamDeltaHandler: StreamDeltaHandler | null = null;
+  private streamDoneHandler: StreamDoneHandler | null = null;
+  private streamErrorHandler: StreamErrorHandler | null = null;
 
   private streamAccumulator = "";
   private activeRealtimeTarget: RealtimeTranscriptionTarget | null = null;
@@ -88,15 +181,54 @@ export class StreamController {
   private lastRealtimeTranscript = "";
   private lastRealtimeSource = "";
   private lastRealtimeTranslation = "";
+  private realtimeRevision = 0;
   private submittedRealtimeFragment = "";
+  private pendingRealtimeAcknowledgement: PendingRealtimeAcknowledgement | null = null;
   private realtimeRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private realtimeRetryAttempt = 0;
+  private realtimeTerminalError: string | null = null;
   private operationInProgress = false;
   private audioSwitchInProgress = false;
   private pendingConversation: PendingConversation | null = null;
-  private cancelledRequestIds = new Set<string>();
 
   constructor(private readonly ui: StreamControllerUi = {}) {}
+
+  getOperationSnapshot(): StreamOperationSnapshot {
+    return {
+      inProgress: this.operationInProgress || !!this.currentRequestId,
+      requestId: this.currentRequestId,
+      chatId: this.pendingConversation?.chatId ?? null,
+      userText: this.pendingConversation?.userText ?? "",
+      partialText: this.streamAccumulator,
+    };
+  }
+
+  getRealtimeCanonicalSnapshot(): RealtimeCanonicalSnapshot {
+    const translating = this.activeRealtimeTarget === "openai-translate"
+      || this.desiredRealtimeTarget === "openai-translate";
+    const unsubmittedTranscript = this.getUnsubmittedRealtimeTranscript(
+      this.lastRealtimeTranscript,
+    ).text;
+    return {
+      target: this.activeRealtimeTarget ?? this.desiredRealtimeTarget,
+      revision: this.realtimeRevision,
+      text: translating ? this.lastRealtimeTranslation : unsubmittedTranscript,
+      source: translating ? this.lastRealtimeSource : unsubmittedTranscript,
+      translated: translating ? this.lastRealtimeTranslation : "",
+    };
+  }
+
+  /** Finalizes only the current realtime utterance while keeping capture alive. */
+  async finalizeRealtimeTurn(): Promise<void> {
+    const target = this.activeRealtimeTarget ?? this.desiredRealtimeTarget;
+    if (target === "openai-transcribe") {
+      await this.openAiStreamingService.finalizeTurn();
+    } else if (target === "openai-translate") {
+      // Translation has provider-side turn detection. Prefer its final output
+      // boundary, but never stall Auto indefinitely if the boundary is lost.
+      await this.openAiStreamingService.waitForTranslationTurnCompleted(1_200);
+    }
+  }
 
   private toErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -107,7 +239,56 @@ export class StreamController {
     setProcessing(false);
   }
 
-  private async loadSettingsSafe(): Promise<any> {
+  private restoreRecordingAwareStatus(idleText = "Ready"): void {
+    if (!state.isRecording) {
+      setStatus(idleText, "ready");
+      return;
+    }
+    const current = getStatusSnapshot();
+    if (current.type === "error" && current.text.toLowerCase().includes("realtime")) {
+      return;
+    }
+    if (this.realtimeTerminalError) {
+      setStatus(this.realtimeTerminalError, "error");
+      return;
+    }
+    if (this.desiredRealtimeTarget && !this.activeRealtimeTarget) {
+      setStatus(
+        this.realtimeRetryTimer
+          ? "Recording · reconnecting realtime…"
+          : "Recording · connecting realtime…",
+        "recording",
+      );
+      return;
+    }
+    const target = this.activeRealtimeTarget;
+    setStatus(
+      target === "openai-translate"
+        ? "Recording · OpenAI Translate"
+        : target === "openai-transcribe"
+          ? "Recording · OpenAI Live"
+          : target === "google"
+            ? "Recording · Google Live"
+            : "Recording...",
+      "recording",
+    );
+  }
+
+  private notifyOperationSettled(settlement: StreamOperationSettlement): void {
+    try {
+      this.ui.onOperationSettled?.(settlement);
+    } catch (error) {
+      logger.warn("stream", "Operation settlement listener failed", { error });
+    }
+  }
+
+  private isMeaningfulPartial(text: string): boolean {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized) return false;
+    return normalized.length >= 24 || normalized.split(" ").filter(Boolean).length >= 5;
+  }
+
+  private async loadSettingsSafe(): Promise<AppSettings> {
     try {
       return settingsStore.get();
     } catch {
@@ -115,26 +296,42 @@ export class StreamController {
     }
   }
 
+  private getUnsubmittedRealtimeTranscript(value: string): {
+    text: string;
+    matchedSubmission: boolean;
+  } {
+    const submitted = this.submittedRealtimeFragment;
+    if (!submitted) return { text: value, matchedSubmission: false };
+    const core = value.trim();
+    if (!core || core === submitted || submitted.startsWith(core)) {
+      return { text: "", matchedSubmission: true };
+    }
+    if (core.startsWith(submitted)) {
+      return {
+        // Keep the provider's whitespace boundary. Incremental reconciliation
+        // uses it to distinguish a word continuation from a fresh word.
+        text: core.slice(submitted.length),
+        matchedSubmission: true,
+      };
+    }
+    return { text: value, matchedSubmission: false };
+  }
+
   private readonly onTranscript = (text: string) => {
     if (!text.trim()) return;
     if (text === this.lastRealtimeTranscript) return;
-    const previous = this.lastRealtimeTranscript;
+    const previous = this.getUnsubmittedRealtimeTranscript(
+      this.lastRealtimeTranscript,
+    ).text;
     this.lastRealtimeTranscript = text;
-    let next = text;
-    const submitted = this.submittedRealtimeFragment;
-    if (submitted) {
-      const core = text.trim();
-      if (core === submitted || submitted.startsWith(core)) return;
-      if (core.startsWith(submitted)) {
-        const suffix = core.slice(submitted.length).trimStart();
-        this.submittedRealtimeFragment = "";
-        if (!suffix) return;
-        next = ` ${suffix}`;
-      } else {
-        this.submittedRealtimeFragment = "";
-      }
+    this.realtimeRevision += 1;
+    const unsubmitted = this.getUnsubmittedRealtimeTranscript(text);
+    if (this.submittedRealtimeFragment && !unsubmitted.matchedSubmission) {
+      // A provider-side turn boundary starts a new independent transcript.
+      this.submittedRealtimeFragment = "";
     }
-    this.ui.updateRealtimeTranscript?.(previous, next);
+    if (!unsubmitted.text.trim()) return;
+    this.ui.updateRealtimeTranscript?.(previous, unsubmitted.text);
   };
 
   private readonly onTranslation = (text: {source: string; translated: string}) => {
@@ -150,18 +347,123 @@ export class StreamController {
     };
     this.lastRealtimeSource = text.source;
     this.lastRealtimeTranslation = text.translated;
+    this.realtimeRevision += 1;
     this.ui.updateRealtimeTranslation?.(update);
   };
 
-  acknowledgeRealtimeSubmission(): void {
-    this.submittedRealtimeFragment = this.lastRealtimeTranscript.trim();
-    if (this.activeRealtimeTarget?.startsWith("openai")) {
-      this.openAiStreamingService.acknowledgeTranscript();
-      this.lastRealtimeTranscript = "";
-      this.lastRealtimeSource = "";
-      this.lastRealtimeTranslation = "";
-      this.submittedRealtimeFragment = "";
+  private captureRealtimeAcknowledgement(
+    submittedText?: string,
+    submittedTranslationView?: "source" | "translated",
+  ): RealtimeSubmissionAcknowledgement | null {
+    const target = this.activeRealtimeTarget ?? this.desiredRealtimeTarget;
+    if (!target) return null;
+    return {
+      target,
+      ...(submittedText === undefined ? {} : { submittedText }),
+      ...(submittedTranslationView === undefined
+        ? {}
+        : { submittedTranslationView }),
+      transcript: this.lastRealtimeTranscript,
+      source: this.lastRealtimeSource,
+      translated: this.lastRealtimeTranslation,
+      openAi: target.startsWith("openai")
+        ? this.openAiStreamingService.captureAcknowledgement()
+        : undefined,
+    };
+  }
+
+  private remainingAfterAcknowledgement(value: string, captured: string): string {
+    if (!captured) return value;
+    if (value === captured || captured.startsWith(value)) return "";
+    if (value.startsWith(captured)) return value.slice(captured.length);
+
+    const valueCore = value.trim();
+    const capturedCore = captured.trim();
+    if (!capturedCore) return value;
+    if (valueCore === capturedCore || capturedCore.startsWith(valueCore)) return "";
+    if (valueCore.startsWith(capturedCore)) {
+      return valueCore.slice(capturedCore.length);
     }
+    // A final provider revision may replace the captured partial entirely.
+    // Keep that revision as a new prompt rather than acknowledging unseen text.
+    return value;
+  }
+
+  acknowledgeRealtimeSubmission(): void {
+    const pending = this.pendingRealtimeAcknowledgement;
+    const acknowledgement = pending
+      ? pending.acknowledgement
+      : this.captureRealtimeAcknowledgement();
+    this.pendingRealtimeAcknowledgement = null;
+    if (!acknowledgement) return;
+
+    const target = this.activeRealtimeTarget ?? this.desiredRealtimeTarget;
+    if (target !== acknowledgement.target) return;
+
+    if (target.startsWith("openai")) {
+      if (
+        !acknowledgement.openAi
+        || !this.openAiStreamingService.acknowledgeTranscript(acknowledgement.openAi)
+      ) return;
+
+      const transcript = this.remainingAfterAcknowledgement(
+        this.lastRealtimeTranscript,
+        acknowledgement.transcript,
+      );
+      const source = this.remainingAfterAcknowledgement(
+        this.lastRealtimeSource,
+        acknowledgement.source,
+      );
+      const translated = this.remainingAfterAcknowledgement(
+        this.lastRealtimeTranslation,
+        acknowledgement.translated,
+      );
+      this.lastRealtimeTranscript = transcript;
+      this.lastRealtimeSource = source;
+      this.lastRealtimeTranslation = translated;
+      this.submittedRealtimeFragment = "";
+      this.realtimeRevision += 1;
+      this.ui.applyRealtimeAcknowledgement?.({
+        target,
+        ...(acknowledgement.submittedText === undefined
+          ? {}
+          : { submittedText: acknowledgement.submittedText }),
+        ...(acknowledgement.submittedTranslationView === undefined
+          ? {}
+          : { submittedTranslationView: acknowledgement.submittedTranslationView }),
+        acknowledgedTranscript: acknowledgement.transcript,
+        acknowledgedSource: acknowledgement.source,
+        acknowledgedTranslated: acknowledgement.translated,
+        transcript,
+        source,
+        translated,
+      });
+      return;
+    }
+
+    // Google publishes a cumulative transcript rather than a provider-side
+    // acknowledgement boundary. Retain the raw value and advance only the
+    // local watermark so the next cumulative revision can be reconciled.
+    this.submittedRealtimeFragment = acknowledgement.transcript.trim();
+    this.realtimeRevision += 1;
+    const transcript = this.getUnsubmittedRealtimeTranscript(
+      this.lastRealtimeTranscript,
+    ).text;
+    this.ui.applyRealtimeAcknowledgement?.({
+      target,
+      ...(acknowledgement.submittedText === undefined
+        ? {}
+        : { submittedText: acknowledgement.submittedText }),
+      ...(acknowledgement.submittedTranslationView === undefined
+        ? {}
+        : { submittedTranslationView: acknowledgement.submittedTranslationView }),
+      acknowledgedTranscript: acknowledgement.transcript,
+      acknowledgedSource: acknowledgement.source,
+      acknowledgedTranslated: acknowledgement.translated,
+      transcript,
+      source: transcript,
+      translated: "",
+    });
   }
 
   private onStreamingError(
@@ -173,15 +475,17 @@ export class StreamController {
     this.activeRealtimeTarget = null;
     if (this.realtimeRetryTimer) return;
     if (this.disposed || !state.isRecording) {
+      this.realtimeTerminalError = null;
       void this.stopRealtimeServices();
-      setStatus(`Realtime error: ${error}`, "error");
       return;
     }
     if (this.realtimeRetryAttempt >= 4) {
       void this.stopRealtimeServices();
-      setStatus(`Realtime transcription stopped: ${error}`, "error");
+      this.realtimeTerminalError = `Realtime transcription stopped: ${error}`;
+      setStatus(this.realtimeTerminalError, "error");
       return;
     }
+    this.realtimeTerminalError = null;
     const delay = Math.min(1_000 * 2 ** this.realtimeRetryAttempt, 8_000);
     this.realtimeRetryAttempt += 1;
     setStatus("Recording · reconnecting realtime…", "recording");
@@ -257,7 +561,7 @@ export class StreamController {
       case "transcriptionMode":
       case "transcriptionModel":
       case "realtimeTranslationLanguage": {
-        settingsStore.patch({ [key]: value } as any);
+        settingsStore.patch({ [key]: value } as Partial<AppSettings>);
         if (key === "realtimeTranslationLanguage" && state.isRecording) {
           // The target language is bound to the short-lived translation
           // session, so changing it requires a fresh session even though the
@@ -293,7 +597,9 @@ export class StreamController {
     } catch (error) {
       console.error("Record toggle failed", error);
       const message = error instanceof Error ? error.message : String(error);
-      const code = (error as any)?.code;
+      const code = error && typeof error === "object" && "code" in error
+        ? (error as { code?: unknown }).code
+        : undefined;
       if (
         code === "system-audio-capture-failed" ||
         message === "system-audio-capture-failed"
@@ -314,10 +620,13 @@ export class StreamController {
     seconds: number,
     promptText = "",
     images: PromptImageAttachment[] = [],
+    options: { automatic?: boolean } = {},
   ): Promise<boolean> {
-    logger.info("ui", "Handle ask window", { seconds });
+    logger.info("ui", "Handle ask window", { seconds, automatic: options.automatic === true });
 
-    if (state.isProcessing) {
+    const hasStreamOperation = this.operationInProgress || !!this.currentRequestId;
+    if (state.isProcessing && !hasStreamOperation) return false;
+    if (hasStreamOperation) {
       await this.stopActiveOperation();
     }
 
@@ -349,13 +658,15 @@ export class StreamController {
     const durationLabel =
       actualSeconds >= 10 ? actualSeconds.toFixed(1) : actualSeconds.toFixed(2);
     const hasFullWindow = actualSeconds + 1 / pcm.sampleRate >= seconds;
-    appendChatMessage(
-      "system",
-      hasFullWindow
-        ? `Last ${durationLabel}s sent for transcription...`
-        : `Only ${durationLabel}s of the requested ${seconds}s is available; sending that audio...`,
-      { chatId, source: "audio" },
-    );
+    if (!options.automatic) {
+      appendChatMessage(
+        "system",
+        hasFullWindow
+          ? `Last ${durationLabel}s sent for transcription...`
+          : `Only ${durationLabel}s of the requested ${seconds}s is available; sending that audio...`,
+        { chatId, source: "audio" },
+      );
+    }
 
     let audioBuffer: ArrayBuffer;
     let maxAmplitude = 0;
@@ -364,12 +675,19 @@ export class StreamController {
     let dataMaxAmp = 0;
     try {
       const result = await this.prepareAudioBuffer(pcm, actualSeconds);
+      if (opId !== this.activeOpId) {
+        // A newer operation owns all global processing/status state now.
+        return false;
+      }
       audioBuffer = result.arrayBuffer;
       maxAmplitude = result.maxAmplitude;
       rms = result.rms;
       expectedFrames = result.expectedFrames;
       dataMaxAmp = result.dataMaxAmp;
     } catch (error) {
+      if (opId !== this.activeOpId) {
+        return false;
+      }
       this.setErrorStatus(this.toErrorMessage(error));
       this.operationInProgress = false;
       setProcessing(false);
@@ -402,9 +720,6 @@ export class StreamController {
       });
 
       if (opId !== this.activeOpId) {
-        setStatus("Ready", "ready");
-        setProcessing(false);
-        this.operationInProgress = false;
         return false;
       }
       if (!transcribeRes.ok) {
@@ -413,6 +728,14 @@ export class StreamController {
         setProcessing(false);
         this.operationInProgress = false;
         this.currentRequestId = null;
+        this.notifyOperationSettled({
+          requestId,
+          status: "failed",
+          chatId,
+          userMessageId: undefined,
+          assistantMessageId: undefined,
+          partialText: "",
+        });
         hideStopButton();
         return false;
       }
@@ -440,23 +763,28 @@ export class StreamController {
       if (opId !== this.activeOpId) {
         // A user cancellation invalidates this operation before the
         // native transcription promise rejects. Do not surface that
-        // expected cancellation as a new error.
-        setProcessing(false);
-        this.operationInProgress = false;
-        this.currentRequestId = null;
-        hideStopButton();
-        this.removeStreamHandlers();
+        // expected cancellation as a new error or disturb its successor.
         return false;
       }
       setStatus("Error", "error");
-      const hadPending = !!this.pendingConversation;
-      this.failPendingConversation(this.toErrorMessage(error));
+      const failedPending = this.pendingConversation;
+      const hadPending = !!failedPending;
+      this.failPendingConversation(this.toErrorMessage(error), this.streamAccumulator);
       if (!hadPending) {
         showError(error, chatId, { source: "audio" });
       }
       setProcessing(false);
       this.operationInProgress = false;
       this.currentRequestId = null;
+      this.notifyOperationSettled({
+        requestId,
+        status: "failed",
+        chatId: failedPending?.chatId ?? chatId,
+        userText: failedPending?.userText,
+        userMessageId: failedPending?.userMessageId,
+        assistantMessageId: failedPending?.assistantMessageId,
+        partialText: this.streamAccumulator.trim(),
+      });
       hideStopButton();
       this.removeStreamHandlers();
       return false;
@@ -466,10 +794,24 @@ export class StreamController {
   async handleTextSend(
     text: string,
     images: PromptImageAttachment[] = [],
+    source: ChatSource = "text",
+    options: TextSendOptions = {},
   ): Promise<boolean> {
     const normalizedText =
       text.trim() || (images.length ? "Analyze the attached image(s)." : "");
     if (!normalizedText) return false;
+    if (state.isProcessing || this.operationInProgress || this.currentRequestId) return false;
+    // Manual callers acknowledge only after the asynchronous bridge dispatch
+    // succeeds. Capture the provider watermark now so speech received during
+    // model/settings/IPC awaits remains available for the next prompt. Auto
+    // mode already acknowledges immediately before its audio-source dispatch.
+    this.pendingRealtimeAcknowledgement = null;
+    const realtimeAcknowledgement = source === "audio" || !text.trim()
+      ? null
+      : this.captureRealtimeAcknowledgement(
+          text,
+          options.submittedTranslationView,
+        );
     logger.info("ui", "Handle text send", {
       textLength: normalizedText.length,
     });
@@ -483,40 +825,56 @@ export class StreamController {
 
     try {
       if (opId !== this.activeOpId) {
-        setStatus("Ready", "ready");
-        setProcessing(false);
-        this.operationInProgress = false;
-        hideStopButton();
         return false;
       }
       setStatus("Sending to LLM...", "sending");
       const started = await this.sendChatRequest(
         requestId,
         normalizedText,
-        "text",
+        source,
         chatId,
         opId,
         images,
       );
+      if (started && source !== "audio") {
+        this.pendingRealtimeAcknowledgement = {
+          acknowledgement: realtimeAcknowledgement,
+        };
+      }
       return started;
     } catch (error) {
+      if (opId !== this.activeOpId) {
+        return false;
+      }
       setStatus("Error", "error");
-      const hadPending = !!this.pendingConversation;
-      this.failPendingConversation(this.toErrorMessage(error));
+      const failedPending = this.pendingConversation;
+      const hadPending = !!failedPending;
+      this.failPendingConversation(this.toErrorMessage(error), this.streamAccumulator);
       if (!hadPending) {
-        showError(error, chatId, { source: "text" });
+        showError(error, chatId, { source });
       }
       setProcessing(false);
       this.operationInProgress = false;
       this.currentRequestId = null;
+      this.notifyOperationSettled({
+        requestId,
+        status: "failed",
+        chatId: failedPending?.chatId ?? chatId,
+        userText: failedPending?.userText,
+        userMessageId: failedPending?.userMessageId,
+        assistantMessageId: failedPending?.assistantMessageId,
+        partialText: this.streamAccumulator.trim(),
+      });
       hideStopButton();
       this.removeStreamHandlers();
       return false;
     }
   }
 
-  async stopActiveStream(): Promise<boolean> {
-    return this.stopActiveOperation();
+  async stopActiveStream(
+    options: StopActiveOperationOptions | StopDisposition = {},
+  ): Promise<boolean> {
+    return this.stopActiveOperation(options);
   }
 
   async retryFailedMessage(
@@ -537,7 +895,9 @@ export class StreamController {
     setProcessing(true);
     setStatus("Checking model...", "processing");
     try {
-      if (!(await this.ensureLlmReady()) || opId !== this.activeOpId) {
+      const llmReady = await this.ensureLlmReady(opId);
+      if (opId !== this.activeOpId) return false;
+      if (!llmReady) {
         setProcessing(false);
         this.operationInProgress = false;
         return false;
@@ -548,6 +908,7 @@ export class StreamController {
       const requestId = `retry-${crypto.randomUUID()}`;
       this.pendingConversation = { ...retry, requestId };
       const provider = resolveLlmProvider(await this.loadSettingsSafe());
+      if (opId !== this.activeOpId) return false;
       updateChatMessage(
         retry.assistantMessageId,
         {
@@ -577,7 +938,8 @@ export class StreamController {
       });
       return true;
     } catch (error) {
-      this.failPendingConversation(this.toErrorMessage(error));
+      if (opId !== this.activeOpId) return false;
+      this.failPendingConversation(this.toErrorMessage(error), this.streamAccumulator);
       setStatus("Error", "error");
       setProcessing(false);
       this.operationInProgress = false;
@@ -588,17 +950,33 @@ export class StreamController {
     }
   }
 
-  async stopActiveOperation(): Promise<boolean> {
+  async stopActiveOperation(
+    options: StopActiveOperationOptions | StopDisposition = {},
+  ): Promise<boolean> {
     const hasActive = this.operationInProgress || !!this.currentRequestId;
     if (!hasActive) {
       return false;
     }
 
+    const disposition = typeof options === "string"
+      ? options
+      : options.disposition ?? "manual";
+    const excludeFromHistory = typeof options === "string"
+      ? false
+      : options.excludeFromHistory === true;
     this.activeOpId++;
     const requestId = this.currentRequestId;
-    logger.info("ui", "Stop operation requested", { requestId });
+    const pending = this.pendingConversation;
+    const partial = this.streamAccumulator.trim();
+    logger.info("ui", "Stop operation requested", { requestId, disposition });
+
+    // Detach first so an expected abort event cannot race the disposition-
+    // specific chat update below and turn an automatic supersession into an
+    // error card.
+    this.currentRequestId = null;
+    this.pendingConversation = null;
+    this.removeStreamHandlers();
     if (requestId) {
-      this.cancelledRequestIds.add(requestId);
       try {
         await window.api.assistant.stopStream({ requestId });
       } catch (error) {
@@ -606,28 +984,69 @@ export class StreamController {
       }
     }
 
-    if (this.pendingConversation) {
-      const pending = this.pendingConversation;
-      const partial = this.streamAccumulator.trim();
-      updateChatMessage(
-        pending.assistantMessageId,
-        {
-          role: "error",
-          text: partial
-            ? `${partial}\n\n[Interrupted — retry to continue]`
-            : "[Interrupted — retry to continue]",
-          pending: false,
-          interrupted: true,
-          retryText: pending.userText,
-        },
-        { chatId: pending.chatId },
-      );
-      this.pendingConversation = null;
+    if (pending) {
+      const meaningfulPartial = this.isMeaningfulPartial(partial);
+      if (disposition === "manual") {
+        updateChatMessage(
+          pending.userMessageId,
+          { historyExcluded: true },
+          { chatId: pending.chatId },
+        );
+        updateChatMessage(
+          pending.assistantMessageId,
+          {
+            role: "error",
+            text: partial
+              ? `${partial}\n\n[Interrupted — retry to continue]`
+              : "[Interrupted — retry to continue]",
+            pending: false,
+            interrupted: true,
+            retryText: pending.userText,
+            historyExcluded: true,
+          },
+          { chatId: pending.chatId },
+        );
+      } else if (!meaningfulPartial) {
+        removeChatMessages(
+          [pending.userMessageId, pending.assistantMessageId],
+          { chatId: pending.chatId },
+        );
+      } else {
+        const historyExcluded = disposition === "auto-continuation"
+          || excludeFromHistory;
+        updateChatMessage(
+          pending.userMessageId,
+          { historyExcluded },
+          { chatId: pending.chatId },
+        );
+        updateChatMessage(
+          pending.assistantMessageId,
+          {
+            role: "assistant",
+            text: partial,
+            pending: false,
+            interrupted: false,
+            retryText: undefined,
+            historyExcluded,
+          },
+          { chatId: pending.chatId },
+        );
+      }
     }
 
-    this.currentRequestId = null;
-    this.removeStreamHandlers();
-    setStatus("Ready", "ready");
+    if (requestId) {
+      this.notifyOperationSettled({
+        requestId,
+        status: "cancelled",
+        disposition,
+        chatId: pending?.chatId,
+        userText: pending?.userText,
+        userMessageId: pending?.userMessageId,
+        assistantMessageId: pending?.assistantMessageId,
+        partialText: partial,
+      });
+    }
+    this.restoreRecordingAwareStatus();
     setProcessing(false);
     this.operationInProgress = false;
     hideStopButton();
@@ -806,7 +1225,12 @@ export class StreamController {
     if (typeof opId === "number" && opId !== this.activeOpId) {
       return false;
     }
-    if (!(await this.ensureLlmReady())) {
+    const llmReady = await this.ensureLlmReady(opId);
+    if (typeof opId === "number" && opId !== this.activeOpId) {
+      return false;
+    }
+    if (!llmReady) {
+      if (this.currentRequestId === requestId) this.currentRequestId = null;
       setProcessing(false);
       this.operationInProgress = false;
       hideStopButton();
@@ -816,6 +1240,9 @@ export class StreamController {
       return false;
     }
     const currentSettings = await this.loadSettingsSafe();
+    if (typeof opId === "number" && opId !== this.activeOpId) {
+      return false;
+    }
     const provider = resolveLlmProvider(currentSettings);
     const history = getConversationContext(chatId);
     const attachmentLabel = images.length
@@ -834,6 +1261,13 @@ export class StreamController {
     this.prepareStreamHandlers(requestId);
     showStopButton();
     await window.api.assistant.askChat({ text, requestId, history, images });
+    // A stop can win while a slower bridge is dispatching the request. Report
+    // that as not started so the caller does not clear the user's prompt. Do
+    // not key this check off currentRequestId: an exceptionally fast provider
+    // may already have completed successfully without invalidating the op id.
+    if (typeof opId === "number" && opId !== this.activeOpId) {
+      return false;
+    }
     return true;
   }
 
@@ -871,7 +1305,11 @@ export class StreamController {
       _e: unknown,
       payload: { requestId?: string; full: string },
     ) => {
-      if (!payload || (payload.requestId && payload.requestId !== requestId))
+      if (
+        !payload ||
+        (payload.requestId && payload.requestId !== requestId) ||
+        this.currentRequestId !== requestId
+      )
         return;
       logger.info("stream", "Stream done handler called", {
         requestId: payload.requestId,
@@ -881,7 +1319,33 @@ export class StreamController {
         this.pendingConversation?.requestId === requestId
           ? this.pendingConversation
           : null;
+      if (!full) {
+        if (pending) {
+          this.failPendingConversation("The model returned an empty response.");
+        }
+        this.currentRequestId = null;
+        this.notifyOperationSettled({
+          requestId,
+          status: "failed",
+          chatId: pending?.chatId,
+          userText: pending?.userText,
+          userMessageId: pending?.userMessageId,
+          assistantMessageId: pending?.assistantMessageId,
+          partialText: "",
+        });
+        setStatus("Error", "error");
+        setProcessing(false);
+        this.operationInProgress = false;
+        hideStopButton();
+        this.removeStreamHandlers();
+        return;
+      }
       if (pending) {
+        updateChatMessage(
+          pending.userMessageId,
+          { historyExcluded: false },
+          { chatId: pending.chatId },
+        );
         updateChatMessage(
           pending.assistantMessageId,
           {
@@ -889,14 +1353,23 @@ export class StreamController {
             pending: false,
             retryText: undefined,
             interrupted: false,
+            historyExcluded: false,
           },
           { chatId: pending.chatId },
         );
         this.pendingConversation = null;
       }
-      this.cancelledRequestIds.delete(requestId);
       this.currentRequestId = null;
-      setStatus("Done", "ready");
+      this.notifyOperationSettled({
+        requestId,
+        status: "completed",
+        chatId: pending?.chatId,
+        userText: pending?.userText,
+        userMessageId: pending?.userMessageId,
+        assistantMessageId: pending?.assistantMessageId,
+        partialText: full,
+      });
+      this.restoreRecordingAwareStatus("Done");
       setProcessing(false);
       this.operationInProgress = false;
       hideStopButton();
@@ -907,58 +1380,39 @@ export class StreamController {
       _e: unknown,
       payload: { requestId?: string; error: string },
     ) => {
-      if (!payload || (payload.requestId && payload.requestId !== requestId))
+      if (
+        !payload ||
+        (payload.requestId && payload.requestId !== requestId) ||
+        this.currentRequestId !== requestId
+      )
         return;
       logger.info("stream", "Stream error handler called", {
         requestId: payload.requestId,
         error: payload.error,
       });
       this.currentRequestId = null;
-      const msg = (payload.error || "").toString();
       const pending =
         this.pendingConversation?.requestId === requestId
           ? this.pendingConversation
           : null;
-      const aborted =
-        msg.toLowerCase().includes("aborted") ||
-        this.cancelledRequestIds.has(requestId);
       if (pending) {
-        if (aborted) {
-          const partial = this.streamAccumulator.trim();
-          updateChatMessage(
-            pending.assistantMessageId,
-            {
-              role: "error",
-              text: partial
-                ? `${partial}\n\n[Interrupted — retry to continue]`
-                : "[Interrupted — retry to continue]",
-              pending: false,
-              interrupted: true,
-              retryText: pending.userText,
-            },
-            { chatId: pending.chatId },
-          );
-        } else {
-          updateChatMessage(
-            pending.assistantMessageId,
-            {
-              role: "error",
-              text: payload.error,
-              pending: false,
-              retryText: pending.userText,
-            },
-            { chatId: pending.chatId },
-          );
-        }
-        this.pendingConversation = null;
+        // Intentional stops detach these handlers before aborting the native
+        // request. Any error that still reaches this listener is therefore a
+        // real failure, even if an upstream provider happens to use the word
+        // "aborted" in its diagnostic text.
+        this.failPendingConversation(payload.error, this.streamAccumulator.trim());
       }
-      this.cancelledRequestIds.delete(requestId);
 
-      if (aborted) {
-        setStatus("Done", "ready");
-      } else {
-        setStatus("Error", "error");
-      }
+      setStatus("Error", "error");
+      this.notifyOperationSettled({
+        requestId,
+        status: "failed",
+        chatId: pending?.chatId,
+        userText: pending?.userText,
+        userMessageId: pending?.userMessageId,
+        assistantMessageId: pending?.assistantMessageId,
+        partialText: this.streamAccumulator.trim(),
+      });
       setProcessing(false);
       this.operationInProgress = false;
       hideStopButton();
@@ -999,23 +1453,34 @@ export class StreamController {
     };
   }
 
-  private failPendingConversation(errorMessage: string): void {
+  private failPendingConversation(errorMessage: string, partialText = ""): void {
     if (!this.pendingConversation) return;
+    const pending = this.pendingConversation;
+    const partial = partialText.trim();
     updateChatMessage(
-      this.pendingConversation.assistantMessageId,
+      pending.userMessageId,
+      { historyExcluded: true },
+      { chatId: pending.chatId },
+    );
+    updateChatMessage(
+      pending.assistantMessageId,
       {
         role: "error",
-        text: errorMessage,
+        text: partial ? `${partial}\n\n[Request failed: ${errorMessage}]` : errorMessage,
         pending: false,
-        retryText: this.pendingConversation.userText,
+        interrupted: false,
+        retryText: pending.userText,
+        historyExcluded: true,
       },
-      { chatId: this.pendingConversation.chatId },
+      { chatId: pending.chatId },
     );
     this.pendingConversation = null;
   }
 
-  private async ensureLlmReady(): Promise<boolean> {
+  private async ensureLlmReady(opId?: number): Promise<boolean> {
+    const isCurrent = () => typeof opId !== "number" || opId === this.activeOpId;
     const settings = await this.loadSettingsSafe();
+    if (!isCurrent()) return false;
 
     if (settings.llmHost !== "local") {
       return true;
@@ -1030,11 +1495,13 @@ export class StreamController {
 
     try {
       const installed = await checkOllamaInstalled();
+      if (!isCurrent()) return false;
       if (!installed) {
         setStatus("Install Ollama to use local LLMs", "error");
         return false;
       }
     } catch (error) {
+      if (!isCurrent()) return false;
       logger.error("llm", "Failed to detect Ollama", { error });
       setStatus("Failed to detect Ollama installation", "error");
       return false;
@@ -1044,6 +1511,7 @@ export class StreamController {
       const downloaded = await checkOllamaModelDownloaded(model, {
         force: true,
       });
+      if (!isCurrent()) return false;
       if (!downloaded) {
         setStatus(`Download the ${model} LLM model first`, "error");
         return false;
@@ -1057,6 +1525,7 @@ export class StreamController {
         return false;
       }
     } catch (error) {
+      if (!isCurrent()) return false;
       logger.error("llm", "Failed to verify Ollama model", { error });
       setStatus("Failed to verify local LLM model", "error");
       return false;
@@ -1067,10 +1536,9 @@ export class StreamController {
 
   private removeStreamHandlers(): void {
     try {
-      (window.api.assistant as any).offStreamTranscript?.();
-      (window.api.assistant as any).offStreamDelta?.();
-      (window.api.assistant as any).offStreamDone?.();
-      (window.api.assistant as any).offStreamError?.();
+      window.api.assistant.offStreamDelta();
+      window.api.assistant.offStreamDone();
+      window.api.assistant.offStreamError();
     } catch {}
     this.streamDeltaHandler = null;
     this.streamDoneHandler = null;
@@ -1122,6 +1590,7 @@ export class StreamController {
       this.desiredRealtimeTarget = target;
       if (!target) {
         this.clearRealtimeRetry();
+        this.realtimeTerminalError = null;
         await this.stopRealtimeServices();
         if (!isCurrent()) return;
         this.activeRealtimeTarget = null;
@@ -1129,9 +1598,12 @@ export class StreamController {
         this.lastRealtimeSource = "";
         this.lastRealtimeTranslation = "";
         this.submittedRealtimeFragment = "";
+        this.pendingRealtimeAcknowledgement = null;
+        this.realtimeRevision += 1;
         return;
       }
       if (this.activeRealtimeTarget === target) return;
+      this.realtimeTerminalError = null;
 
       // Stop only the provider we are leaving. The target service's start()
       // performs its own restart while preserving audio accumulated during a
@@ -1148,6 +1620,8 @@ export class StreamController {
       this.lastRealtimeSource = "";
       this.lastRealtimeTranslation = "";
       this.submittedRealtimeFragment = "";
+      this.pendingRealtimeAcknowledgement = null;
+      this.realtimeRevision += 1;
       try {
         if (target.startsWith("openai")) {
           await this.openAiStreamingService.start({
@@ -1162,6 +1636,7 @@ export class StreamController {
         if (!isCurrent()) return;
         this.activeRealtimeTarget = target;
         this.clearRealtimeRetry();
+        this.realtimeTerminalError = null;
         setStatus(
           target === "openai-translate"
             ? "Recording · OpenAI Translate"
@@ -1210,20 +1685,13 @@ export class StreamController {
     } catch {}
     if (!result.success) return result;
 
+    this.ui.onAudioInputChanged?.();
+
     if (state.isRecording) {
       // Realtime services subscribe to the shared native audio bus, so the
       // existing session automatically receives the new
       // source. Keeping it open avoids dropping audio during a reconnect.
-      setStatus(
-        this.activeRealtimeTarget
-          ? this.activeRealtimeTarget === "openai-translate"
-            ? "Recording · OpenAI Translate"
-            : this.activeRealtimeTarget === "openai-transcribe"
-              ? "Recording · OpenAI Live"
-              : "Recording · Google Live"
-          : "Recording...",
-        "recording",
-      );
+      this.restoreRecordingAwareStatus();
     }
 
     return result;

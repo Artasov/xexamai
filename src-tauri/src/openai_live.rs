@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -49,6 +50,7 @@ struct OpenAiClientSecretResponse {
 #[derive(Default)]
 pub struct OpenAiTranslationState {
     active: Mutex<Option<OpenAiTranslationSession>>,
+    generation: AtomicU64,
 }
 
 struct OpenAiTranslationSession {
@@ -120,6 +122,13 @@ pub async fn openai_translation_start(
     let _activity = activity.try_begin_work()?;
     let target_language = normalize_translation_language(&target_language)
         .ok_or_else(|| "Unsupported realtime translation language".to_string())?;
+    // Invalidate every older setup attempt before awaiting network I/O. This
+    // lets Stop (or a newer Start) supersede a slow connection without making
+    // the caller wait for all setup timeouts to expire.
+    let generation = state
+        .generation
+        .fetch_add(1, Ordering::AcqRel)
+        .wrapping_add(1);
     stop_translation_session(&state).await;
     let api_key = secrets
         .get_provider_secret(ProviderSecret::OpenAi)
@@ -137,15 +146,25 @@ pub async fn openai_translation_start(
     );
     drop(api_key);
 
-    let (mut socket, _) = tokio::time::timeout(
+    let connection = tokio::time::timeout(
         Duration::from_secs(15),
         tokio_tungstenite::connect_async(request),
-    )
-    .await
-    .map_err(|_| "OpenAI Realtime translation connection timed out".to_string())?
-    .map_err(translation_connect_error)?;
+    );
+    tokio::pin!(connection);
+    let connection = tokio::select! {
+        result = &mut connection => result,
+        _ = wait_for_translation_superseded(state.inner(), generation) => {
+            return Err("OpenAI translation setup was superseded".to_string());
+        }
+    };
+    let (mut socket, _) = connection
+        .map_err(|_| "OpenAI Realtime translation connection timed out".to_string())?
+        .map_err(translation_connect_error)?;
 
-    wait_for_translation_event(&mut socket, "session.created").await?;
+    ensure_translation_generation(&state, generation, &mut socket).await?;
+
+    wait_for_current_translation_event(state.inner(), generation, &mut socket, "session.created")
+        .await?;
     socket
         .send(Message::Text(
             translation_session_update(&target_language)
@@ -154,11 +173,20 @@ pub async fn openai_translation_start(
         ))
         .await
         .map_err(|error| format!("Could not configure OpenAI translation: {error}"))?;
-    wait_for_translation_event(&mut socket, "session.updated").await?;
+    wait_for_current_translation_event(state.inner(), generation, &mut socket, "session.updated")
+        .await?;
 
     let id = Uuid::new_v4();
     let (commands, receiver) = mpsc::channel(32);
-    *state.active.lock().await = Some(OpenAiTranslationSession { id, commands });
+    {
+        let mut active = state.active.lock().await;
+        if state.generation.load(Ordering::Acquire) != generation {
+            drop(active);
+            let _ = socket.close(None).await;
+            return Err("OpenAI translation setup was superseded".to_string());
+        }
+        *active = Some(OpenAiTranslationSession { id, commands });
+    }
     let state = state.inner().clone();
     tauri::async_runtime::spawn(run_translation_session(app, state, id, socket, receiver));
     log::info!(
@@ -196,8 +224,64 @@ pub async fn openai_translation_send_audio(
 pub async fn openai_translation_stop(
     state: State<'_, Arc<OpenAiTranslationState>>,
 ) -> Result<(), String> {
+    state.generation.fetch_add(1, Ordering::AcqRel);
     stop_translation_session(&state).await;
     Ok(())
+}
+
+async fn ensure_translation_generation<S>(
+    state: &OpenAiTranslationState,
+    expected: u64,
+    socket: &mut tokio_tungstenite::WebSocketStream<S>,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    if state.generation.load(Ordering::Acquire) == expected {
+        return Ok(());
+    }
+    let _ = socket.close(None).await;
+    Err("OpenAI translation setup was superseded".to_string())
+}
+
+async fn wait_for_translation_superseded(state: &OpenAiTranslationState, expected: u64) {
+    loop {
+        if state.generation.load(Ordering::Acquire) != expected {
+            return;
+        }
+        // Setup is short-lived and happens only when recording starts or the
+        // translation language changes. A small bounded poll keeps Stop and a
+        // replacement Start responsive without maintaining another task or
+        // risking a lost notification between an atomic check and registration.
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+async fn wait_for_current_translation_event<S>(
+    state: &OpenAiTranslationState,
+    expected_generation: u64,
+    socket: &mut tokio_tungstenite::WebSocketStream<S>,
+    expected_type: &str,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    // Keep the event wait and supersession wait in one select so a stopped
+    // setup does not hold the renderer lifecycle queue for the full provider
+    // timeout. The inner scope releases the mutable socket borrow before the
+    // generation helper closes it.
+    let event_result = {
+        let event = wait_for_translation_event(socket, expected_type);
+        tokio::pin!(event);
+        tokio::select! {
+            result = &mut event => Some(result),
+            _ = wait_for_translation_superseded(state, expected_generation) => None,
+        }
+    };
+    if let Some(result) = event_result {
+        result?;
+    }
+    ensure_translation_generation(state, expected_generation, socket).await
 }
 
 async fn stop_translation_session(state: &OpenAiTranslationState) {
@@ -210,7 +294,10 @@ async fn stop_translation_session(state: &OpenAiTranslationState) {
         .await
         .is_ok()
     {
-        let _ = tokio::time::timeout(Duration::from_secs(3), finished_rx).await;
+        // The worker itself bounds final-event draining to three seconds. Give
+        // it a small cleanup margin so a replacement session cannot overlap
+        // with late events from the previous socket.
+        let _ = tokio::time::timeout(Duration::from_secs(4), finished_rx).await;
     }
 }
 
@@ -255,10 +342,9 @@ async fn run_translation_session<S>(
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let mut close_waiter: Option<oneshot::Sender<()>> = None;
-    let mut closing = false;
     loop {
         tokio::select! {
-            command = commands.recv(), if !closing => {
+            command = commands.recv() => {
                 match command {
                     Some(OpenAiTranslationCommand::Audio(audio)) => {
                         let payload = json!({
@@ -272,7 +358,6 @@ async fn run_translation_session<S>(
                     }
                     Some(OpenAiTranslationCommand::Close(waiter)) => {
                         close_waiter = Some(waiter);
-                        closing = true;
                         if socket
                             .send(Message::Text(json!({"type": "session.close"}).to_string().into()))
                             .await
@@ -280,6 +365,12 @@ async fn run_translation_session<S>(
                         {
                             break;
                         }
+                        // Once close is requested there can be no more audio.
+                        // Drain the provider's final transcript, but keep the
+                        // native task bounded if the server never acknowledges
+                        // session.close.
+                        drain_translation_close(&app, &mut socket).await;
+                        break;
                     }
                     None => break,
                 }
@@ -288,18 +379,14 @@ async fn run_translation_session<S>(
                 let frame = match frame {
                     Some(Ok(frame)) => frame,
                     Some(Err(error)) => {
-                        if !closing {
-                            emit_translation_error(&app, format!("OpenAI translation connection failed: {error}"));
-                        }
+                        emit_translation_error(&app, format!("OpenAI translation connection failed: {error}"));
                         break;
                     }
                     None => {
-                        if !closing {
-                            emit_translation_error(
-                                &app,
-                                "OpenAI translation connection closed unexpectedly".to_string(),
-                            );
-                        }
+                        emit_translation_error(
+                            &app,
+                            "OpenAI translation connection closed unexpectedly".to_string(),
+                        );
                         break;
                     }
                 };
@@ -311,19 +398,7 @@ async fn run_translation_session<S>(
                         continue;
                     }
                 };
-                let event_type = event.get("type").and_then(Value::as_str).unwrap_or_default();
-                if matches!(
-                    event_type,
-                    "session.input_transcript.delta"
-                        | "session.output_transcript.delta"
-                        | "session.input_transcript.completed"
-                        | "session.output_transcript.completed"
-                        | "error"
-                        | "session.closed"
-                ) {
-                    let _ = app.emit(OPENAI_TRANSLATION_MESSAGE_EVENT, &event);
-                }
-                if event_type == "session.closed" {
+                if forward_translation_event(&app, &event) {
                     break;
                 }
             }
@@ -344,20 +419,68 @@ fn translation_session_update(target_language: &str) -> Value {
         "type": "session.update",
         "session": {
             "audio": {
-                "input": {
-                    "transcription": {
-                        "model": "gpt-realtime-whisper"
-                    },
-                    "noise_reduction": {
-                        "type": "far_field"
-                    }
-                },
                 "output": {
                     "language": target_language
                 }
             }
         }
     })
+}
+
+async fn drain_translation_close<S>(
+    app: &AppHandle,
+    socket: &mut tokio_tungstenite::WebSocketStream<S>,
+) where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let result = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let frame = match socket.next().await {
+                Some(Ok(frame)) => frame,
+                Some(Err(error)) => {
+                    log::debug!("OpenAI translation close drain ended: {error}");
+                    return;
+                }
+                None => return,
+            };
+            let event = match decode_translation_frame(frame) {
+                Ok(Some(event)) => event,
+                Ok(None) => continue,
+                Err(error) => {
+                    log::debug!(
+                        "OpenAI translation close drain returned an invalid event: {error}"
+                    );
+                    continue;
+                }
+            };
+            if forward_translation_event(app, &event) {
+                return;
+            }
+        }
+    })
+    .await;
+    if result.is_err() {
+        log::debug!("OpenAI translation close drain timed out");
+    }
+}
+
+fn forward_translation_event(app: &AppHandle, event: &Value) -> bool {
+    let event_type = event
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if matches!(
+        event_type,
+        "session.input_transcript.delta"
+            | "session.output_transcript.delta"
+            | "session.input_transcript.completed"
+            | "session.output_transcript.completed"
+            | "error"
+            | "session.closed"
+    ) {
+        let _ = app.emit(OPENAI_TRANSLATION_MESSAGE_EVENT, event);
+    }
+    event_type == "session.closed"
 }
 
 fn decode_translation_frame(frame: Message) -> Result<Option<Value>, String> {
@@ -569,11 +692,25 @@ mod tests {
     fn translation_session_update_requests_source_and_translated_transcripts() {
         let body = translation_session_update("ru");
         assert_eq!(body["type"], "session.update");
-        assert_eq!(
-            body["session"]["audio"]["input"]["transcription"]["model"],
-            "gpt-realtime-whisper"
-        );
         assert_eq!(body["session"]["audio"]["output"]["language"], "ru");
+        assert!(body["session"]["audio"].get("input").is_none());
+    }
+
+    #[tokio::test]
+    async fn translation_setup_observes_supersession_promptly() {
+        let state = Arc::new(OpenAiTranslationState::default());
+        let generation = state.generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let waiting_state = state.clone();
+        let waiter = tokio::spawn(async move {
+            wait_for_translation_superseded(&waiting_state, generation).await;
+        });
+
+        state.generation.fetch_add(1, Ordering::AcqRel);
+
+        tokio::time::timeout(Duration::from_millis(200), waiter)
+            .await
+            .expect("superseded setup should wake without provider timeout")
+            .expect("supersession waiter should not panic");
     }
 
     #[tokio::test]
