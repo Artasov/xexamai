@@ -209,7 +209,11 @@ pub async fn screen_capture_finish(
     }
     let _ = app.emit_to("main", EVENT_CAPTURING, session_id);
 
-    let capture_result = async {
+    // The Windows branch returns a concrete ScreenCapture while the portable
+    // fallback can only return Err. Keep the result type explicit so Rust can
+    // type-check this command on Linux/macOS CI where the success branch is
+    // compiled out by cfg.
+    let capture_result: Result<ScreenCapture, String> = async {
         window
             .hide()
             .map_err(|error| format!("Could not hide the screen capture overlay: {error}"))?;
