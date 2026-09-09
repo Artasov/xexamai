@@ -773,7 +773,7 @@ export const AiSettings = () => {
         }
         const model = provider === 'openai'
             ? (OPENAI_LLM_SET.has(apiLlmModel) ? apiLlmModel : DEFAULT_API_LLM_MODEL)
-            : (GEMINI_LLM_SET.has(apiLlmModel) ? apiLlmModel : 'gemini-3.7-flash');
+            : (GEMINI_LLM_SET.has(apiLlmModel) ? apiLlmModel : 'gemini-3.5-flash-lite');
         setProviderTesting(provider);
         setProviderTestMessage((current) => ({...current, [provider]: `Checking ${model}…`}));
         try {
